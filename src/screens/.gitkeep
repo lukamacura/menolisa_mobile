@@ -1,0 +1,7 @@
+# Screens folder
+# Create screen components here:
+# - auth/LoginScreen.tsx
+# - auth/RegisterScreen.tsx
+# - dashboard/DashboardScreen.tsx
+# - chat/ChatScreen.tsx
+# etc.
