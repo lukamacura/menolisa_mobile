@@ -22,15 +22,17 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../lib/supabase';
-import { getApiUrl, API_CONFIG } from '../lib/api';
+import { getApiUrl, getWebAppUrl } from '../lib/api';
+import { logger } from '../lib/logger';
 import { colors, radii, shadows, spacing, typography, minTouchTarget, landingGradient } from '../theme/tokens';
+import { StaggeredZoomIn, useReduceMotion } from '../components/StaggeredZoomIn';
 
 type NavigationProp = NativeStackNavigationProp<any>;
 
-type Step = 'q1_problems' | 'q2_severity' | 'q5_doctor' | 'q6_goal' | 'q7_name';
+type Step = 'q1_problems' | 'q2_severity' | 'q6_goal' | 'q7_name';
 type Phase = 'quiz' | 'results' | 'social_proof' | 'email';
 
-const STEPS: Step[] = ['q1_problems', 'q2_severity', 'q5_doctor', 'q6_goal', 'q7_name'];
+const STEPS: Step[] = ['q1_problems', 'q2_severity', 'q6_goal', 'q7_name'];
 
 const { width } = Dimensions.get('window');
 
@@ -68,13 +70,6 @@ const TRIED_OPTIONS = [
   { id: 'hrt', label: 'HRT / Medication', icon: 'medical-outline' },
   { id: 'doctor_talk', label: 'Talked to doctor', icon: 'chatbubbles' },
   { id: 'apps', label: 'Apps / Tracking', icon: 'phone-portrait' },
-];
-
-const DOCTOR_OPTIONS = [
-  { id: 'yes_actively', label: 'Yes, actively', icon: 'medkit' },
-  { id: 'yes_not_helpful', label: "Yes, but they're not helpful", icon: 'person-remove' },
-  { id: 'no_planning', label: 'No, planning to', icon: 'heart' },
-  { id: 'no_natural', label: 'No, prefer natural approaches', icon: 'leaf' },
 ];
 
 const GOAL_OPTIONS = [
@@ -178,6 +173,7 @@ const SYMPTOM_LABELS: Record<string, string> = {
 export function RegisterScreen() {
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute();
+  const reduceMotion = useReduceMotion();
   const [referralCode, setReferralCode] = useState<string | null>(null);
 
   useEffect(() => {
@@ -209,7 +205,6 @@ export function RegisterScreen() {
   const [severity, setSeverity] = useState<string>('');
   const [timing, setTiming] = useState<string>('');
   const [triedOptions, setTriedOptions] = useState<string[]>([]);
-  const [doctorStatus, setDoctorStatus] = useState<string>('');
   const [goal, setGoal] = useState<string[]>([]);
   const [firstName, setFirstName] = useState<string>('');
 
@@ -225,15 +220,16 @@ export function RegisterScreen() {
   // Results loading state
   const [isResultsLoading, setIsResultsLoading] = useState(true);
   const [messageIndex, setMessageIndex] = useState(0);
-  const [progress, setProgress] = useState(0);
   const [displayScore, setDisplayScore] = useState(0);
 
   // Animated values for step indicators
   const stepWidths = useRef(STEPS.map(() => new Animated.Value(8))).current;
 
-  // Loading (quiz → results) animation: same spin + scale as LandingScreen
+  // Loading (quiz → results) animation: smooth spin + scale
   const loadingSpinValue = useRef(new Animated.Value(0)).current;
-  const loadingScaleValue = useRef(new Animated.Value(0.4)).current;
+  const loadingScaleValue = useRef(new Animated.Value(0.5)).current;
+  const loadingMessageOpacity = useRef(new Animated.Value(1)).current;
+  const easeInOut = Easing.bezier(0.42, 0, 0.58, 1);
   useEffect(() => {
     if (!isResultsLoading) return;
     const loop = Animated.loop(
@@ -241,24 +237,24 @@ export function RegisterScreen() {
         Animated.parallel([
           Animated.timing(loadingSpinValue, {
             toValue: 1,
-            duration: 2000,
+            duration: 2400,
             useNativeDriver: true,
-            easing: Easing.inOut(Easing.ease),
+            easing: easeInOut,
           }),
           Animated.timing(loadingScaleValue, {
             toValue: 1,
-            duration: 2000,
+            duration: 2400,
             useNativeDriver: true,
-            easing: Easing.out(Easing.cubic),
+            easing: easeInOut,
           }),
         ]),
         Animated.parallel([
           Animated.timing(loadingSpinValue, { toValue: 0, duration: 0, useNativeDriver: true }),
           Animated.timing(loadingScaleValue, {
-            toValue: 0.4,
-            duration: 2000,
+            toValue: 0.5,
+            duration: 2400,
             useNativeDriver: true,
-            easing: Easing.in(Easing.cubic),
+            easing: easeInOut,
           }),
         ]),
       ])
@@ -281,6 +277,16 @@ export function RegisterScreen() {
     'Launching your plan...',
   ];
 
+  // Distinct color per loading state (smooth, on-brand)
+  const loadingMessageColors = [
+    colors.primary,
+    colors.primaryDark,
+    colors.blue,
+    colors.warning,
+    colors.primaryLight,
+    colors.navy,
+  ];
+
 
   // Animate step indicators
   useEffect(() => {
@@ -294,35 +300,43 @@ export function RegisterScreen() {
     });
   }, [stepIndex, stepWidths]);
 
-  // Handle results loading animation
+  // Handle results loading animation (message rotation with crossfade, one at a time)
   useEffect(() => {
-    if (phase === 'results') {
-      setIsResultsLoading(true);
-      setProgress(0);
-      setMessageIndex(0);
-      setDisplayScore(0);
+    if (phase !== 'results') return;
+    setIsResultsLoading(true);
+    setMessageIndex(0);
+    setDisplayScore(0);
 
-      const messageInterval = setInterval(() => {
-        setMessageIndex((prev) => (prev + 1) % loadingMessages.length);
-      }, 600);
+    let timeoutId: ReturnType<typeof setTimeout>;
+    const scheduleNextMessage = () => {
+      timeoutId = setTimeout(() => {
+        Animated.timing(loadingMessageOpacity, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+          easing: easeInOut,
+        }).start(() => {
+          setMessageIndex((prev) => (prev + 1) % loadingMessages.length);
+          Animated.timing(loadingMessageOpacity, {
+            toValue: 1,
+            duration: 320,
+            useNativeDriver: true,
+            easing: easeInOut,
+          }).start(scheduleNextMessage);
+        });
+      }, 650);
+    };
+    scheduleNextMessage();
 
-      const progressInterval = setInterval(() => {
-        setProgress((prev) => Math.min(prev + 1.5, 100));
-      }, 60);
+    const loadingTimer = setTimeout(() => {
+      setIsResultsLoading(false);
+    }, 5000);
 
-      const loadingTimer = setTimeout(() => {
-        setIsResultsLoading(false);
-        clearInterval(messageInterval);
-        clearInterval(progressInterval);
-      }, 5000);
-
-      return () => {
-        clearInterval(messageInterval);
-        clearInterval(progressInterval);
-        clearTimeout(loadingTimer);
-      };
-    }
-  }, [phase]);
+    return () => {
+      clearTimeout(timeoutId);
+      clearTimeout(loadingTimer);
+    };
+  }, [phase, loadingMessageOpacity]);
 
   // Animate score counting up
   useEffect(() => {
@@ -351,8 +365,8 @@ export function RegisterScreen() {
   const passwordValid = password.length >= 8;
   const canSubmit = emailValid && passwordValid && agreedToTerms && !loading;
 
-  const termsUrl = `${API_CONFIG.baseURL}/terms`;
-  const privacyUrl = `${API_CONFIG.baseURL}/privacy`;
+  const termsUrl = getWebAppUrl('/terms');
+  const privacyUrl = getWebAppUrl('/privacy');
 
   // Check if current step is answered - matching web logic exactly
   const stepIsAnswered = useCallback((step: Step) => {
@@ -361,8 +375,6 @@ export function RegisterScreen() {
         return topProblems.length > 0; // Any number of symptoms (not limited to 3)
       case 'q2_severity':
         return severity !== '';
-      case 'q5_doctor':
-        return doctorStatus !== '';
       case 'q6_goal':
         return goal.length > 0;
       case 'q7_name':
@@ -370,7 +382,7 @@ export function RegisterScreen() {
       default:
         return false;
     }
-  }, [topProblems, severity, doctorStatus, goal, firstName]);
+  }, [topProblems, severity, goal, firstName]);
 
   const goNext = useCallback(() => {
     if (!stepIsAnswered(currentStep)) return;
@@ -467,7 +479,6 @@ export function RegisterScreen() {
             severity: severity,
             timing: timing,
             tried_options: triedOptions,
-            doctor_status: doctorStatus,
             goal: goal,
             name: firstName.trim() || null,
           };
@@ -484,17 +495,17 @@ export function RegisterScreen() {
             }),
           });
         } catch (quizError) {
-          console.warn('Failed to save quiz answers:', quizError);
+          logger.warn('Failed to save quiz answers:', quizError);
           // Continue anyway - user is registered
         }
 
         // Registration successful! Auth listener will handle navigation
-        console.log('Registration successful');
+        logger.log('Registration successful');
       }
       
       setLoading(false);
     } catch (err: any) {
-      console.error('Unexpected registration error:', err);
+      logger.error('Unexpected registration error:', err);
       
       if (err instanceof TypeError && err.message.includes('fetch')) {
         setError('Network error. Please check your connection and try again.');
@@ -583,44 +594,6 @@ export function RegisterScreen() {
                       isSelected && styles.optionCardSelected,
                     ]}
                     onPress={() => setSeverity(option.id)}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: isSelected }}
-                  >
-                    <View style={[styles.iconContainer, isSelected && styles.iconContainerSelected]}>
-                      <Ionicons
-                        name={option.icon as any}
-                        size={18}
-                        color={isSelected ? colors.primary : colors.textMuted}
-                      />
-                    </View>
-                    <Text style={[styles.optionText, isSelected && styles.optionTextSelected]}>
-                      {option.label}
-                    </Text>
-                    {isSelected && (
-                      <Ionicons name="checkmark" size={18} color={colors.primary} style={styles.checkIcon} />
-                    )}
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
-        );
-
-      case 'q5_doctor':
-        return (
-          <View style={styles.questionContainer}>
-            <Text style={styles.questionTitle}>Are you working with a doctor on this?</Text>
-            <View style={styles.optionsContainer}>
-              {DOCTOR_OPTIONS.map((option) => {
-                const isSelected = doctorStatus === option.id;
-                return (
-                  <Pressable
-                    key={option.id}
-                    style={[
-                      styles.optionCard,
-                      isSelected && styles.optionCardSelected,
-                    ]}
-                    onPress={() => setDoctorStatus(option.id)}
                     accessibilityRole="button"
                     accessibilityState={{ selected: isSelected }}
                   >
@@ -739,15 +712,16 @@ export function RegisterScreen() {
             />
           </Animated.View>
           <Text style={styles.loadingTitle}>Getting to know you better...</Text>
-          <Text style={styles.loadingMessage}>{loadingMessages[messageIndex]}</Text>
-          <View style={styles.loadingProgressContainer}>
-            <LinearGradient
-              colors={[colors.primary, '#ffeb76', colors.blue]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={[styles.loadingProgressBar, { width: `${progress}%` }]}
-            />
-          </View>
+          <Animated.View style={{ opacity: loadingMessageOpacity }}>
+            <Text
+              style={[
+                styles.loadingMessage,
+                { color: loadingMessageColors[messageIndex] ?? colors.textMuted },
+              ]}
+            >
+              {loadingMessages[messageIndex]}
+            </Text>
+          </Animated.View>
         </SafeAreaView>
       );
     }
@@ -1191,10 +1165,6 @@ export function RegisterScreen() {
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
-      {/* Step Indicators */}
-      <View style={styles.stepIndicatorsWrapper}>
-        {renderStepIndicators()}
-      </View>
 
       {/* Question Content */}
       <ScrollView
@@ -1206,44 +1176,53 @@ export function RegisterScreen() {
         scrollEventThrottle={16}
         bounces={true}
       >
-        <View style={styles.questionCard}>
-          {renderQuestion()}
-        </View>
+        <StaggeredZoomIn delayIndex={0} reduceMotion={reduceMotion}>
+          <View style={styles.questionCard}>
+            {renderQuestion()}
+          </View>
+        </StaggeredZoomIn>
       </ScrollView>
 
-      {/* Navigation Buttons */}
+      {/* Step indicators + Navigation Buttons at bottom */}
+      <StaggeredZoomIn delayIndex={1} reduceMotion={reduceMotion}>
       <View style={styles.footer}>
-        <TouchableOpacity 
-          activeOpacity={1}
-          onPress={goBack} 
-          style={styles.backButton}
-        >
-          <Ionicons
-            name="arrow-back"
-            size={18}
-            color="#1F2937"
-          />
-          <Text style={styles.backButtonText}>
-            {stepIndex === 0 ? 'Back to home' : 'Back'}
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.stepIndicatorsWrapper}>
+          {renderStepIndicators()}
+        </View>
+        <View style={styles.footerButtonsRow}>
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={goBack}
+            style={styles.backButton}
+          >
+            <Ionicons
+              name="arrow-back"
+              size={18}
+              color="#1F2937"
+            />
+            <Text style={styles.backButtonText}>
+              {stepIndex === 0 ? 'Back' : 'Back'}
+            </Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          activeOpacity={1}
-          style={[styles.nextButton, !stepIsAnswered(currentStep) && styles.nextButtonDisabled]}
-          onPress={goNext}
-          disabled={!stepIsAnswered(currentStep)}
-        >
-          <Text style={[styles.nextButtonText, !stepIsAnswered(currentStep) && styles.nextButtonTextDisabled]}>
-            {stepIndex === STEPS.length - 1 ? 'Continue' : 'Next'}
-          </Text>
-          <Ionicons
-            name="arrow-forward"
-            size={16}
-            color={stepIsAnswered(currentStep) ? '#fff' : '#9CA3AF'}
-          />
-        </TouchableOpacity>
+          <TouchableOpacity
+            activeOpacity={1}
+            style={[styles.nextButton, !stepIsAnswered(currentStep) && styles.nextButtonDisabled]}
+            onPress={goNext}
+            disabled={!stepIsAnswered(currentStep)}
+          >
+            <Text style={[styles.nextButtonText, !stepIsAnswered(currentStep) && styles.nextButtonTextDisabled]}>
+              {stepIndex === STEPS.length - 1 ? 'Continue' : 'Next'}
+            </Text>
+            <Ionicons
+              name="arrow-forward"
+              size={18}
+              color={stepIsAnswered(currentStep) ? '#fff' : '#9CA3AF'}
+            />
+          </TouchableOpacity>
+        </View>
       </View>
+      </StaggeredZoomIn>
     </SafeAreaView>
   );
 }
@@ -1254,10 +1233,11 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  // Step indicators
+  // Step indicators (at bottom, above Back/Next)
   stepIndicatorsWrapper: {
-    paddingTop: spacing.md,
+    paddingTop: spacing.xs,
     paddingBottom: spacing.sm,
+    alignItems: 'center',
   },
   stepIndicatorsContainer: {
     flexDirection: 'row',
@@ -1274,8 +1254,8 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: spacing.md,
-    paddingTop: 0,
-    paddingBottom: spacing.lg,
+    paddingTop: spacing['2xl'],
+    paddingBottom: spacing.xl,
   },
   questionCard: {
     backgroundColor: colors.surface,
@@ -1346,7 +1326,6 @@ const styles = StyleSheet.create({
   optionCardSelected: {
     backgroundColor: 'rgba(255, 141, 161, 0.10)',
     borderColor: 'rgba(255, 141, 161, 0.35)',
-    ...shadows.glowPrimary,
   },
   iconContainer: {
     padding: 7,
@@ -1406,21 +1385,29 @@ const styles = StyleSheet.create({
   },
   // Footer
   footer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: 'column',
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.md,
     borderTopWidth: 1,
     borderTopColor: 'rgba(255, 255, 255, 0.65)',
     backgroundColor: 'rgba(255, 255, 255, 0.72)',
   },
-  backButton: {
+  footerButtonsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: radii.md,
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  backButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: minTouchTarget,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.md,
+    borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.borderStrong,
     gap: 6,
@@ -1429,14 +1416,17 @@ const styles = StyleSheet.create({
     opacity: 0.4,
   },
   backButtonText: {
-    fontSize: 14,
-    fontFamily: typography.family.medium,
+    fontSize: 17,
+    fontFamily: typography.family.semibold,
     color: colors.text,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
   },
   backButtonTextDisabled: {
     color: '#D1D5DB',
   },
   nextButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1473,8 +1463,8 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   loadingLogo: {
-    width: 80,
-    height: 80,
+    width: 64,
+    height: 64,
   },
   loadingTitle: {
     fontSize: 20,
@@ -1484,20 +1474,8 @@ const styles = StyleSheet.create({
   },
   loadingMessage: {
     fontSize: 16,
-    color: colors.textMuted,
     textAlign: 'center',
-    marginBottom: 32,
-  },
-  loadingProgressContainer: {
-    height: 6,
-    backgroundColor: '#E5E7EB',
-    borderRadius: 3,
-    width: 200,
-    overflow: 'hidden',
-  },
-  loadingProgressBar: {
-    height: '100%',
-    borderRadius: 3,
+    fontFamily: typography.family.medium,
   },
   // Results
   resultsContainer: {
@@ -1509,9 +1487,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   resultsContent: {
-    padding: 20,
-    paddingTop: 24,
-    paddingBottom: 100,
+    paddingHorizontal: spacing.lg,
+    paddingTop: 40,
+    paddingBottom: 120,
   },
   resultsIconContainer: {
     alignItems: 'center',
@@ -1541,7 +1519,7 @@ const styles = StyleSheet.create({
   scoreCardWrap: {
     marginBottom: 20,
     borderRadius: radii.xl,
-    overflow: 'hidden',
+    backgroundColor: colors.card,
     ...shadows.card,
   },
   scoreCardPressed: {
@@ -1553,7 +1531,6 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.7)',
-    overflow: 'hidden',
   },
   scoreHeader: {
     flexDirection: 'row',
@@ -1660,7 +1637,7 @@ const styles = StyleSheet.create({
   },
   socialProofContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'center',
     gap: 10,
     paddingVertical: spacing.sm,
@@ -1676,11 +1653,15 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary + '25',
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
   socialProofText: {
+    flex: 1,
     fontSize: 14,
     fontFamily: typography.family.medium,
     color: colors.text,
+    lineHeight: 20,
+    paddingTop: 6,
   },
   resultsDisclaimer: {
     fontSize: 12,
@@ -1708,19 +1689,19 @@ const styles = StyleSheet.create({
   },
   socialProofScrollContent: {
     paddingHorizontal: spacing.lg,
-    paddingTop: 0,
-    paddingBottom: 100,
+    paddingTop: spacing['2xl'],
+    paddingBottom: 120,
     flexGrow: 1,
   },
   socialProofImageWrap: {
     width: '100%',
-    maxHeight: 320,
+    maxHeight: 200,
     marginBottom: spacing.lg,
   },
   socialProofImage: {
     width: '100%',
-    height: 280,
-    maxHeight: 320,
+    height: 180,
+    maxHeight: 200,
   },
   socialProofHeadline: {
     fontSize: 26,
@@ -1809,7 +1790,6 @@ const styles = StyleSheet.create({
   // Primary CTA button (Landing style + bottom shadow)
   gradientButton: {
     borderRadius: radii.lg,
-    overflow: 'hidden',
     marginBottom: 16,
     backgroundColor: colors.primary,
     minHeight: minTouchTarget,
@@ -1844,13 +1824,13 @@ const styles = StyleSheet.create({
   },
   emailContent: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.xl,
+    paddingTop: spacing['2xl'],
+    paddingBottom: spacing['2xl'],
     flexGrow: 1,
   },
   registerImage: {
     width: '100%',
-    maxHeight: 320,
+    maxHeight: 200,
     marginBottom: spacing.md,
   },
   userExistsIcon: {

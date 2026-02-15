@@ -5,13 +5,15 @@ import {
   StyleSheet,
   Switch,
   TouchableOpacity,
-  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiFetchWithAuth, API_CONFIG } from '../../lib/api';
 import { colors, spacing, radii, typography } from '../../theme/tokens';
+import { StaggeredZoomIn, useReduceMotion } from '../../components/StaggeredZoomIn';
+import { NotificationPrefsSkeleton, ContentTransition } from '../../components/skeleton';
 
 export function NotificationPrefsScreen() {
+  const reduceMotion = useReduceMotion();
   const [notificationEnabled, setNotificationEnabled] = useState(true);
   const [weeklyInsightsEnabled, setWeeklyInsightsEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
@@ -62,38 +64,42 @@ export function NotificationPrefsScreen() {
   if (loading) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.primary} />
-        </View>
+        <NotificationPrefsSkeleton />
       </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <Text style={styles.title}>Notification preferences</Text>
-      <View style={styles.section}>
-        <View style={styles.row}>
-          <Text style={styles.rowLabel}>Notifications</Text>
-          <Switch
-            value={notificationEnabled}
-            onValueChange={(v) => updatePref('notification_enabled', v)}
-            disabled={saving}
-            trackColor={{ false: colors.border, true: colors.primaryLight }}
-            thumbColor={notificationEnabled ? colors.primary : colors.textMuted}
-          />
+      <ContentTransition>
+      <StaggeredZoomIn delayIndex={0} reduceMotion={reduceMotion}>
+        <Text style={styles.title}>Notification preferences</Text>
+      </StaggeredZoomIn>
+      <StaggeredZoomIn delayIndex={1} reduceMotion={reduceMotion}>
+        <View style={styles.section}>
+          <View style={styles.row}>
+            <Text style={styles.rowLabel}>Notifications</Text>
+            <Switch
+              value={notificationEnabled}
+              onValueChange={(v) => updatePref('notification_enabled', v)}
+              disabled={saving}
+              trackColor={{ false: colors.border, true: colors.primaryLight }}
+              thumbColor={notificationEnabled ? colors.primary : colors.textMuted}
+            />
+          </View>
+          <View style={styles.row}>
+            <Text style={styles.rowLabel}>Weekly summary from Lisa</Text>
+            <Switch
+              value={weeklyInsightsEnabled}
+              onValueChange={(v) => updatePref('weekly_insights_enabled', v)}
+              disabled={saving}
+              trackColor={{ false: colors.border, true: colors.primaryLight }}
+              thumbColor={weeklyInsightsEnabled ? colors.primary : colors.textMuted}
+            />
+          </View>
         </View>
-        <View style={styles.row}>
-          <Text style={styles.rowLabel}>Weekly summary from Lisa</Text>
-          <Switch
-            value={weeklyInsightsEnabled}
-            onValueChange={(v) => updatePref('weekly_insights_enabled', v)}
-            disabled={saving}
-            trackColor={{ false: colors.border, true: colors.primaryLight }}
-            thumbColor={weeklyInsightsEnabled ? colors.primary : colors.textMuted}
-          />
-        </View>
-      </View>
+      </StaggeredZoomIn>
+      </ContentTransition>
     </SafeAreaView>
   );
 }
@@ -102,11 +108,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-  },
-  centered: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   title: {
     fontSize: 20,

@@ -11,6 +11,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { RefetchTrialContext } from '../context/RefetchTrialContext';
 import { openWebDashboard } from '../lib/api';
+import { logger } from '../lib/logger';
 import { LandingScreenWithButton } from '../screens/LandingScreen';
 import { RegisterScreen } from '../screens/RegisterScreen';
 import { LoginScreen } from '../screens/LoginScreen';
@@ -43,7 +44,7 @@ export function AppNavigator() {
         const hash = window.location.hash.substring(1);
         
         if (hash.includes('access_token') && hash.includes('refresh_token')) {
-          console.log('Auth tokens detected in URL hash');
+          logger.log('Auth tokens detected in URL hash');
           
           try {
             const params = new URLSearchParams(hash);
@@ -51,19 +52,19 @@ export function AppNavigator() {
             const refresh_token = params.get('refresh_token');
             
             if (access_token && refresh_token) {
-              console.log('Setting session from URL tokens...');
+              logger.log('Setting session from URL tokens...');
               const { data, error } = await supabase.auth.setSession({
                 access_token,
                 refresh_token,
               });
               
               if (error) {
-                console.error('Error setting session:', error);
+                logger.error('Error setting session:', error);
                 return;
               }
               
               if (data?.session) {
-                console.log('Session established from URL hash!');
+                logger.log('Session established from URL hash!');
                 // Auth state will update via onAuthStateChange
                 
                 // Clean up the URL hash
@@ -73,7 +74,7 @@ export function AppNavigator() {
               }
             }
           } catch (err) {
-            console.error('Error handling web auth callback:', err);
+            logger.error('Error handling web auth callback:', err);
           }
         }
       }
@@ -88,7 +89,7 @@ export function AppNavigator() {
 
     const handleDeepLink = async (event: { url: string }) => {
       const url = event.url;
-      console.log('Deep link received:', url);
+      logger.log('Deep link received');
 
       // Return from web dashboard: refresh trial/subscription status
       if (url.startsWith('menolisa://settings')) {
@@ -98,7 +99,7 @@ export function AppNavigator() {
       
       // Check if this is an auth callback
       if (url.includes('/auth/callback') || url.includes('access_token=') || url.includes('refresh_token=')) {
-        console.log('Auth callback detected');
+        logger.log('Auth callback detected');
         
         try {
           // Extract tokens from URL
@@ -117,28 +118,28 @@ export function AppNavigator() {
             });
             
             if (error) {
-              console.error('Error setting session:', error);
+              logger.error('Error setting session:', error);
               return;
             }
             
             if (data?.session) {
-              console.log('Session established from deep link!');
+              logger.log('Session established from deep link!');
             }
           } else {
             // Fallback: try to get session normally
             const { data, error } = await supabase.auth.getSession();
             
             if (error) {
-              console.error('Error getting session after deep link:', error);
+              logger.error('Error getting session after deep link:', error);
               return;
             }
             
             if (data?.session) {
-              console.log('Session established from deep link (fallback method)');
+              logger.log('Session established from deep link (fallback method)');
             }
           }
         } catch (err) {
-          console.error('Error handling deep link:', err);
+          logger.error('Error handling deep link:', err);
         }
       }
     };
@@ -146,7 +147,7 @@ export function AppNavigator() {
     // Get the initial URL if app was opened from a link
     Linking.getInitialURL().then((url) => {
       if (url) {
-        console.log('Initial URL:', url);
+        logger.log('Initial URL received');
         handleDeepLink({ url });
       }
     });
@@ -167,7 +168,7 @@ export function AppNavigator() {
       const data = response.notification.request.content.data as Record<string, string> | undefined;
       if (!data) return;
       if (data.action === 'upgrade') {
-        openWebDashboard().catch((e) => console.warn('Open dashboard failed', e));
+        openWebDashboard().catch((e) => logger.warn('Open dashboard failed', e));
         return;
       }
       if (data.screen === 'Notifications' && navigationRef.isReady()) {

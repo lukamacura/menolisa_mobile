@@ -5,7 +5,7 @@ import {
   StyleSheet,
   FlatList,
   TouchableOpacity,
-  ActivityIndicator,
+  ScrollView,
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -15,6 +15,8 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../lib/supabase';
 import { apiFetchWithAuth, API_CONFIG } from '../../lib/api';
 import { colors, spacing, radii, typography, shadows } from '../../theme/tokens';
+import { StaggeredZoomIn, useReduceMotion } from '../../components/StaggeredZoomIn';
+import { ListSkeleton, ContentTransition } from '../../components/skeleton';
 
 type ChatStackParamList = {
   ChatList: undefined;
@@ -36,6 +38,7 @@ function uid(): string {
 
 export function ChatListScreen() {
   const navigation = useNavigation<NavProp>();
+  const reduceMotion = useReduceMotion();
   const [sessions, setSessions] = useState<SessionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -124,28 +127,31 @@ export function ChatListScreen() {
   if (loading) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Loading...</Text>
-        </View>
+        <ListSkeleton headerTitleWidth={160} rowCount={4} />
       </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Chat with Lisa</Text>
-        <TouchableOpacity activeOpacity={1} style={styles.newChatBtn} onPress={startNewChat}>
-          <Ionicons name="add" size={24} color="#fff" />
-          <Text style={styles.newChatBtnText}>New chat</Text>
-        </TouchableOpacity>
-      </View>
-      {error && (
-        <View style={styles.errorBanner}>
-          <Text style={styles.errorText}>{error}</Text>
+      <ContentTransition>
+      <StaggeredZoomIn delayIndex={0} reduceMotion={reduceMotion}>
+        <View style={styles.header}>
+          <Text style={styles.title}>Chat with Lisa</Text>
+          <TouchableOpacity activeOpacity={1} style={styles.newChatBtn} onPress={startNewChat}>
+            <Ionicons name="add" size={24} color="#fff" />
+            <Text style={styles.newChatBtnText}>New chat</Text>
+          </TouchableOpacity>
         </View>
+      </StaggeredZoomIn>
+      {error && (
+        <StaggeredZoomIn delayIndex={1} reduceMotion={reduceMotion}>
+          <View style={styles.errorBanner}>
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        </StaggeredZoomIn>
       )}
+      <StaggeredZoomIn delayIndex={2} reduceMotion={reduceMotion} style={{ flex: 1 }}>
       <FlatList
         data={sessions}
         keyExtractor={(item) => item.session_id}
@@ -177,6 +183,8 @@ export function ChatListScreen() {
           </TouchableOpacity>
         )}
       />
+      </StaggeredZoomIn>
+      </ContentTransition>
     </SafeAreaView>
   );
 }
@@ -185,17 +193,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-  },
-  centered: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: spacing.sm,
-    fontSize: 16,
-    fontFamily: typography.family.regular,
-    color: colors.textMuted,
   },
   header: {
     flexDirection: 'row',

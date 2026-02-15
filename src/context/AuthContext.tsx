@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import { logger } from '../lib/logger';
 
 type AuthContextType = {
   user: User | null;
@@ -41,7 +42,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .then(({ data: { session }, error }) => {
         if (!mounted) return;
         if (error) {
-          console.warn('Auth check error:', error);
+          logger.warn('Auth check error:', error);
         } else {
           setUser(session?.user ?? null);
         }
@@ -49,7 +50,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       })
       .catch((err) => {
         if (mounted) {
-          console.warn('Auth check failed:', err);
+          logger.warn('Auth check failed:', err);
           setLoading(false);
         }
       });

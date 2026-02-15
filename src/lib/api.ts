@@ -10,6 +10,11 @@
 import { Linking, Platform } from 'react-native';
 import { supabase } from './supabase';
 
+const PRODUCTION_API_URL = 'https://menolisa.com';
+
+/** Base URL for opening web app pages in the browser (dashboard, terms, privacy, etc.). Always production. */
+export const WEB_APP_BASE_URL = PRODUCTION_API_URL;
+
 function getDefaultApiBaseUrl(): string {
   if (process.env.EXPO_PUBLIC_API_URL) {
     return process.env.EXPO_PUBLIC_API_URL;
@@ -22,10 +27,8 @@ function getDefaultApiBaseUrl(): string {
     // iOS simulator and Expo Web: same machine as dev server
     return 'http://localhost:3000';
   }
-  // Production builds must set EXPO_PUBLIC_API_URL (e.g. https://menolisa.com)
-  throw new Error(
-    'EXPO_PUBLIC_API_URL is required for production. Set it in EAS Secrets or .env.production.'
-  );
+  // Production fallback so the app never crashes if EAS secret is missing
+  return PRODUCTION_API_URL;
 }
 
 const API_BASE_URL = getDefaultApiBaseUrl();
@@ -50,6 +53,8 @@ export const API_CONFIG = {
     healthSummary: '/api/health-summary',
     doctorReport: '/api/doctor-report',
     accountDelete: '/api/account/delete',
+    referralCode: '/api/referral/code',
+    referralDiscountEligible: '/api/referral/discount-eligible',
   },
 };
 
@@ -88,15 +93,24 @@ export const apiFetch = async (
 };
 
 /**
- * Helper to get full API URL
+ * Helper to get full API URL (for backend API calls; may be local in dev).
  */
 export const getApiUrl = (endpoint: string): string => {
   return `${API_CONFIG.baseURL}${endpoint}`;
 };
 
+/**
+ * URL for opening a web app page in the browser. Always uses menolisa.com so links
+ * (dashboard, terms, privacy, forgot-password) open the real site even when testing on same WiFi.
+ */
+export function getWebAppUrl(path: string): string {
+  const normalized = path.startsWith('/') ? path : `/${path}`;
+  return `${WEB_APP_BASE_URL}${normalized}`;
+}
+
 /** Open the MenoLisa web dashboard where users can manage subscription and billing. */
 export async function openWebDashboard(): Promise<void> {
-  const url = getApiUrl('/dashboard');
+  const url = getWebAppUrl('/dashboard');
   const canOpen = await Linking.canOpenURL(url);
   if (!canOpen) throw new Error('Cannot open dashboard URL');
   await Linking.openURL(url);

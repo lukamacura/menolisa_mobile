@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  ActivityIndicator,
   Share,
   ScrollView,
   Linking,
@@ -12,20 +11,55 @@ import {
 import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { apiFetchWithAuth, getApiUrl } from '../../lib/api';
+import { apiFetchWithAuth, getWebAppUrl, API_CONFIG } from '../../lib/api';
 import { colors, spacing, radii, typography } from '../../theme/tokens';
+import { StaggeredZoomIn, useReduceMotion } from '../../components/StaggeredZoomIn';
+import { InviteFriendsSkeleton, ContentTransition } from '../../components/skeleton';
+
+type InviteCopyState = 'eligible' | 'already_used' | 'already_subscribed' | 'no_referrals';
+
+const INVITE_COPY: Record<InviteCopyState, { title: string; subtitle: string; shareMessage: string }> = {
+  eligible: {
+    title: 'Give 3 days free. Get 50% off.',
+    subtitle:
+      'Invite friends to try MenoLisa. They get 3 days free; you get 50% off your first subscription when you upgrade.',
+    shareMessage: 'Give 3 days free. Get 50% off. Invite friends to try MenoLisa.',
+  },
+  already_used: {
+    title: 'Invite friends - they get 3 days free.',
+    subtitle: 'Your friends get 3 days free when they sign up with your link.',
+    shareMessage: 'Invite friends to try MenoLisa. They get 3 days free.',
+  },
+  already_subscribed: {
+    title: 'Invite friends - they get 3 days free.',
+    subtitle: 'Your friends get 3 days free when they sign up with your link.',
+    shareMessage: 'Invite friends to try MenoLisa. They get 3 days free.',
+  },
+  no_referrals: {
+    title: 'Invite friends - they get 3 days free.',
+    subtitle: 'Your friends get 3 days free when they sign up with your link.',
+    shareMessage: 'Invite friends to try MenoLisa. They get 3 days free.',
+  },
+};
 
 export function InviteFriendsScreen() {
+  const reduceMotion = useReduceMotion();
   const [code, setCode] = useState<string | null>(null);
+  const [inviteCopyState, setInviteCopyState] = useState<InviteCopyState>('no_referrals');
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
 
-  const loadCode = useCallback(async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
+    setCode(null);
     try {
-      const data = await apiFetchWithAuth('/api/referral/code');
-      if (data?.code) setCode(data.code);
-      else setCode(null);
+      const [codeData, eligibleData] = await Promise.all([
+        apiFetchWithAuth(API_CONFIG.endpoints.referralCode).catch(() => null),
+        apiFetchWithAuth(API_CONFIG.endpoints.referralDiscountEligible).catch(() => ({ inviteCopyState: 'no_referrals' as InviteCopyState })),
+      ]);
+      const resolvedCode = codeData?.code ?? (codeData as { data?: { code?: string } })?.data?.code ?? null;
+      setCode(resolvedCode || null);
+      if (eligibleData?.inviteCopyState) setInviteCopyState(eligibleData.inviteCopyState);
     } catch {
       setCode(null);
     } finally {
@@ -34,10 +68,10 @@ export function InviteFriendsScreen() {
   }, []);
 
   useEffect(() => {
-    loadCode();
-  }, [loadCode]);
+    loadData();
+  }, [loadData]);
 
-  const registerBase = getApiUrl('').replace(/\/$/, '');
+  const registerBase = getWebAppUrl('').replace(/\/$/, '');
   const link = code ? `${registerBase}/register?ref=${encodeURIComponent(code)}` : '';
 
   const copyLink = useCallback(() => {
@@ -50,15 +84,18 @@ export function InviteFriendsScreen() {
 
   const share = useCallback(() => {
     if (!link) return;
+    const copy = INVITE_COPY[inviteCopyState];
     Share.share({
-      message: link,
+      message: `${copy.shareMessage}\n${link}`,
       title: 'Try MenoLisa',
       url: link,
     }).catch((err) => {
       if (err?.message?.includes('cancel')) return;
       copyLink();
     });
-  }, [link, copyLink]);
+  }, [link, copyLink, inviteCopyState]);
+
+  const copy = INVITE_COPY[inviteCopyState];
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -66,26 +103,25 @@ export function InviteFriendsScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.card}>
-          <View style={styles.iconWrap}>
-            <Ionicons name="gift" size={32} color={colors.orange} />
-          </View>
-          <Text style={styles.title}>Give 3 days free. Get 50% off.</Text>
-          <Text style={styles.subtext}>
-            Invite friends to try MenoLisa. They get 3 days free; you get 50% off your first subscription when you upgrade.
-          </Text>
-          <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={() => Linking.openURL(getApiUrl('/terms'))}
-            style={styles.termsLinkWrap}
-          >
-            <Text style={styles.termsLinkText}>Terms apply</Text>
-          </TouchableOpacity>
-          {loading ? (
-            <View style={styles.loadingWrap}>
-              <ActivityIndicator size="small" color={colors.orange} />
-            </View>
-          ) : link ? (
+        {loading ? (
+          <InviteFriendsSkeleton />
+        ) : (
+          <ContentTransition style={styles.skeletonTransition}>
+            <StaggeredZoomIn delayIndex={0} reduceMotion={reduceMotion}>
+            <View style={styles.card}>
+              <View style={styles.iconWrap}>
+                <Ionicons name="gift" size={32} color={colors.orange} />
+              </View>
+              <Text style={styles.title}>{copy.title}</Text>
+              <Text style={styles.subtext}>{copy.subtitle}</Text>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => Linking.openURL(getWebAppUrl('/terms'))}
+                style={styles.termsLinkWrap}
+              >
+                <Text style={styles.termsLinkText}>Terms and conditions apply</Text>
+              </TouchableOpacity>
+              {link ? (
             <View style={styles.actions}>
               <TouchableOpacity
                 style={[styles.button, styles.buttonSecondary]}
@@ -107,15 +143,29 @@ export function InviteFriendsScreen() {
               </TouchableOpacity>
             </View>
           ) : (
-            <Text style={styles.errorText}>Could not load your referral link. Please try again.</Text>
-          )}
-        </View>
+            <View style={styles.errorWrap}>
+              <Text style={styles.errorText}>Could not load your referral link.</Text>
+              <TouchableOpacity
+                style={[styles.button, styles.buttonPrimary]}
+                onPress={loadData}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="refresh" size={20} color={colors.background} />
+                <Text style={styles.buttonPrimaryText}>Try again</Text>
+              </TouchableOpacity>
+            </View>
+              )}
+            </View>
+            </StaggeredZoomIn>
+          </ContentTransition>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  skeletonTransition: { flex: 0 },
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -166,9 +216,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     textDecorationLine: 'underline',
   },
-  loadingWrap: {
-    paddingVertical: spacing.lg,
-  },
   actions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -200,6 +247,10 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: typography.family.semibold,
     color: colors.background,
+  },
+  errorWrap: {
+    alignItems: 'center',
+    gap: spacing.md,
   },
   errorText: {
     fontSize: 14,

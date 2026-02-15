@@ -4,12 +4,12 @@
     "slug": "womenreset-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/logo.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "scheme": "menolisa",
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/logo.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -23,7 +23,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/logo.png",
         "backgroundColor": "#ffffff"
       },
       "package": "com.menolisa.app",
@@ -45,7 +45,7 @@
       "predictiveBackGestureEnabled": false
     },
     "notification": {
-      "icon": "./assets/icon.png",
+      "icon": "./assets/logo.png",
       "color": "#ff8da1",
       "androidMode": "default",
       "iosDisplayInForeground": true

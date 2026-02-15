@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
+  Image,
   StyleSheet,
   FlatList,
   TextInput,
@@ -11,9 +12,13 @@ import {
   Platform,
   Alert,
   Linking,
+  useWindowDimensions,
+  Animated,
+  Easing,
   type TextStyle,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getDefaultHeaderHeight } from '@react-navigation/elements';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -22,6 +27,7 @@ import { apiFetchWithAuth, API_CONFIG, getApiUrl, openWebDashboard } from '../..
 import { useTrialStatus } from '../../hooks/useTrialStatus';
 import { MarkdownText } from '../../components/MarkdownText';
 import { CoffeeLoading } from '../../components/CoffeeLoading';
+import { StaggeredZoomIn, useReduceMotion } from '../../components/StaggeredZoomIn';
 import { colors, spacing, radii, typography, shadows } from '../../theme/tokens';
 
 type ChatStackParamList = {
@@ -86,11 +92,96 @@ function normalizeMarkdown(src: string): string {
     .trim();
 }
 
+const easeOut = Easing.bezier(0.33, 1, 0.68, 1);
+
+function ConversationLoader() {
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const dotAnims = useRef([0, 1, 2].map(() => new Animated.Value(0.45))).current;
+
+  useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 480,
+      useNativeDriver: true,
+      easing: easeOut,
+    }).start();
+  }, [fadeAnim]);
+
+  useEffect(() => {
+    const stagger = 180;
+    const duration = 520;
+    const loops = dotAnims.map((anim, i) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(i * stagger),
+          Animated.timing(anim, {
+            toValue: 1,
+            duration,
+            useNativeDriver: true,
+            easing: easeOut,
+          }),
+          Animated.timing(anim, {
+            toValue: 0.45,
+            duration,
+            useNativeDriver: true,
+            easing: easeOut,
+          }),
+        ])
+      )
+    );
+    loops.forEach((l) => l.start());
+    return () => loops.forEach((l) => l.stop());
+  }, [dotAnims]);
+
+  return (
+    <Animated.View style={[styles.centered, { opacity: fadeAnim }]}>
+      <Image
+        source={require('../../../assets/logo_transparent.png')}
+        style={styles.loadingLogo}
+        resizeMode="contain"
+      />
+      <View style={styles.loadingDotsRow}>
+        {dotAnims.map((anim, i) => (
+          <Animated.View
+            key={i}
+            style={[
+              styles.loadingDot,
+              {
+                opacity: anim,
+                transform: [
+                  {
+                    scale: anim.interpolate({
+                      inputRange: [0.45, 1],
+                      outputRange: [0.9, 1.2],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          />
+        ))}
+      </View>
+      <Text style={styles.loadingText}>Loading your conversations...</Text>
+    </Animated.View>
+  );
+}
+
+const KEYBOARD_OFFSET_EXTRA = 8;
+
 export function ChatThreadScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteProps>();
   const { sessionId } = route.params;
   const { expired: trialExpired } = useTrialStatus();
+  const reduceMotion = useReduceMotion();
+  const insets = useSafeAreaInsets();
+  const dimensions = useWindowDimensions();
+  const keyboardVerticalOffset =
+    getDefaultHeaderHeight(
+      { width: dimensions.width, height: dimensions.height },
+      false,
+      insets.top
+    ) + KEYBOARD_OFFSET_EXTRA;
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -102,6 +193,8 @@ export function ChatThreadScreen() {
   const [error, setError] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const flatListRef = useRef<FlatList>(null);
+  const sendIconOpacity = useRef(new Animated.Value(1)).current;
+  const sendSpinnerOpacity = useRef(new Animated.Value(0)).current;
 
   const MIN_INPUT_HEIGHT = SEND_BTN_SIZE;
   const MAX_INPUT_HEIGHT = 120;
@@ -257,7 +350,7 @@ export function ChatThreadScreen() {
               sessionId,
               userInput: text,
               history,
-              stream: true,
+              stream: Platform.OS !== 'android',
             }),
           });
         } catch (fetchErr) {
@@ -273,7 +366,8 @@ export function ChatThreadScreen() {
               }),
             });
             const content = fallbackRes?.content ?? fallbackRes?.message ?? fallbackRes?.reply ?? fallbackRes?.outputs?.output_0 ?? '';
-            applyAssistantReply(typeof content === 'string' ? content : JSON.stringify(content));
+            const fallbackLinks = fallbackRes?.follow_up_links as FollowUpLink[] | undefined;
+            applyAssistantReply(typeof content === 'string' ? content : JSON.stringify(content), fallbackLinks);
             return;
           }
           throw fetchErr;
@@ -427,13 +521,28 @@ export function ChatThreadScreen() {
     [sendMessage]
   );
 
+  useEffect(() => {
+    const duration = 220;
+    Animated.parallel([
+      Animated.timing(sendIconOpacity, {
+        toValue: sending ? 0 : 1,
+        duration,
+        useNativeDriver: true,
+        easing: easeOut,
+      }),
+      Animated.timing(sendSpinnerOpacity, {
+        toValue: sending ? 1 : 0,
+        duration,
+        useNativeDriver: true,
+        easing: easeOut,
+      }),
+    ]).start();
+  }, [sending, sendIconOpacity, sendSpinnerOpacity]);
+
   if (loading) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Loading your conversations...</Text>
-        </View>
+        <ConversationLoader />
       </SafeAreaView>
     );
   }
@@ -445,10 +554,11 @@ export function ChatThreadScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      <StaggeredZoomIn delayIndex={0} reduceMotion={reduceMotion} style={styles.flex}>
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+        keyboardVerticalOffset={keyboardVerticalOffset}
       >
         {error && (
           <View style={styles.errorBanner}>
@@ -460,6 +570,7 @@ export function ChatThreadScreen() {
           data={displayMessages}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.messageList}
+          keyboardShouldPersistTaps="handled"
           ListEmptyComponent={
             <View style={styles.empty}>
               <View style={styles.emptyIconWrap}>
@@ -495,6 +606,7 @@ export function ChatThreadScreen() {
                   style={[
                     styles.bubble,
                     item.role === 'user' ? styles.bubbleUser : styles.bubbleAssistant,
+                    item.role === 'assistant' && Platform.OS === 'ios' && styles.bubbleAssistantWide,
                   ]}
                 >
                   {item.role === 'user' ? (
@@ -560,6 +672,9 @@ export function ChatThreadScreen() {
               ]}
               value={input}
               onChangeText={setInput}
+              onFocus={() => {
+                setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+              }}
               onContentSizeChange={(e) => {
                 const raw = e.nativeEvent.contentSize.height;
                 if (!input.trim() && raw > 60) return;
@@ -579,15 +694,23 @@ export function ChatThreadScreen() {
               onPress={() => sendMessage()}
               disabled={!input.trim() || sending}
             >
-              {sending ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
+              <Animated.View
+                style={[StyleSheet.absoluteFillObject, styles.sendBtnContent, { opacity: sendIconOpacity }]}
+                pointerEvents="none"
+              >
                 <Ionicons name="send" size={22} color="#fff" />
-              )}
+              </Animated.View>
+              <Animated.View
+                style={[StyleSheet.absoluteFillObject, styles.sendBtnContent, { opacity: sendSpinnerOpacity }]}
+                pointerEvents="none"
+              >
+                <ActivityIndicator size="small" color="#fff" />
+              </Animated.View>
             </TouchableOpacity>
           </View>
         </View>
       </KeyboardAvoidingView>
+      </StaggeredZoomIn>
     </SafeAreaView>
   );
 }
@@ -626,8 +749,26 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  loadingLogo: {
+    width: 72,
+    height: 72,
+    marginBottom: spacing.lg,
+  },
+  loadingDotsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    marginBottom: spacing.md,
+  },
+  loadingDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.primaryLight,
+  },
   loadingText: {
-    marginTop: spacing.md,
+    marginTop: 0,
     fontSize: 17,
     fontFamily: typography.family.regular,
     color: colors.textMuted,
@@ -720,6 +861,9 @@ const styles = StyleSheet.create({
       default: {},
     }),
   },
+  bubbleAssistantWide: {
+    maxWidth: '98%',
+  },
   bubbleText: {
     fontSize: CHAT.bodyFontSize,
     fontFamily: typography.family.regular,
@@ -741,7 +885,8 @@ const styles = StyleSheet.create({
   followUpRow: {
     marginTop: 12,
     marginLeft: 4,
-    alignSelf: 'flex-start',
+    alignSelf: 'stretch',
+    maxWidth: '100%',
   },
   followUpLabel: {
     fontSize: 14,
@@ -750,26 +895,26 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   followUpChips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
+    flexDirection: 'column',
+    gap: 8,
   },
   followUpChip: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: CHAT.chipBg,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 22,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: CHAT.chipBorder,
     gap: 6,
-    minHeight: 44,
+    minHeight: 40,
   },
   followUpChipText: {
-    fontSize: 15,
+    fontSize: 14,
     fontFamily: typography.family.medium,
     color: CHAT.chipText,
+    flexShrink: 1,
   },
   chatDisclaimer: {
     fontSize: 11,
@@ -831,7 +976,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
     ...shadows.buttonPrimary,
+  },
+  sendBtnContent: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   sendBtnDisabled: {
     opacity: 0.45,

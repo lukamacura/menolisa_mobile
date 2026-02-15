@@ -16,9 +16,10 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAuth } from '../../context/AuthContext';
 import { RefetchTrialContext } from '../../context/RefetchTrialContext';
-import { deleteAccount, getApiUrl, openWebDashboard } from '../../lib/api';
+import { deleteAccount, getWebAppUrl, openWebDashboard } from '../../lib/api';
 import { useTrialStatus } from '../../hooks/useTrialStatus';
 import { colors, spacing, radii, typography } from '../../theme/tokens';
+import { StaggeredZoomIn, useReduceMotion } from '../../components/StaggeredZoomIn';
 
 type SettingsStackParamList = {
   Settings: undefined;
@@ -32,6 +33,7 @@ export function SettingsScreen() {
   const { signOut } = useAuth();
   const refetchTrialRef = useContext(RefetchTrialContext);
   const trialStatus = useTrialStatus();
+  const reduceMotion = useReduceMotion();
   const [actionLoading, setActionLoading] = useState<'delete' | null>(null);
 
   useEffect(() => {
@@ -100,11 +102,11 @@ export function SettingsScreen() {
   }, []);
 
   const openPrivacyPolicy = () => {
-    Linking.openURL(getApiUrl('/privacy'));
+    Linking.openURL(getWebAppUrl('/privacy'));
   };
 
   const openTermsOfUse = () => {
-    Linking.openURL(getApiUrl('/terms'));
+    Linking.openURL(getWebAppUrl('/terms'));
   };
 
   const getStatusLabel = () => {
@@ -131,94 +133,110 @@ export function SettingsScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.section}>
-          {/* Subscription status */}
-          <View style={styles.statusCard}>
-            <Ionicons name="card-outline" size={20} color={colors.textMuted} />
-            <Text style={styles.statusLabel}>{getStatusLabel()}</Text>
-          </View>
-
-          <TouchableOpacity
-            activeOpacity={1}
-            style={[styles.row, styles.navyRow]}
-            onPress={handleOpenDashboard}
-          >
-            <Ionicons name="globe-outline" size={22} color={colors.navy} />
-            <View style={styles.rowTextWrap}>
-              <Text style={styles.navyRowLabel}>Manage subscription</Text>
-              <Text style={styles.navyRowSubtext}>Manage your plan and billing at menolisa.com</Text>
+          <StaggeredZoomIn delayIndex={0} reduceMotion={reduceMotion}>
+            <View style={styles.statusCard}>
+              <Ionicons name="card-outline" size={20} color={colors.textMuted} />
+              <Text style={styles.statusLabel}>{getStatusLabel()}</Text>
             </View>
-            <Ionicons name="open-outline" size={18} color={colors.navy} />
-          </TouchableOpacity>
+          </StaggeredZoomIn>
+          <StaggeredZoomIn delayIndex={1} reduceMotion={reduceMotion}>
+            <TouchableOpacity
+              activeOpacity={1}
+              style={[styles.row, styles.navyRow]}
+              onPress={handleOpenDashboard}
+            >
+              <Ionicons name="globe-outline" size={22} color={colors.navy} />
+              <View style={styles.rowTextWrap}>
+                <Text style={styles.navyRowLabel}>Manage subscription</Text>
+                <Text style={styles.navyRowSubtext}>Manage your plan and billing at menolisa.com</Text>
+              </View>
+              <Ionicons name="open-outline" size={18} color={colors.navy} />
+            </TouchableOpacity>
+          </StaggeredZoomIn>
         </View>
 
         <View style={styles.section}>
-          <TouchableOpacity
-            activeOpacity={1}
-            style={[styles.row, styles.referralRow]}
-            onPress={() => navigation.navigate('InviteFriends')}
-          >
-            <Ionicons name="gift-outline" size={22} color={colors.orange} />
-            <Text style={styles.referralRowLabel}>Invite friends</Text>
-            <Ionicons name="chevron-forward" size={20} color={colors.orange} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            activeOpacity={1}
-            style={[styles.row, styles.blueRow]}
-            onPress={() => navigation.navigate('NotificationPrefs')}
-          >
-            <Ionicons name="notifications-outline" size={22} color={colors.blue} />
-            <Text style={styles.blueRowLabel}>Notification preferences</Text>
-            <Ionicons name="chevron-forward" size={20} color={colors.blue} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            activeOpacity={1}
-            style={[styles.row, styles.goldRow]}
-            onPress={openPrivacyPolicy}
-          >
-            <Ionicons name="document-text-outline" size={22} color={colors.navy} />
-            <Text style={styles.goldRowLabel}>Privacy Policy</Text>
-            <Ionicons name="open-outline" size={18} color={colors.navy} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            activeOpacity={1}
-            style={[styles.row, styles.goldRow]}
-            onPress={openTermsOfUse}
-          >
-            <Ionicons name="document-text-outline" size={22} color={colors.navy} />
-            <Text style={styles.goldRowLabel}>Terms of Use</Text>
-            <Ionicons name="open-outline" size={18} color={colors.navy} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            activeOpacity={1}
-            style={[styles.row, styles.logoutRow]}
-            onPress={handleLogout}
-          >
-            <Ionicons name="log-out-outline" size={22} color={colors.danger} />
-            <Text style={styles.logoutLabel}>Log out</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            activeOpacity={1}
-            style={[styles.row, styles.deleteAccountRow]}
-            onPress={handleDeleteAccount}
-            disabled={actionLoading === 'delete'}
-          >
-            <Ionicons name="trash-outline" size={22} color={colors.danger} />
-            <View style={styles.rowTextWrap}>
-              <Text style={styles.deleteAccountLabel}>Delete account</Text>
-              <Text style={styles.deleteAccountSubtext}>Permanently remove your account and data</Text>
-            </View>
-            {actionLoading === 'delete' ? (
-              <ActivityIndicator size="small" color={colors.danger} />
-            ) : (
-              <Ionicons name="warning-outline" size={20} color={colors.danger} />
-            )}
-          </TouchableOpacity>
+          <StaggeredZoomIn delayIndex={2} reduceMotion={reduceMotion}>
+            <TouchableOpacity
+              activeOpacity={1}
+              style={[styles.row, styles.referralRow]}
+              onPress={() => navigation.navigate('InviteFriends')}
+            >
+              <Ionicons name="gift-outline" size={22} color={colors.orange} />
+              <Text style={styles.referralRowLabel}>Invite friends</Text>
+              <Ionicons name="chevron-forward" size={20} color={colors.orange} />
+            </TouchableOpacity>
+          </StaggeredZoomIn>
+          <StaggeredZoomIn delayIndex={3} reduceMotion={reduceMotion}>
+            <TouchableOpacity
+              activeOpacity={1}
+              style={[styles.row, styles.blueRow]}
+              onPress={() => navigation.navigate('NotificationPrefs')}
+            >
+              <Ionicons name="notifications-outline" size={22} color={colors.blue} />
+              <Text style={styles.blueRowLabel}>Notification preferences</Text>
+              <Ionicons name="chevron-forward" size={20} color={colors.blue} />
+            </TouchableOpacity>
+          </StaggeredZoomIn>
+          <StaggeredZoomIn delayIndex={4} reduceMotion={reduceMotion}>
+            <TouchableOpacity
+              activeOpacity={1}
+              style={[styles.row, styles.goldRow]}
+              onPress={openPrivacyPolicy}
+            >
+              <Ionicons name="document-text-outline" size={22} color={colors.navy} />
+              <Text style={styles.goldRowLabel}>Privacy Policy</Text>
+              <Ionicons name="open-outline" size={18} color={colors.navy} />
+            </TouchableOpacity>
+          </StaggeredZoomIn>
+          <StaggeredZoomIn delayIndex={5} reduceMotion={reduceMotion}>
+            <TouchableOpacity
+              activeOpacity={1}
+              style={[styles.row, styles.goldRow]}
+              onPress={openTermsOfUse}
+            >
+              <Ionicons name="document-text-outline" size={22} color={colors.navy} />
+              <Text style={styles.goldRowLabel}>Terms of Use</Text>
+              <Ionicons name="open-outline" size={18} color={colors.navy} />
+            </TouchableOpacity>
+          </StaggeredZoomIn>
+          <StaggeredZoomIn delayIndex={6} reduceMotion={reduceMotion}>
+            <TouchableOpacity
+              activeOpacity={1}
+              style={[styles.row, styles.logoutRow]}
+              onPress={handleLogout}
+            >
+              <Ionicons name="log-out-outline" size={22} color={colors.danger} />
+              <Text style={styles.logoutLabel}>Log out</Text>
+            </TouchableOpacity>
+          </StaggeredZoomIn>
+          <StaggeredZoomIn delayIndex={7} reduceMotion={reduceMotion}>
+            <TouchableOpacity
+              activeOpacity={1}
+              style={[styles.row, styles.deleteAccountRow]}
+              onPress={handleDeleteAccount}
+              disabled={actionLoading === 'delete'}
+            >
+              <Ionicons name="trash-outline" size={22} color={colors.danger} />
+              <View style={styles.rowTextWrap}>
+                <Text style={styles.deleteAccountLabel}>Delete account</Text>
+                <Text style={styles.deleteAccountSubtext}>Permanently remove your account and data</Text>
+              </View>
+              {actionLoading === 'delete' ? (
+                <ActivityIndicator size="small" color={colors.danger} />
+              ) : (
+                <Ionicons name="warning-outline" size={20} color={colors.danger} />
+              )}
+            </TouchableOpacity>
+          </StaggeredZoomIn>
         </View>
 
-        <Text style={styles.disclaimer}>
-          MenoLisa is for tracking and information only. It is not medical advice. Always consult a
-          healthcare provider for medical decisions.
-        </Text>
+        <StaggeredZoomIn delayIndex={8} reduceMotion={reduceMotion}>
+          <Text style={styles.disclaimer}>
+            MenoLisa is for tracking and information only. It is not medical advice. Always consult a
+            healthcare provider for medical decisions.
+          </Text>
+        </StaggeredZoomIn>
       </ScrollView>
     </SafeAreaView>
   );

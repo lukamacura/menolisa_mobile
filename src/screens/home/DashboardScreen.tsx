@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  ActivityIndicator,
   ScrollView,
   RefreshControl,
   Dimensions,
@@ -20,20 +19,38 @@ import { RefetchTrialContext } from '../../context/RefetchTrialContext';
 import { useTrialStatus } from '../../hooks/useTrialStatus';
 import { colors, spacing, radii, typography, minTouchTarget, shadows } from '../../theme/tokens';
 import { WhatLisaNoticedCard } from '../../components/WhatLisaNoticedCard';
+import { StaggeredZoomIn, useReduceMotion } from '../../components/StaggeredZoomIn';
+import { DashboardSkeleton, ContentTransition } from '../../components/skeleton';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const WAVE_HEIGHT = 36;
+const WAVE_HEIGHT = 60;
 
-/** Single irregular line dividing white (top) and pink (bottom). Top edge of the pink fill is the wave. */
 function WavyDivider() {
-  const w = SCREEN_WIDTH;
-  const h = WAVE_HEIGHT;
-  const dip = h * 0.75;
-  const path = `M 0 0 C ${w * 0.35} ${dip} ${w * 0.65} ${dip} ${w} 0 L ${w} ${h} L 0 ${h} Z`;
   return (
     <View style={wavyStyles.wrap}>
-      <Svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" style={wavyStyles.svg}>
-        <Path d={path} fill={colors.primaryLight} />
+      <Svg
+        width="100%"
+        height={WAVE_HEIGHT}
+        viewBox="0 0 100 60"
+        preserveAspectRatio="none"
+      >
+        {/* Deep shadow - darkest pink */}
+        <Path
+          d="M0,0 L100,0 Q50,120 0,0 Z"
+          fill="#ffd2da"
+          fillOpacity={0.6}
+        />
+        {/* Mid shadow - medium pink */}
+        <Path
+          d="M0,0 L100,0 Q50,90 0,0 Z"
+          fill="#ffe9ec"
+          fillOpacity={0.5}
+        />
+        {/* Main white curve */}
+        <Path
+          d="M0,0 L100,0 Q50,60 0,0 Z"
+          fill="#FFFFFF"
+        />
       </Svg>
     </View>
   );
@@ -43,13 +60,8 @@ const wavyStyles = StyleSheet.create({
   wrap: {
     width: '100%',
     height: WAVE_HEIGHT,
+    backgroundColor: colors.primaryLight,
     marginTop: -1,
-    marginBottom: -2,
-  },
-  svg: {
-    width: '100%',
-    height: WAVE_HEIGHT,
-    overflow: 'hidden',
   },
 });
 
@@ -69,6 +81,7 @@ export function DashboardScreen() {
   const [error, setError] = useState<string | null>(null);
   const [streak, setStreak] = useState<number | null>(null);
   const [todaySymptomCount, setTodaySymptomCount] = useState<number | null>(null);
+  const reduceMotion = useReduceMotion();
 
   // Register refetch so trial status refreshes when user returns from web dashboard
   useEffect(() => {
@@ -137,16 +150,19 @@ export function DashboardScreen() {
   if (loading && !refreshing) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Loading...</Text>
-        </View>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          scrollEnabled={false}
+        >
+          <DashboardSkeleton />
+        </ScrollView>
       </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      <ContentTransition>
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         refreshControl={
@@ -155,101 +171,124 @@ export function DashboardScreen() {
       >
         {/* Top section — white */}
         <View style={styles.heroSection}>
-          <Text style={styles.greeting}>Hi there</Text>
+          <StaggeredZoomIn delayIndex={0} reduceMotion={reduceMotion}>
+            <Text style={styles.greeting}>Hi there</Text>
+          </StaggeredZoomIn>
           {trialStatus.expired && (
-            <View style={styles.trialExpiredBanner}>
-              <Text style={styles.trialExpiredTitle}>Trial ended</Text>
-              <Text style={styles.trialExpiredSubtitle}>Manage your subscription on the web</Text>
-              <TouchableOpacity
-                activeOpacity={0.8}
-                style={styles.trialUpgradeButton}
-                onPress={handleOpenDashboard}
-              >
-                <Text style={styles.trialUpgradeButtonText}>Manage subscription</Text>
-              </TouchableOpacity>
-            </View>
+            <StaggeredZoomIn delayIndex={1} reduceMotion={reduceMotion}>
+              <View style={styles.trialExpiredBanner}>
+                <Text style={styles.trialExpiredTitle}>Trial ended</Text>
+                <Text style={styles.trialExpiredSubtitle}>Manage your subscription on the web</Text>
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  style={styles.trialUpgradeButton}
+                  onPress={handleOpenDashboard}
+                >
+                  <Text style={styles.trialUpgradeButtonText}>Manage subscription</Text>
+                </TouchableOpacity>
+              </View>
+            </StaggeredZoomIn>
           )}
           {!trialStatus.expired && !trialStatus.loading && trialStatus.daysLeft <= 2 && trialStatus.daysLeft >= 0 && (
-            <View style={styles.trialNearBanner}>
-              <Text style={styles.trialNearText}>
-                Your trial ends in {trialStatus.daysLeft === 0 ? 'today' : trialStatus.daysLeft === 1 ? '1 day' : `${trialStatus.daysLeft} days`}. Manage subscription at menolisa.com.
-              </Text>
-              <TouchableOpacity
-                activeOpacity={0.8}
-                style={styles.trialNearButton}
-                onPress={handleOpenDashboard}
-              >
-                <Text style={styles.trialNearButtonText}>Manage subscription</Text>
-              </TouchableOpacity>
-            </View>
+            <StaggeredZoomIn delayIndex={2} reduceMotion={reduceMotion}>
+              <View style={styles.trialNearBanner}>
+                <Text style={styles.trialNearText}>
+                  Your trial ends in {trialStatus.daysLeft === 0 ? 'today' : trialStatus.daysLeft === 1 ? '1 day' : `${trialStatus.daysLeft} days`}. Manage subscription at menolisa.com.
+                </Text>
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  style={styles.trialNearButton}
+                  onPress={handleOpenDashboard}
+                >
+                  <Text style={styles.trialNearButtonText}>Manage subscription</Text>
+                </TouchableOpacity>
+              </View>
+            </StaggeredZoomIn>
           )}
           {error && (
-            <View style={styles.errorBanner}>
-              <Text style={styles.errorText}>{error}</Text>
-            </View>
+            <StaggeredZoomIn delayIndex={3} reduceMotion={reduceMotion}>
+              <View style={styles.errorBanner}>
+                <Text style={styles.errorText}>{error}</Text>
+              </View>
+            </StaggeredZoomIn>
           )}
           {streak != null && streak > 0 && (
-            <View style={styles.streakCard}>
-              <Ionicons name="flame" size={24} color={colors.primary} />
-              <Text style={styles.streakText}>{streak} day streak</Text>
-            </View>
+            <StaggeredZoomIn delayIndex={4} reduceMotion={reduceMotion}>
+              <View style={styles.streakCard}>
+                <Ionicons name="flame" size={24} color={colors.primary} />
+                <Text style={styles.streakText}>{streak} day streak</Text>
+              </View>
+            </StaggeredZoomIn>
           )}
-          <TouchableOpacity
-            activeOpacity={0.8}
-            style={styles.symptomSummaryCard}
-            onPress={() => navigation.navigate('Symptoms')}
-          >
-            <Ionicons name="fitness" size={24} color={colors.primary} />
-            <View style={styles.symptomSummaryTextWrap}>
-              <Text style={styles.symptomSummaryTitle}>Today&apos;s symptoms</Text>
-              <Text style={styles.symptomSummarySubtitle}>
-                {todaySymptomCount === null
-                  ? '…'
-                  : todaySymptomCount === 0
-                    ? "No symptoms logged yet — tap to add how you're feeling"
-                    : todaySymptomCount === 1
-                      ? '1 symptom logged'
-                      : `${todaySymptomCount} symptoms logged`}
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            activeOpacity={0.8}
-            style={styles.primaryButton}
-            onPress={() => navigation.navigate('Symptoms')}
-          >
-            <Ionicons name="add-circle" size={24} color="#fff" />
-            <Text style={styles.primaryButtonText}>Log symptom</Text>
-          </TouchableOpacity>
+          <StaggeredZoomIn delayIndex={5} reduceMotion={reduceMotion}>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              style={styles.symptomSummaryCard}
+              onPress={() => navigation.navigate('Symptoms')}
+            >
+              <Ionicons name="fitness" size={24} color={colors.primary} />
+              <View style={styles.symptomSummaryTextWrap}>
+                <Text style={styles.symptomSummaryTitle}>Today&apos;s symptoms</Text>
+                <Text style={styles.symptomSummarySubtitle}>
+                  {todaySymptomCount === null
+                    ? '…'
+                    : todaySymptomCount === 0
+                      ? "Tap to add how you're feeling"
+                      : todaySymptomCount === 1
+                        ? '1 symptom logged'
+                        : `${todaySymptomCount} symptoms logged`}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+            </TouchableOpacity>
+          </StaggeredZoomIn>
+          <StaggeredZoomIn delayIndex={6} reduceMotion={reduceMotion}>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              style={styles.primaryButton}
+              onPress={() => navigation.navigate('Symptoms')}
+            >
+              <Ionicons name="add-circle" size={24} color="#fff" />
+              <Text style={styles.primaryButtonText}>Log symptom</Text>
+            </TouchableOpacity>
+          </StaggeredZoomIn>
         </View>
 
-        <WavyDivider />
+        <StaggeredZoomIn delayIndex={7} reduceMotion={reduceMotion}>
+          <WavyDivider />
+        </StaggeredZoomIn>
 
         {/* Bottom section — pink (theme) */}
         <View style={styles.contentSection}>
-          <View style={styles.disclaimerCard}>
-            <Ionicons name="information-circle-outline" size={20} color={colors.textMuted} />
-            <Text style={styles.disclaimerText}>
-              MenoLisa is for tracking and information only. It is not medical advice. Always consult a
-              healthcare provider for medical decisions.
-            </Text>
-          </View>
-          <WhatLisaNoticedCard />
-          <TouchableOpacity
-            activeOpacity={0.8}
-            style={styles.recentActivityCard}
-            onPress={() => navigation.navigate('SymptomLogs')}
-          >
-            <Ionicons name="time" size={24} color={colors.primary} />
-            <View style={styles.recentActivityTextWrap}>
-              <Text style={styles.recentActivityTitle}>Symptom history</Text>
-              <Text style={styles.recentActivitySubtitle}>See all your symptom logs</Text>
+          <StaggeredZoomIn delayIndex={8} reduceMotion={reduceMotion}>
+            <View style={styles.disclaimerCard}>
+              <Ionicons name="information-circle-outline" size={20} color={colors.textMuted} />
+              <Text style={styles.disclaimerText}>
+                MenoLisa is for tracking and information only. It is not medical advice. Always consult a
+                healthcare provider for medical decisions.
+              </Text>
             </View>
-            <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
-          </TouchableOpacity>
+          </StaggeredZoomIn>
+          <StaggeredZoomIn delayIndex={9} reduceMotion={reduceMotion}>
+            <WhatLisaNoticedCard />
+          </StaggeredZoomIn>
+          <StaggeredZoomIn delayIndex={10} reduceMotion={reduceMotion}>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              style={styles.recentActivityCard}
+              onPress={() => navigation.navigate('SymptomLogs')}
+            >
+              <Ionicons name="time" size={24} color={colors.primary} />
+              <View style={styles.recentActivityTextWrap}>
+                <Text style={styles.recentActivityTitle}>Symptom history</Text>
+                <Text style={styles.recentActivitySubtitle}>See all your symptom logs</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+            </TouchableOpacity>
+          </StaggeredZoomIn>
         </View>
       </ScrollView>
+      </ContentTransition>
     </SafeAreaView>
   );
 }
@@ -260,20 +299,21 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   scrollContent: {
-    paddingBottom: spacing['2xl'],
+    paddingBottom: 0,
   },
   heroSection: {
     backgroundColor: colors.background,
     paddingTop: spacing.lg,
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.lg,
+    // Remove any marginBottom if present
   },
   contentSection: {
     backgroundColor: colors.primaryLight,
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
+    paddingTop: spacing.lg,
     paddingBottom: spacing.xl,
-    marginTop: -2,
+    marginTop: -1, // Overlap slightly to prevent gap
   },
   disclaimerCard: {
     flexDirection: 'row',
@@ -293,17 +333,6 @@ const styles = StyleSheet.create({
     fontFamily: typography.family.regular,
     color: colors.textMuted,
     lineHeight: 18,
-  },
-  centered: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: spacing.sm,
-    fontSize: 16,
-    fontFamily: typography.family.regular,
-    color: colors.textMuted,
   },
   greeting: {
     fontSize: 24,

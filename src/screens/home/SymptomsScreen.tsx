@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,15 @@ import {
   ScrollView,
   Alert,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withDelay,
+  withSequence,
+  withTiming,
+} from 'react-native-reanimated';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -26,6 +34,8 @@ type HomeStackParamList = {
 };
 type NavProp = NativeStackNavigationProp<HomeStackParamList, 'Symptoms'>;
 import { colors, spacing, radii, typography, minTouchTarget, shadows } from '../../theme/tokens';
+import { StaggeredZoomIn, useReduceMotion } from '../../components/StaggeredZoomIn';
+import { SymptomsSkeleton, ContentTransition } from '../../components/skeleton';
 
 type Symptom = {
   id: string;
@@ -44,6 +54,8 @@ const SEVERITY_OPTIONS = [
 
 export function SymptomsScreen() {
   const navigation = useNavigation<NavProp>();
+  const insets = useSafeAreaInsets();
+  const reduceMotion = useReduceMotion();
   const [symptoms, setSymptoms] = useState<Symptom[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -58,6 +70,14 @@ export function SymptomsScreen() {
   const [customTrigger, setCustomTrigger] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [todayCount, setTodayCount] = useState<number | null>(null);
+  const [showLogSuccess, setShowLogSuccess] = useState(false);
+
+  const successScale = useSharedValue(0);
+  const successOpacity = useSharedValue(0);
+  const successTextOpacity = useSharedValue(0);
+  const successRingScale = useSharedValue(0.6);
+  const successRingOpacity = useSharedValue(0.4);
+  const hasRunSuccessAnimation = useRef(false);
 
   const loadSymptoms = useCallback(async () => {
     try {
@@ -97,6 +117,51 @@ export function SymptomsScreen() {
     loadTodayCount();
   }, [loadTodayCount]);
 
+  const closeModalAndRefresh = useCallback(() => {
+    setModalVisible(false);
+    setSelectedSymptom(null);
+    setShowLogSuccess(false);
+    hasRunSuccessAnimation.current = false;
+    loadSymptoms();
+    loadTodayCount();
+  }, [loadSymptoms, loadTodayCount]);
+
+  useEffect(() => {
+    if (!showLogSuccess || hasRunSuccessAnimation.current) return;
+    hasRunSuccessAnimation.current = true;
+
+    const springConfig = { damping: 14, stiffness: 120 };
+    successOpacity.value = withTiming(1, { duration: 200 });
+    successScale.value = withSpring(1, springConfig);
+    successRingScale.value = withSequence(
+      withTiming(1.4, { duration: 600 }),
+      withTiming(1.5, { duration: 200 })
+    );
+    successRingOpacity.value = withSequence(
+      withTiming(0.25, { duration: 400 }),
+      withDelay(200, withTiming(0, { duration: 400 }))
+    );
+    successTextOpacity.value = withDelay(400, withTiming(1, { duration: 350 }));
+
+    const timer = setTimeout(() => {
+      closeModalAndRefresh();
+    }, 1600);
+
+    return () => clearTimeout(timer);
+  }, [showLogSuccess, closeModalAndRefresh, successScale, successOpacity, successTextOpacity, successRingScale, successRingOpacity]);
+
+  const successIconAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: successScale.value }],
+    opacity: successOpacity.value,
+  }));
+  const successRingAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: successRingScale.value }],
+    opacity: successRingOpacity.value,
+  }));
+  const successTextAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: successTextOpacity.value,
+  }));
+
   const openLogModal = (symptom: Symptom) => {
     setSelectedSymptom(symptom);
     setSeverity(1);
@@ -107,11 +172,19 @@ export function SymptomsScreen() {
     setCustomTrigger('');
     setModalStep(1);
     setModalVisible(true);
+    setShowLogSuccess(false);
+    hasRunSuccessAnimation.current = false;
+    successScale.value = 0;
+    successOpacity.value = 0;
+    successTextOpacity.value = 0;
+    successRingScale.value = 0.6;
+    successRingOpacity.value = 0.4;
   };
 
   const closeModal = () => {
     setModalVisible(false);
     setSelectedSymptom(null);
+    setShowLogSuccess(false);
   };
 
   const toggleTrigger = (trigger: string) => {
@@ -170,15 +243,13 @@ export function SymptomsScreen() {
           loggedAt: getLoggedAtTimestamp(),
         }),
       });
-      closeModal();
-      loadSymptoms();
-      loadTodayCount();
+      setSubmitting(false);
+      setShowLogSuccess(true);
     } catch (e) {
       Alert.alert(
         'Error',
         e instanceof Error ? e.message : 'Failed to log symptom'
       );
-    } finally {
       setSubmitting(false);
     }
   };
@@ -186,21 +257,24 @@ export function SymptomsScreen() {
   if (loading) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Loading symptoms...</Text>
-        </View>
+        <ScrollView contentContainerStyle={styles.listContent}>
+          <SymptomsSkeleton />
+        </ScrollView>
       </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      <ContentTransition>
       {error && (
-        <View style={styles.errorBanner}>
-          <Text style={styles.errorText}>{error}</Text>
-        </View>
+        <StaggeredZoomIn delayIndex={0} reduceMotion={reduceMotion}>
+          <View style={styles.errorBanner}>
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        </StaggeredZoomIn>
       )}
+      <StaggeredZoomIn delayIndex={1} reduceMotion={reduceMotion} style={{ flex: 1 }}>
       <FlatList
         data={symptoms}
         keyExtractor={(item) => item.id}
@@ -250,6 +324,8 @@ export function SymptomsScreen() {
           </TouchableOpacity>
         )}
       />
+      </StaggeredZoomIn>
+      </ContentTransition>
       <Modal
         visible={modalVisible}
         animationType="slide"
@@ -258,6 +334,21 @@ export function SymptomsScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
+            {showLogSuccess ? (
+              <View style={styles.successOverlay}>
+                <Animated.View style={[styles.successRing, successRingAnimatedStyle]} />
+                <Animated.View style={[styles.successIconWrap, successIconAnimatedStyle]}>
+                  <Ionicons name="checkmark-circle" size={80} color={colors.success} />
+                </Animated.View>
+                <Animated.Text style={[styles.successTitle, successTextAnimatedStyle]}>
+                  Logged
+                </Animated.Text>
+                <Animated.Text style={[styles.successSubtitle, successTextAnimatedStyle]}>
+                  You're tracking it | Lisa can spot patterns over time
+                </Animated.Text>
+              </View>
+            ) : (
+              <>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>
                 Rate your {selectedSymptom?.name}
@@ -289,7 +380,11 @@ export function SymptomsScreen() {
                 </View>
               ))}
             </View>
-            <ScrollView style={styles.modalBody} keyboardShouldPersistTaps="handled">
+            <ScrollView
+              style={styles.modalBody}
+              contentContainerStyle={styles.modalBodyContent}
+              keyboardShouldPersistTaps="handled"
+            >
               {modalStep === 1 && (
                 <>
                   <Text style={styles.label}>How bad is it?</Text>
@@ -445,7 +540,7 @@ export function SymptomsScreen() {
                 </>
               )}
             </ScrollView>
-            <View style={styles.modalFooter}>
+            <View style={[styles.modalFooter, { paddingBottom: Math.max(spacing.xl, insets.bottom) }]}>
               <TouchableOpacity
                 activeOpacity={1}
                 style={styles.footerBtnSecondary}
@@ -480,6 +575,8 @@ export function SymptomsScreen() {
                 </TouchableOpacity>
               )}
             </View>
+              </>
+            )}
           </View>
         </View>
       </Modal>
@@ -491,17 +588,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-  },
-  centered: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: spacing.sm,
-    fontSize: 16,
-    fontFamily: typography.family.regular,
-    color: colors.textMuted,
   },
   errorBanner: {
     backgroundColor: colors.dangerBg,
@@ -580,7 +666,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     borderTopLeftRadius: radii.xl,
     borderTopRightRadius: radii.xl,
-    maxHeight: '80%',
+    height: '85%',
+    flexDirection: 'column',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -596,7 +683,12 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   modalBody: {
+    flex: 1,
     padding: spacing.lg,
+  },
+  modalBodyContent: {
+    paddingBottom: spacing['2xl'],
+    flexGrow: 1,
   },
   label: {
     fontSize: 14,
@@ -657,22 +749,24 @@ const styles = StyleSheet.create({
   severityBtn: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: spacing.md,
+    justifyContent: 'center',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
     borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.border,
-    minHeight: 88,
+    minHeight: 72,
   },
   severityBtnActive: {
     backgroundColor: colors.primary,
     borderColor: colors.primary,
   },
   severityEmoji: {
-    fontSize: 28,
-    marginBottom: 4,
+    fontSize: 24,
+    marginBottom: 2,
   },
   severityLabel: {
-    fontSize: 13,
+    fontSize: 12,
     fontFamily: typography.family.semibold,
     color: colors.text,
   },
@@ -680,7 +774,7 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   severityDescription: {
-    fontSize: 10,
+    fontSize: 9,
     fontFamily: typography.family.regular,
     color: colors.textMuted,
     marginTop: 2,
@@ -775,10 +869,44 @@ const styles = StyleSheet.create({
   modalFooter: {
     flexDirection: 'row',
     padding: spacing.lg,
+    paddingBottom: spacing.xl,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     gap: spacing.md,
     alignItems: 'center',
+    flexShrink: 0,
+    backgroundColor: colors.background,
+  },
+  successOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: spacing.xl,
+  },
+  successRing: {
+    position: 'absolute',
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    borderWidth: 3,
+    borderColor: colors.success,
+    backgroundColor: 'transparent',
+  },
+  successIconWrap: {
+    marginBottom: spacing.lg,
+  },
+  successTitle: {
+    fontSize: 24,
+    fontFamily: typography.family.bold,
+    color: colors.text,
+    marginBottom: spacing.sm,
+  },
+  successSubtitle: {
+    fontSize: 15,
+    fontFamily: typography.family.regular,
+    color: colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 22,
   },
   footerBtnSecondary: {
     flexDirection: 'row',
@@ -822,11 +950,6 @@ const styles = StyleSheet.create({
     color: colors.text,
     minHeight: 80,
     textAlignVertical: 'top',
-  },
-  modalFooter: {
-    padding: spacing.lg,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
   },
   submitBtn: {
     backgroundColor: colors.primary,

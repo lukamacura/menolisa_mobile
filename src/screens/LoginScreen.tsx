@@ -18,10 +18,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../lib/supabase';
-import { API_CONFIG } from '../lib/api';
+import { getWebAppUrl } from '../lib/api';
+import { logger } from '../lib/logger';
 import { colors, spacing, radii, typography, shadows, minTouchTarget, landingGradient } from '../theme/tokens';
+import { StaggeredZoomIn, useReduceMotion } from '../components/StaggeredZoomIn';
 
-const FORGOT_PASSWORD_URL = `${API_CONFIG.baseURL}/forgot-password`;
+const FORGOT_PASSWORD_URL = getWebAppUrl('/forgot-password');
 
 type NavigationProp = NativeStackNavigationProp<any>;
 
@@ -29,6 +31,7 @@ type ErrorType = 'user_not_found' | 'invalid_credentials' | 'invalid_email' | 'r
 
 export function LoginScreen() {
   const navigation = useNavigation<NavigationProp>();
+  const reduceMotion = useReduceMotion();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -54,7 +57,7 @@ export function LoginScreen() {
       });
 
       if (authError) {
-        console.error('Login error:', authError);
+        logger.error('Login error:', authError);
         
         let friendly = 'An error occurred. Please try again.';
         let errorCategory: ErrorType = 'unknown';
@@ -84,12 +87,12 @@ export function LoginScreen() {
 
       if (data.session) {
         // Login successful! Navigation will happen automatically via auth listener
-        console.log('Login successful');
+        logger.log('Login successful');
       }
       
       setLoading(false);
     } catch (err: any) {
-      console.error('Unexpected login error:', err);
+      logger.error('Unexpected login error:', err);
       
       if (err instanceof TypeError && err.message.includes('fetch')) {
         setError('Network error. Please check your connection and try again.');
@@ -123,18 +126,23 @@ export function LoginScreen() {
           scrollEventThrottle={16}
           bounces={true}
         >
-          <Image
-            source={require('../../assets/login.png')}
-            style={styles.loginImage}
-            resizeMode="contain"
-          />
-          <View style={styles.header}>
-            <Text style={styles.title}>Welcome back</Text>
-            <Text style={styles.subtitle}>
-              We're so glad you're here. Let's get you back to your journey.
-            </Text>
-          </View>
+          <StaggeredZoomIn delayIndex={0} reduceMotion={reduceMotion}>
+            <Image
+              source={require('../../assets/login.png')}
+              style={styles.loginImage}
+              resizeMode="contain"
+            />
+          </StaggeredZoomIn>
+          <StaggeredZoomIn delayIndex={1} reduceMotion={reduceMotion}>
+            <View style={styles.header}>
+              <Text style={styles.title}>Welcome back</Text>
+              <Text style={styles.subtitle}>
+                We're so glad you're here. Let's get you back to your journey.
+              </Text>
+            </View>
+          </StaggeredZoomIn>
 
+          <StaggeredZoomIn delayIndex={2} reduceMotion={reduceMotion}>
           <View style={styles.formContainer}>
             {/* Email Input */}
             <View style={styles.inputGroup}>
@@ -284,6 +292,7 @@ export function LoginScreen() {
               </TouchableOpacity>
             </View>
           </View>
+          </StaggeredZoomIn>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -299,12 +308,12 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: spacing['2xl'],
-    paddingTop: spacing.lg,
+    paddingTop: spacing['2xl'],
     paddingBottom: spacing['2xl'],
   },
   loginImage: {
     width: '100%',
-    maxHeight: 320,
+    maxHeight: 200,
     marginBottom: spacing.md,
   },
   header: {
@@ -380,7 +389,6 @@ const styles = StyleSheet.create({
   },
   submitButton: {
     borderRadius: radii.lg,
-    overflow: 'hidden',
     backgroundColor: colors.primary,
     minHeight: minTouchTarget,
     justifyContent: 'center',

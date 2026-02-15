@@ -17,6 +17,7 @@ import Animated, {
 import { Ionicons } from '@expo/vector-icons';
 import { apiFetchWithAuth, API_CONFIG } from '../lib/api';
 import { colors, spacing, radii, typography, minTouchTarget } from '../theme/tokens';
+import { WhatLisaNoticedCardSkeleton } from './skeleton';
 
 type ActionSteps = { easy: string; medium: string; advanced: string };
 
@@ -120,17 +121,7 @@ export function WhatLisaNoticedCard() {
   }, [insight?.doctorNote]);
 
   if (loading && !refreshing) {
-    return (
-      <View style={styles.card}>
-        <View style={styles.skeletonRow}>
-          <View style={[styles.skeleton, { width: 120, height: 20 }]} />
-          <View style={[styles.skeleton, { width: 70, height: 18 }]} />
-        </View>
-        <View style={[styles.skeleton, { width: '100%', height: 24, marginTop: 12 }]} />
-        <View style={[styles.skeleton, { width: '90%', height: 16, marginTop: 8 }]} />
-        <View style={[styles.skeleton, { width: '80%', height: 16, marginTop: 6 }]} />
-      </View>
-    );
+    return <WhatLisaNoticedCardSkeleton />;
   }
 
   if (error && !insight) {
@@ -254,15 +245,6 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     padding: spacing.lg,
     marginBottom: spacing.xl,
-  },
-  skeleton: {
-    backgroundColor: colors.border,
-    borderRadius: radii.sm,
-  },
-  skeletonRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
   },
   header: {
     flexDirection: 'row',

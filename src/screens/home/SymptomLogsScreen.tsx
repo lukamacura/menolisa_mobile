@@ -4,9 +4,11 @@ import {
   Text,
   StyleSheet,
   FlatList,
-  ActivityIndicator,
+  ScrollView,
   RefreshControl,
 } from 'react-native';
+import { StaggeredZoomIn, useReduceMotion } from '../../components/StaggeredZoomIn';
+import { SymptomLogsSkeleton, ContentTransition } from '../../components/skeleton';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { apiFetchWithAuth, API_CONFIG } from '../../lib/api';
@@ -60,6 +62,7 @@ function formatTime(iso: string): string {
 type GroupedLog = { dateKey: string; dateLabel: string; logs: SymptomLog[] };
 
 export function SymptomLogsScreen() {
+  const reduceMotion = useReduceMotion();
   const [logs, setLogs] = useState<SymptomLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -107,21 +110,24 @@ export function SymptomLogsScreen() {
   if (loading && !refreshing) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Loading...</Text>
-        </View>
+        <ScrollView contentContainerStyle={styles.listContent}>
+          <SymptomLogsSkeleton />
+        </ScrollView>
       </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      <ContentTransition>
       {error && (
-        <View style={styles.errorBanner}>
-          <Text style={styles.errorText}>{error}</Text>
-        </View>
+        <StaggeredZoomIn delayIndex={0} reduceMotion={reduceMotion}>
+          <View style={styles.errorBanner}>
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        </StaggeredZoomIn>
       )}
+      <StaggeredZoomIn delayIndex={1} reduceMotion={reduceMotion} style={styles.listWrap}>
       <FlatList
         data={grouped}
         keyExtractor={(item) => item.dateKey}
@@ -179,25 +185,17 @@ export function SymptomLogsScreen() {
           </View>
         )}
       />
+      </StaggeredZoomIn>
+      </ContentTransition>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  listWrap: { flex: 1 },
   container: {
     flex: 1,
     backgroundColor: colors.background,
-  },
-  centered: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: spacing.sm,
-    fontSize: 16,
-    fontFamily: typography.family.regular,
-    color: colors.textMuted,
   },
   errorBanner: {
     backgroundColor: colors.dangerBg,

@@ -1,6 +1,7 @@
 import 'react-native-url-polyfill/auto';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { logger } from './logger';
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -21,7 +22,7 @@ try {
     });
   } else {
     // Placeholder client for testing (won't work for real auth, but app won't crash)
-    console.warn('⚠️ Supabase env vars not set. Using placeholder client.');
+    logger.warn('⚠️ Supabase env vars not set. Using placeholder client.');
     supabase = createClient(
       'https://placeholder.supabase.co',
       'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYWNlaG9sZGVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE2NDUxOTIwMDAsImV4cCI6MTk2MDc2ODAwMH0.placeholder',
@@ -35,7 +36,7 @@ try {
     );
   }
 } catch (error) {
-  console.error('Failed to create Supabase client:', error);
+  logger.error('Failed to create Supabase client:', error);
   // Fallback to minimal client
   supabase = createClient(
     'https://placeholder.supabase.co',

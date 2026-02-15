@@ -5,13 +5,15 @@ import {
   StyleSheet,
   FlatList,
   TouchableOpacity,
-  ActivityIndicator,
+  ScrollView,
   RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { apiFetchWithAuth, API_CONFIG, openWebDashboard } from '../../lib/api';
 import { colors, spacing, radii, typography, shadows } from '../../theme/tokens';
+import { StaggeredZoomIn, useReduceMotion } from '../../components/StaggeredZoomIn';
+import { ListSkeleton, ContentTransition } from '../../components/skeleton';
 
 type NotificationItem = {
   id: string;
@@ -81,6 +83,7 @@ function getDisplayTitle(item: NotificationItem): string {
 }
 
 export function NotificationsScreen() {
+  const reduceMotion = useReduceMotion();
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -128,30 +131,33 @@ export function NotificationsScreen() {
   if (loading && !refreshing) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Loading...</Text>
-        </View>
+        <ListSkeleton headerTitleWidth={140} rowCount={4} />
       </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Notifications</Text>
-        {unreadCount > 0 && (
-          <TouchableOpacity activeOpacity={0.8} onPress={markAllRead} style={styles.markReadTouchable}>
-            <Text style={styles.markRead}>Mark all read</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-      {error && (
-        <View style={styles.errorBanner}>
-          <Ionicons name="alert-circle" size={20} color={colors.danger} style={styles.errorIcon} />
-          <Text style={styles.errorText}>{error}</Text>
+      <ContentTransition>
+      <StaggeredZoomIn delayIndex={0} reduceMotion={reduceMotion}>
+        <View style={styles.header}>
+          <Text style={styles.title}>Notifications</Text>
+          {unreadCount > 0 && (
+            <TouchableOpacity activeOpacity={0.8} onPress={markAllRead} style={styles.markReadTouchable}>
+              <Text style={styles.markRead}>Mark all read</Text>
+            </TouchableOpacity>
+          )}
         </View>
+      </StaggeredZoomIn>
+      {error && (
+        <StaggeredZoomIn delayIndex={1} reduceMotion={reduceMotion}>
+          <View style={styles.errorBanner}>
+            <Ionicons name="alert-circle" size={20} color={colors.danger} style={styles.errorIcon} />
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        </StaggeredZoomIn>
       )}
+      <StaggeredZoomIn delayIndex={2} reduceMotion={reduceMotion} style={{ flex: 1 }}>
       <FlatList
         data={items}
         keyExtractor={(item) => item.id}
@@ -203,6 +209,8 @@ export function NotificationsScreen() {
           );
         }}
       />
+      </StaggeredZoomIn>
+      </ContentTransition>
     </SafeAreaView>
   );
 }
@@ -211,17 +219,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#FDF8FA',
-  },
-  centered: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: spacing.sm,
-    fontSize: 16,
-    fontFamily: typography.family.regular,
-    color: colors.textMuted,
   },
   header: {
     flexDirection: 'row',
