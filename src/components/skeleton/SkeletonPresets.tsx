@@ -5,24 +5,44 @@ import { Skeleton } from './Skeleton';
 
 const WAVE_HEIGHT = 60;
 
-/** Dashboard layout: greeting, symptom card, primary button, wavy, disclaimer, card, recent activity. Same structure/sizes as DashboardScreen. */
+/** Dashboard layout: greeting, streak pill, Lisa card, primary button, symptom card, secondary button, wavy, disclaimer, card, recent activity. Same structure/sizes as DashboardScreen. */
 export function DashboardSkeleton() {
   return (
     <View style={styles.scrollContent}>
       <View style={styles.heroSection}>
+        {/* Greeting */}
         <Skeleton width={140} height={28} borderRadius={radii.sm} style={styles.greetingSkeleton} />
-        <View style={styles.symptomSummaryCard}>
-          <Skeleton width={24} height={24} borderRadius={radii.sm} />
-          <View style={styles.symptomSummaryTextWrap}>
-            <Skeleton width="70%" height={16} style={{ marginBottom: 6 }} />
-            <Skeleton width="50%" height={14} />
+        {/* Streak pill */}
+        <Skeleton width={110} height={26} borderRadius={radii.pill} style={styles.streakPillSkeleton} />
+        {/* Lisa card: avatar row + bubble */}
+        <View style={styles.lisaCardSkeleton}>
+          <View style={styles.lisaAvatarRow}>
+            <Skeleton width={36} height={36} borderRadius={18} />
+            <Skeleton width={32} height={14} borderRadius={radii.sm} />
           </View>
+          <Skeleton width="100%" height={72} borderRadius={radii.lg} />
         </View>
+        {/* Primary "Talk to Lisa" button */}
         <Skeleton
           width="100%"
           height={minTouchTarget + 8}
           borderRadius={radii.lg}
           style={styles.primaryButtonSkeleton}
+        />
+        {/* Symptom history card */}
+        <View style={styles.recentActivityCard}>
+          <Skeleton width={24} height={24} borderRadius={radii.sm} />
+          <View style={styles.recentActivityTextWrap}>
+            <Skeleton width={120} height={16} style={{ marginBottom: 4 }} />
+            <Skeleton width={140} height={14} />
+          </View>
+        </View>
+        {/* Secondary "Log symptom" button */}
+        <Skeleton
+          width="100%"
+          height={minTouchTarget}
+          borderRadius={radii.lg}
+          style={styles.secondaryButtonSkeleton}
         />
       </View>
 
@@ -48,13 +68,6 @@ export function DashboardSkeleton() {
           <Skeleton width={60} height={14} style={{ marginBottom: 6 }} />
           <Skeleton width="100%" height={14} style={{ marginBottom: 4 }} />
           <Skeleton width="95%" height={14} />
-        </View>
-        <View style={styles.recentActivityCard}>
-          <Skeleton width={24} height={24} borderRadius={radii.sm} />
-          <View style={styles.recentActivityTextWrap}>
-            <Skeleton width={120} height={16} style={{ marginBottom: 4 }} />
-            <Skeleton width={140} height={14} />
-          </View>
         </View>
       </View>
     </View>
@@ -201,21 +214,17 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.lg,
   },
   greetingSkeleton: { marginBottom: spacing.lg },
-  symptomSummaryCard: {
+  streakPillSkeleton: { marginBottom: spacing.lg },
+  lisaCardSkeleton: { marginBottom: spacing.xl },
+  lisaAvatarRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.card,
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radii.lg,
-    marginBottom: spacing.xl,
-    gap: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    minHeight: minTouchTarget + spacing.lg,
+    gap: spacing.xs,
+    marginBottom: 6,
+    marginLeft: 4,
   },
-  symptomSummaryTextWrap: { flex: 1 },
   primaryButtonSkeleton: { marginBottom: spacing.md },
+  secondaryButtonSkeleton: { marginBottom: spacing.md },
   waveSkeleton: {
     width: '100%',
     height: WAVE_HEIGHT,
