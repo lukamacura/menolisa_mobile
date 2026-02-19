@@ -706,7 +706,7 @@ export function RegisterScreen() {
             ]}
           >
             <Image
-              source={require('../../assets/logo.png')}
+              source={require('../../assets/logo_transparent.png')}
               style={styles.loadingLogo}
               resizeMode="contain"
             />

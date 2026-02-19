@@ -163,7 +163,10 @@ export function SettingsScreen() {
               onPress={() => navigation.navigate('InviteFriends')}
             >
               <Ionicons name="gift-outline" size={22} color={colors.orange} />
-              <Text style={styles.referralRowLabel}>Invite friends</Text>
+              <View style={styles.rowTextWrap}>
+                <Text style={styles.referralRowLabel}>Invite friends</Text>
+                <Text style={styles.referralRowSubtext}>You get 50% off · Friends get 3 days free</Text>
+              </View>
               <Ionicons name="chevron-forward" size={20} color={colors.orange} />
             </TouchableOpacity>
           </StaggeredZoomIn>
@@ -316,10 +319,15 @@ const styles = StyleSheet.create({
     backgroundColor: colors.orangeLight,
   },
   referralRowLabel: {
-    flex: 1,
     fontSize: 16,
     fontFamily: typography.family.medium,
     color: colors.text,
+  },
+  referralRowSubtext: {
+    fontSize: 12,
+    fontFamily: typography.family.regular,
+    color: colors.textMuted,
+    marginTop: 2,
   },
   blueRow: {
     backgroundColor: colors.rowBlueBg,
