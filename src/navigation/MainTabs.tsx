@@ -158,9 +158,10 @@ export function MainTabs() {
         tabBarInactiveTintColor: colors.textMuted,
         tabBarLabelStyle: {
           fontSize: 12,
-          fontFamily: typography.family.medium,
+          fontFamily: typography.display.semibold,
           marginBottom: 0,
           paddingBottom: 2,
+          textTransform: 'uppercase',
         },
         tabBarItemStyle: {
           paddingTop: 6,

@@ -262,7 +262,7 @@ const lisaCardStyles = StyleSheet.create({
   },
   talkButtonText: {
     fontSize: 17,
-    fontFamily: typography.family.semibold,
+    fontFamily: typography.display.semibold,
     color: colors.navy,
     letterSpacing: 0.5,
     textTransform: 'uppercase',
@@ -516,9 +516,10 @@ const styles = StyleSheet.create({
   },
   greeting: {
     fontSize: 24,
-    fontFamily: typography.family.bold,
+    fontFamily: typography.display.bold,
     color: colors.text,
     marginBottom: spacing.lg,
+    textTransform: 'uppercase',
   },
   errorBanner: {
     backgroundColor: colors.dangerBg,
@@ -560,8 +561,9 @@ const styles = StyleSheet.create({
   },
   trialUpgradeButtonText: {
     fontSize: 15,
-    fontFamily: typography.family.semibold,
+    fontFamily: typography.display.semibold,
     color: colors.background,
+    textTransform: 'uppercase',
   },
   trialNearBanner: {
     flexDirection: 'row',
@@ -590,8 +592,9 @@ const styles = StyleSheet.create({
   },
   trialNearButtonText: {
     fontSize: 14,
-    fontFamily: typography.family.semibold,
+    fontFamily: typography.display.semibold,
     color: colors.background,
+    textTransform: 'uppercase',
   },
   streakPill: {
     flexDirection: 'row',
@@ -667,8 +670,9 @@ const styles = StyleSheet.create({
   },
   recentActivityTitle: {
     fontSize: 16,
-    fontFamily: typography.family.semibold,
+    fontFamily: typography.display.semibold,
     color: colors.text,
+    textTransform: 'uppercase',
   },
   recentActivitySubtitle: {
     fontSize: 14,
@@ -695,7 +699,7 @@ const styles = StyleSheet.create({
   },
   primaryButtonText: {
     fontSize: 17,
-    fontFamily: typography.family.semibold,
+    fontFamily: typography.display.semibold,
     color: colors.navy,
     letterSpacing: 0.5,
     textTransform: 'uppercase',

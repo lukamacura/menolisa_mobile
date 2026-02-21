@@ -8,6 +8,7 @@ import {
   Image,
   Animated,
   Easing,
+  ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
@@ -17,6 +18,10 @@ import { colors, radii, spacing, minTouchTarget, typography, landingGradient, sh
 import { StaggeredZoomIn, useReduceMotion } from '../components/StaggeredZoomIn';
 
 const { width, height } = Dimensions.get('window');
+
+/** Max width for content column – keeps layout centered and readable on large screens */
+const CONTENT_MAX_WIDTH = 320;
+const HORIZONTAL_PADDING = spacing.xl;
 
 const AnimatedImage = Animated.createAnimatedComponent(Image);
 
@@ -73,51 +78,64 @@ export function LandingScreenWithButton() {
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
-      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-        <StaggeredZoomIn delayIndex={0} reduceMotion={reduceMotion}>
-          <View style={styles.centralContent}>
-            <View style={styles.logoContainer}>
-              <AnimatedImage
-                source={require('../../assets/logo_transparent.png')}
-                style={[
-                  styles.logo,
-                  {
-                    transform: [{ rotate: spin }, { scale: scaleValue }],
-                  },
-                ]}
-                resizeMode="contain"
-              />
-            </View>
-            <Text style={styles.brandName}>MenoLisa</Text>
-            <Text style={styles.tagline}>
-              Navigate menopause with confidence. Your journey, our support.
-            </Text>
-            <View style={styles.disclaimerBox}>
-              <Text style={styles.disclaimerText}>
-                For information only. Not medical advice.
-              </Text>
+      <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* Hero block – logo, brand, tagline, disclaimer – all centered */}
+          <View style={styles.hero}>
+            <View style={styles.contentColumn}>
+              <StaggeredZoomIn delayIndex={0} reduceMotion={reduceMotion}>
+                <View style={styles.logoWrap}>
+                  <AnimatedImage
+                    source={require('../../assets/logo_transparent.png')}
+                    style={[styles.logo, { transform: [{ rotate: spin }, { scale: scaleValue }] }]}
+                    resizeMode="contain"
+                  />
+                </View>
+              </StaggeredZoomIn>
+              <StaggeredZoomIn delayIndex={1} reduceMotion={reduceMotion}>
+                <Text style={styles.brandName}>MenoLisa</Text>
+              </StaggeredZoomIn>
+              <StaggeredZoomIn delayIndex={2} reduceMotion={reduceMotion}>
+                <Text style={styles.tagline}>
+                  Navigate menopause with confidence. Your journey, our support.
+                </Text>
+              </StaggeredZoomIn>
+              <StaggeredZoomIn delayIndex={3} reduceMotion={reduceMotion}>
+                <View style={styles.disclaimerWrap}>
+                  <Text style={styles.disclaimerText}>
+                    For information only. Not medical advice.
+                  </Text>
+                </View>
+              </StaggeredZoomIn>
             </View>
           </View>
-        </StaggeredZoomIn>
 
-        <StaggeredZoomIn delayIndex={1} reduceMotion={reduceMotion}>
-        <View style={styles.ctaSection}>
-          <TouchableOpacity
-            activeOpacity={0.85}
-            style={styles.primaryButton}
-            onPress={() => navigation.navigate('Register')}
-          >
-            <Text style={styles.primaryButtonText}>GET STARTED</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            activeOpacity={0.85}
-            style={styles.secondaryButton}
-            onPress={() => navigation.navigate('Login')}
-          >
-            <Text style={styles.secondaryButtonText}>I ALREADY HAVE AN ACCOUNT</Text>
-          </TouchableOpacity>
-        </View>
-        </StaggeredZoomIn>
+          {/* CTA block – centered, fixed width */}
+          <StaggeredZoomIn delayIndex={4} reduceMotion={reduceMotion}>
+            <View style={styles.ctaSection}>
+              <View style={styles.ctaColumn}>
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  style={styles.primaryButton}
+                  onPress={() => navigation.navigate('Register')}
+                >
+                  <Text style={styles.primaryButtonText}>Get started</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  style={styles.secondaryButton}
+                  onPress={() => navigation.navigate('Login')}
+                >
+                  <Text style={styles.secondaryButtonText}>I already have an account</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </StaggeredZoomIn>
+        </ScrollView>
       </SafeAreaView>
     </View>
   );
@@ -128,22 +146,34 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: height,
   },
-  container: {
+  safeArea: {
     flex: 1,
-    paddingHorizontal: spacing.xl,
-    justifyContent: 'space-between',
   },
-  centralContent: {
+  scrollContent: {
+    flexGrow: 1,
+    paddingHorizontal: HORIZONTAL_PADDING,
+    paddingTop: spacing['2xl'],
+    paddingBottom: spacing.xl,
+    justifyContent: 'space-between',
+    minHeight: height,
+  },
+  hero: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingTop: spacing['2xl'],
+    paddingVertical: spacing.xl,
   },
-  logoContainer: {
-    width: width * 0.5,
-    maxWidth: 200,
+  contentColumn: {
+    width: '100%',
+    maxWidth: CONTENT_MAX_WIDTH,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoWrap: {
+    width: width * 0.42,
+    maxWidth: 160,
     aspectRatio: 1,
-    marginBottom: spacing['2xl'],
+    marginBottom: spacing.xl,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -152,45 +182,51 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   brandName: {
-    fontFamily: typography.family.bold,
-    fontSize: 34,
+    fontFamily: typography.display.bold,
+    fontSize: 32,
     color: colors.text,
     textAlign: 'center',
     marginBottom: spacing.md,
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
   },
   tagline: {
     fontFamily: typography.family.regular,
-    fontSize: 18,
+    fontSize: 17,
     lineHeight: 26,
     color: colors.textMuted,
     textAlign: 'center',
-    maxWidth: 320,
+    paddingHorizontal: spacing.sm,
   },
-  disclaimerBox: {
-    marginTop: spacing.lg,
+  disclaimerWrap: {
+    marginTop: spacing.xl,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
-    backgroundColor: 'rgba(220, 38, 38, 0.18)',
-    borderWidth: 1.5,
-    borderColor: colors.danger,
+    backgroundColor: 'rgba(220, 38, 38, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(220, 38, 38, 0.35)',
     borderRadius: radii.md,
     alignSelf: 'stretch',
-    maxWidth: 320,
   },
   disclaimerText: {
     fontSize: 12,
     fontFamily: typography.family.semibold,
-    color: '#B91C1C',
+    color: colors.danger,
     textAlign: 'center',
   },
   ctaSection: {
-    paddingBottom: spacing.xl,
+    alignItems: 'center',
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.sm,
+  },
+  ctaColumn: {
+    width: '100%',
+    maxWidth: CONTENT_MAX_WIDTH,
     gap: spacing.md,
   },
   primaryButton: {
     backgroundColor: colors.primary,
-    minHeight: minTouchTarget,
+    minHeight: minTouchTarget + 4,
     paddingVertical: spacing.md,
     borderRadius: radii.lg,
     justifyContent: 'center',
@@ -198,7 +234,7 @@ const styles = StyleSheet.create({
     ...shadows.buttonPrimary,
   },
   primaryButtonText: {
-    fontFamily: typography.family.semibold,
+    fontFamily: typography.display.semibold,
     fontSize: 17,
     letterSpacing: 0.5,
     color: colors.background,
@@ -206,17 +242,17 @@ const styles = StyleSheet.create({
   },
   secondaryButton: {
     backgroundColor: colors.background,
-    minHeight: minTouchTarget,
+    minHeight: minTouchTarget + 4,
     paddingVertical: spacing.md,
     borderRadius: radii.lg,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
-    borderColor: colors.textMuted,
+    borderColor: colors.borderStrong,
     ...shadows.buttonPrimary,
   },
   secondaryButtonText: {
-    fontFamily: typography.family.medium,
+    fontFamily: typography.display.semibold,
     fontSize: 16,
     letterSpacing: 0.3,
     color: colors.textMuted,

@@ -408,7 +408,7 @@ const styles = StyleSheet.create({
   },
   submitButtonText: {
     fontSize: 17,
-    fontFamily: typography.family.semibold,
+    fontFamily: typography.display.semibold,
     color: colors.background,
     letterSpacing: 0.5,
     textTransform: 'uppercase',

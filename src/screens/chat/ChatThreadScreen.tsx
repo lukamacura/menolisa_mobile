@@ -819,10 +819,11 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 17,
-    fontFamily: typography.family.medium,
+    fontFamily: typography.display.semibold,
     color: colors.text,
     textAlign: 'center',
     lineHeight: 24,
+    textTransform: 'uppercase',
   },
   emptySubtext: {
     fontSize: 15,

@@ -82,12 +82,18 @@ export const shadows = {
 };
 
 export const typography = {
+  /** Body and UI text (Poppins) */
   family: {
     light: 'Poppins_300Light',
     regular: 'Poppins_400Regular',
     medium: 'Poppins_500Medium',
     semibold: 'Poppins_600SemiBold',
     bold: 'Poppins_700Bold',
+  },
+  /** Buttons, greetings, and prominent headings (Nunito) – use with textTransform: 'uppercase' for Duolingo-style */
+  display: {
+    semibold: 'Nunito_600SemiBold',
+    bold: 'Nunito_700Bold',
   },
 };
 

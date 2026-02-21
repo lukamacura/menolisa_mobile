@@ -261,8 +261,9 @@ const styles = StyleSheet.create({
   },
   cardTitle: {
     fontSize: 18,
-    fontFamily: typography.family.semibold,
+    fontFamily: typography.display.semibold,
     color: colors.text,
+    textTransform: 'uppercase',
   },
   trendBadge: {
     paddingHorizontal: spacing.sm,

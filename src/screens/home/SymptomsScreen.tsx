@@ -690,8 +690,9 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 18,
-    fontFamily: typography.family.semibold,
+    fontFamily: typography.display.semibold,
     color: colors.text,
+    textTransform: 'uppercase',
   },
   modalBody: {
     flex: 1,
@@ -908,9 +909,10 @@ const styles = StyleSheet.create({
   },
   successTitle: {
     fontSize: 24,
-    fontFamily: typography.family.bold,
+    fontFamily: typography.display.bold,
     color: colors.text,
     marginBottom: spacing.sm,
+    textTransform: 'uppercase',
   },
   successSubtitle: {
     fontSize: 15,

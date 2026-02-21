@@ -81,10 +81,11 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 20,
-    fontFamily: typography.family.bold,
+    fontFamily: typography.display.bold,
     color: colors.text,
     textAlign: 'center',
     marginBottom: spacing.sm,
+    textTransform: 'uppercase',
   },
   message: {
     fontSize: 15,
@@ -104,8 +105,9 @@ const styles = StyleSheet.create({
   },
   primaryButtonText: {
     fontSize: 16,
-    fontFamily: typography.family.semibold,
+    fontFamily: typography.display.semibold,
     color: colors.background,
+    textTransform: 'uppercase',
   },
   secondaryButton: {
     minHeight: minTouchTarget,
@@ -115,7 +117,8 @@ const styles = StyleSheet.create({
   },
   secondaryButtonText: {
     fontSize: 16,
-    fontFamily: typography.family.medium,
+    fontFamily: typography.display.semibold,
     color: colors.textMuted,
+    textTransform: 'uppercase',
   },
 });

@@ -1275,9 +1275,10 @@ const styles = StyleSheet.create({
   },
   questionTitle: {
     fontSize: 22,
-    fontFamily: typography.family.bold,
+    fontFamily: typography.display.bold,
     color: colors.text,
     marginBottom: 6,
+    textTransform: 'uppercase',
   },
   questionSubtitle: {
     fontSize: 14,
@@ -1417,7 +1418,7 @@ const styles = StyleSheet.create({
   },
   backButtonText: {
     fontSize: 17,
-    fontFamily: typography.family.semibold,
+    fontFamily: typography.display.semibold,
     color: colors.text,
     letterSpacing: 0.5,
     textTransform: 'uppercase',
@@ -1443,7 +1444,7 @@ const styles = StyleSheet.create({
   },
   nextButtonText: {
     fontSize: 17,
-    fontFamily: typography.family.semibold,
+    fontFamily: typography.display.semibold,
     color: colors.background,
     letterSpacing: 0.5,
     textTransform: 'uppercase',
@@ -1468,9 +1469,10 @@ const styles = StyleSheet.create({
   },
   loadingTitle: {
     fontSize: 20,
-    fontFamily: typography.family.semibold,
+    fontFamily: typography.display.semibold,
     color: colors.text,
     marginBottom: 8,
+    textTransform: 'uppercase',
   },
   loadingMessage: {
     fontSize: 16,
@@ -1504,10 +1506,11 @@ const styles = StyleSheet.create({
   },
   resultsHeadline: {
     fontSize: 22,
-    fontFamily: typography.family.bold,
+    fontFamily: typography.display.bold,
     color: colors.text,
     textAlign: 'center',
     marginBottom: 14,
+    textTransform: 'uppercase',
   },
   resultsText: {
     fontSize: 14,
@@ -1547,8 +1550,9 @@ const styles = StyleSheet.create({
   },
   scoreTitle: {
     fontSize: 17,
-    fontFamily: typography.family.semibold,
+    fontFamily: typography.display.semibold,
     color: colors.text,
+    textTransform: 'uppercase',
   },
   scoreDisplay: {
     flexDirection: 'row',
@@ -1805,7 +1809,7 @@ const styles = StyleSheet.create({
   },
   gradientButtonText: {
     fontSize: 17,
-    fontFamily: typography.family.semibold,
+    fontFamily: typography.display.semibold,
     color: colors.background,
     letterSpacing: 0.5,
     textTransform: 'uppercase',
@@ -1843,10 +1847,11 @@ const styles = StyleSheet.create({
   },
   emailTitle: {
     fontSize: 26,
-    fontFamily: typography.family.bold,
+    fontFamily: typography.display.bold,
     color: colors.text,
     marginBottom: 12,
     textAlign: 'center',
+    textTransform: 'uppercase',
   },
   emailSubtitle: {
     fontSize: 15,
@@ -1988,9 +1993,10 @@ const styles = StyleSheet.create({
   },
   emailSentTitle: {
     fontSize: 28,
-    fontWeight: '700',
+    fontFamily: typography.display.bold,
     color: '#1F2937',
     marginBottom: 12,
+    textTransform: 'uppercase',
   },
   emailSentText: {
     fontSize: 16,

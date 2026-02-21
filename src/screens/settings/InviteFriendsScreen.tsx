@@ -302,8 +302,9 @@ const styles = StyleSheet.create({
   },
   friendTitle: {
     fontSize: 16,
-    fontFamily: typography.family.medium,
+    fontFamily: typography.display.semibold,
     color: colors.text,
+    textTransform: 'uppercase',
   },
   friendSubtext: {
     fontSize: 14,
@@ -314,10 +315,11 @@ const styles = StyleSheet.create({
   // Non-eligible layout (centered)
   title: {
     fontSize: 22,
-    fontFamily: typography.family.bold,
+    fontFamily: typography.display.bold,
     color: colors.text,
     textAlign: 'center',
     marginBottom: spacing.xs,
+    textTransform: 'uppercase',
   },
   subtext: {
     fontSize: 15,

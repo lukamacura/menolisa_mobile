@@ -231,9 +231,10 @@ const styles = StyleSheet.create({
   },
   emptyTitle: {
     fontSize: 18,
-    fontFamily: typography.family.semibold,
+    fontFamily: typography.display.semibold,
     color: colors.text,
     marginTop: spacing.md,
+    textTransform: 'uppercase',
   },
   emptySubtitle: {
     fontSize: 15,

@@ -284,9 +284,10 @@ const styles = StyleSheet.create({
   },
   emptyTitle: {
     fontSize: 18,
-    fontFamily: typography.family.semibold,
+    fontFamily: typography.display.semibold,
     color: colors.text,
     marginBottom: spacing.xs,
+    textTransform: 'uppercase',
   },
   emptyText: {
     fontSize: 15,
@@ -324,8 +325,9 @@ const styles = StyleSheet.create({
   },
   cardTitle: {
     fontSize: 16,
-    fontFamily: typography.family.semibold,
+    fontFamily: typography.display.semibold,
     color: colors.text,
+    textTransform: 'uppercase',
   },
   cardBody: {
     fontSize: 14,

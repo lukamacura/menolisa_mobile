@@ -247,9 +247,10 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 16,
-    fontFamily: typography.family.medium,
+    fontFamily: typography.display.semibold,
     color: colors.textMuted,
     marginTop: spacing.md,
+    textTransform: 'uppercase',
   },
   emptySubtext: {
     fontSize: 14,
@@ -273,8 +274,9 @@ const styles = StyleSheet.create({
   },
   rowTitle: {
     fontSize: 16,
-    fontFamily: typography.family.semibold,
+    fontFamily: typography.display.semibold,
     color: colors.text,
+    textTransform: 'uppercase',
   },
   rowMeta: {
     fontSize: 12,
