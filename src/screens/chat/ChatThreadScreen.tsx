@@ -25,6 +25,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../lib/supabase';
 import { apiFetchWithAuth, API_CONFIG, getApiUrl, openWebDashboard } from '../../lib/api';
 import { useTrialStatus } from '../../hooks/useTrialStatus';
+import { AccessEndedView } from '../../components/AccessEndedView';
 import { MarkdownText } from '../../components/MarkdownText';
 import { CoffeeLoading } from '../../components/CoffeeLoading';
 import { StaggeredZoomIn, useReduceMotion } from '../../components/StaggeredZoomIn';
@@ -543,6 +544,14 @@ export function ChatThreadScreen() {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <ConversationLoader />
+      </SafeAreaView>
+    );
+  }
+
+  if (trialExpired) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <AccessEndedView variant="fullScreen" />
       </SafeAreaView>
     );
   }

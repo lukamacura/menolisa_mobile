@@ -12,6 +12,8 @@ import { SymptomLogsSkeleton, ContentTransition } from '../../components/skeleto
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { apiFetchWithAuth, API_CONFIG } from '../../lib/api';
+import { useTrialStatus } from '../../hooks/useTrialStatus';
+import { AccessEndedView } from '../../components/AccessEndedView';
 import { getSymptomIconName } from '../../lib/symptomIconMapping';
 import { colors, spacing, radii, typography, minTouchTarget } from '../../theme/tokens';
 
@@ -63,6 +65,7 @@ type GroupedLog = { dateKey: string; dateLabel: string; logs: SymptomLog[] };
 
 export function SymptomLogsScreen() {
   const reduceMotion = useReduceMotion();
+  const trialStatus = useTrialStatus();
   const [logs, setLogs] = useState<SymptomLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -106,6 +109,14 @@ export function SymptomLogsScreen() {
         logs: dayLogs.sort((a, b) => new Date(b.logged_at).getTime() - new Date(a.logged_at).getTime()),
       }));
   }, [logs]);
+
+  if (trialStatus.expired) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <AccessEndedView variant="fullScreen" />
+      </SafeAreaView>
+    );
+  }
 
   if (loading && !refreshing) {
     return (

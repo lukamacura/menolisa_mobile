@@ -23,6 +23,7 @@ import { RefetchTrialContext } from '../../context/RefetchTrialContext';
 import { useTrialStatus } from '../../hooks/useTrialStatus';
 import { colors, spacing, radii, typography, minTouchTarget, shadows } from '../../theme/tokens';
 import { WhatLisaNoticedCard } from '../../components/WhatLisaNoticedCard';
+import { AccessEndedView } from '../../components/AccessEndedView';
 import { StaggeredZoomIn, useReduceMotion } from '../../components/StaggeredZoomIn';
 import { DashboardSkeleton, ContentTransition } from '../../components/skeleton';
 import Animated, {
@@ -183,11 +184,13 @@ function LisaHeroCard({ message, onPress }: { message: string; onPress: () => vo
   return (
     <Animated.View style={[lisaCardStyles.wrapper, entranceStyle]}>
       <View style={lisaCardStyles.bubble}>
-        <Animated.Image
-          source={require('../../../assets/logo_transparent.png')}
-          style={[lisaCardStyles.avatarImage, logoStyle]}
-          resizeMode="contain"
-        />
+        <Animated.View style={[lisaCardStyles.logoWrap, logoStyle]}>
+          <Animated.Image
+            source={require('../../../assets/dashboard_lisa.png')}
+            style={lisaCardStyles.avatarImage}
+            resizeMode="contain"
+          />
+        </Animated.View>
         <Text style={lisaCardStyles.bubbleText}>
           {displayedText}
           {isTyping && (
@@ -207,22 +210,24 @@ const lisaCardStyles = StyleSheet.create({
   wrapper: {
     marginBottom: spacing.xl,
   },
+  logoWrap: {
+    alignSelf: 'center',
+    marginBottom: spacing.sm,
+  },
   avatarImage: {
-    width: 44,
-    height: 44,
-    alignSelf: 'flex-start',
-    marginBottom: spacing.xs,
+    width: 96,
+    height: 96,
   },
   bubble: {
-    backgroundColor: 'rgba(255, 184, 201, 0.18)',
+    backgroundColor: 'rgba(101, 219, 255, 0.14)',
     borderWidth: 1,
-    borderColor: colors.primary + '30',
+    borderColor: 'rgba(101, 219, 255, 0.45)',
     borderRadius: radii.lg,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
-    shadowColor: colors.primary,
+    shadowColor: colors.blue,
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.10,
+    shadowOpacity: 0.12,
     shadowRadius: 8,
     elevation: 2,
   },
@@ -381,17 +386,7 @@ export function DashboardScreen() {
           )}
           {trialStatus.expired && (
             <StaggeredZoomIn delayIndex={2} reduceMotion={reduceMotion}>
-              <View style={styles.trialExpiredBanner}>
-                <Text style={styles.trialExpiredTitle}>Trial ended</Text>
-                <Text style={styles.trialExpiredSubtitle}>Manage your subscription on the web</Text>
-                <TouchableOpacity
-                  activeOpacity={0.8}
-                  style={styles.trialUpgradeButton}
-                  onPress={handleOpenDashboard}
-                >
-                  <Text style={styles.trialUpgradeButtonText}>Manage subscription</Text>
-                </TouchableOpacity>
-              </View>
+              <AccessEndedView variant="card" onPress={handleOpenDashboard} />
             </StaggeredZoomIn>
           )}
           {!trialStatus.expired && !trialStatus.loading && trialStatus.daysLeft <= 2 && trialStatus.daysLeft >= 0 && (
@@ -417,54 +412,62 @@ export function DashboardScreen() {
               </View>
             </StaggeredZoomIn>
           )}
-          <StaggeredZoomIn delayIndex={5} reduceMotion={reduceMotion}>
-            <LisaHeroCard message={getDailyLisaMessage()} onPress={handleTalkToLisa} />
-          </StaggeredZoomIn>
-          <StaggeredZoomIn delayIndex={6} reduceMotion={reduceMotion}>
-            <TouchableOpacity
-              activeOpacity={0.8}
-              style={styles.recentActivityCard}
-              onPress={() => navigation.navigate('SymptomLogs')}
-            >
-              <Ionicons name="time" size={24} color={colors.primary} />
-              <View style={styles.recentActivityTextWrap}>
-                <Text style={styles.recentActivityTitle}>Symptom history</Text>
-                <Text style={styles.recentActivitySubtitle}>See all your symptom logs</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
-            </TouchableOpacity>
-          </StaggeredZoomIn>
-          <StaggeredZoomIn delayIndex={7} reduceMotion={reduceMotion}>
-            <TouchableOpacity
-              activeOpacity={0.8}
-              style={styles.primaryButton}
-              onPress={() => navigation.navigate('Symptoms')}
-            >
-              <Ionicons name="add-circle" size={24} color={colors.navy} />
-              <Text style={styles.primaryButtonText}>Log symptom</Text>
-            </TouchableOpacity>
-          </StaggeredZoomIn>
+          {!trialStatus.expired && (
+            <>
+              <StaggeredZoomIn delayIndex={5} reduceMotion={reduceMotion}>
+                <LisaHeroCard message={getDailyLisaMessage()} onPress={handleTalkToLisa} />
+              </StaggeredZoomIn>
+              <StaggeredZoomIn delayIndex={6} reduceMotion={reduceMotion}>
+                <View style={styles.symptomCategoryBox}>
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    style={styles.symptomCategoryItem}
+                    onPress={() => navigation.navigate('SymptomLogs')}
+                  >
+                    <Ionicons name="time" size={24} color={colors.gold} />
+                    <View style={styles.recentActivityTextWrap}>
+                      <Text style={styles.recentActivityTitle}>Symptom history</Text>
+                      <Text style={styles.recentActivitySubtitle}>See all your symptom logs</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    style={styles.symptomCategoryButton}
+                    onPress={() => navigation.navigate('Symptoms')}
+                  >
+                    <Ionicons name="add-circle" size={24} color={colors.navy} />
+                    <Text style={styles.primaryButtonText}>Log symptom</Text>
+                  </TouchableOpacity>
+                </View>
+              </StaggeredZoomIn>
+            </>
+          )}
         </View>
 
-        <StaggeredZoomIn delayIndex={8} reduceMotion={reduceMotion}>
-          <WavyDivider />
-        </StaggeredZoomIn>
+        {!trialStatus.expired && (
+          <>
+            <StaggeredZoomIn delayIndex={8} reduceMotion={reduceMotion}>
+              <WavyDivider />
+            </StaggeredZoomIn>
 
-        {/* Bottom section — pink (theme) */}
-        <View style={styles.contentSection}>
-          <StaggeredZoomIn delayIndex={9} reduceMotion={reduceMotion}>
-            <View style={styles.disclaimerCard}>
-              <Ionicons name="information-circle-outline" size={20} color={colors.textMuted} />
-              <Text style={styles.disclaimerText}>
-                MenoLisa is for tracking and information only. It is not medical advice. Always consult a
-                healthcare provider for medical decisions.
-              </Text>
+            {/* Bottom section — pink (theme) */}
+            <View style={styles.contentSection}>
+              <StaggeredZoomIn delayIndex={9} reduceMotion={reduceMotion}>
+                <View style={styles.disclaimerCard}>
+                  <Ionicons name="information-circle-outline" size={20} color={colors.textMuted} />
+                  <Text style={styles.disclaimerText}>
+                    MenoLisa is for tracking and information only. It is not medical advice. Always consult a
+                    healthcare provider for medical decisions.
+                  </Text>
+                </View>
+              </StaggeredZoomIn>
+              <StaggeredZoomIn delayIndex={10} reduceMotion={reduceMotion}>
+                <WhatLisaNoticedCard />
+              </StaggeredZoomIn>
             </View>
-          </StaggeredZoomIn>
-          <StaggeredZoomIn delayIndex={10} reduceMotion={reduceMotion}>
-            <WhatLisaNoticedCard />
-          </StaggeredZoomIn>
-        </View>
+          </>
+        )}
       </ScrollView>
       </ContentTransition>
     </SafeAreaView>
@@ -607,6 +610,44 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: typography.family.medium,
     color: colors.primaryDark,
+  },
+  symptomCategoryBox: {
+    backgroundColor: 'rgba(255, 235, 118, 0.22)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 200, 50, 0.6)',
+    borderRadius: radii.lg,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.xl,
+    shadowColor: colors.gold,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  symptomCategoryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+    paddingHorizontal: 0,
+    gap: spacing.md,
+    minHeight: minTouchTarget,
+  },
+  symptomCategoryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.gold,
+    paddingVertical: Math.max(spacing.md, (minTouchTarget - 24) / 2),
+    paddingHorizontal: spacing.xl,
+    borderRadius: radii.lg,
+    gap: spacing.sm,
+    minHeight: minTouchTarget + 8,
+    shadowColor: colors.gold,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.45,
+    shadowRadius: 2,
+    elevation: 4,
   },
   recentActivityCard: {
     flexDirection: 'row',
