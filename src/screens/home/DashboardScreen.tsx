@@ -1,4 +1,4 @@
-import React, { useCallback, useContext, useEffect, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   RefreshControl,
   Dimensions,
   Alert,
+
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -16,6 +17,8 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import { LinearGradient } from 'expo-linear-gradient';
+import { VideoView, useVideoPlayer } from 'expo-video';
 import { HomeStackParamList, MainTabParamList } from '../../navigation/types';
 import { apiFetchWithAuth, API_CONFIG, openWebDashboard } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
@@ -36,8 +39,13 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const WAVE_HEIGHT = 60;
+const VIDEO_HEIGHT = SCREEN_HEIGHT * 0.60;
+
+// ---------------------------------------------------------------------------
+// WavyDivider
+// ---------------------------------------------------------------------------
 
 function WavyDivider() {
   return (
@@ -79,10 +87,87 @@ const wavyStyles = StyleSheet.create({
   },
 });
 
+const heroVideoStyles = StyleSheet.create({
+  video: {
+    position: 'absolute',
+    width: SCREEN_WIDTH,
+    height: VIDEO_HEIGHT,
+  },
+});
+
+// ---------------------------------------------------------------------------
+// AmbientVideoHero — looping background video with static image fallback
+// ---------------------------------------------------------------------------
+
+interface AmbientVideoHeroProps {
+  reduceMotion: boolean;
+}
+
+function AmbientVideoHero({ reduceMotion }: AmbientVideoHeroProps) {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const player = useVideoPlayer(require('../../../assets/dashboard_lisa.mp4'), (p) => {
+    p.muted = true;
+    // loop disabled — we replay manually after a 1.5–3 s pause (fits ~2–3 s clip)
+  });
+
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  useEffect(() => {
+    if (reduceMotion) return;
+
+    player.play();
+
+    let replayTimeout: ReturnType<typeof setTimeout>;
+
+    const subscription = player.addListener('playingChange', ({ isPlaying }) => {
+      // video finished — schedule a replay after a random 1.5–3 s pause
+      if (!isPlaying && mountedRef.current) {
+        const delay = 1500 + Math.random() * 1500;
+        replayTimeout = setTimeout(() => {
+          if (mountedRef.current) player.replay();
+        }, delay);
+      }
+    });
+
+    return () => {
+      subscription.remove();
+      clearTimeout(replayTimeout);
+      player.pause();
+    };
+  }, [player, reduceMotion]);
+
+  if (reduceMotion) {
+    return null;
+  }
+
+  return (
+    <VideoView
+      player={player}
+      contentFit="cover"
+      nativeControls={false}
+      style={heroVideoStyles.video}
+      accessibilityLabel="Ambient looping background video"
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Navigation type
+// ---------------------------------------------------------------------------
+
 type NavProp = CompositeNavigationProp<
   NativeStackNavigationProp<HomeStackParamList, 'Dashboard'>,
   BottomTabNavigationProp<MainTabParamList>
 >;
+
+// ---------------------------------------------------------------------------
+// Daily Lisa messages
+// ---------------------------------------------------------------------------
 
 const LISA_DAILY_MESSAGES = [
   "Happy Sunday. I hope you found some rest this weekend. I'm here whenever you want to talk.",
@@ -98,6 +183,10 @@ function getDailyLisaMessage(): string {
   return LISA_DAILY_MESSAGES[new Date().getDay()];
 }
 
+// ---------------------------------------------------------------------------
+// LisaHeroCard
+// ---------------------------------------------------------------------------
+
 function LisaHeroCard({ message, onPress }: { message: string; onPress: () => void }) {
   const reduceMotion = useReduceMotion();
   const [displayedText, setDisplayedText] = useState(reduceMotion ? message : '');
@@ -107,9 +196,6 @@ function LisaHeroCard({ message, onPress }: { message: string; onPress: () => vo
   const opacity = useSharedValue(reduceMotion ? 1 : 0);
   const translateY = useSharedValue(reduceMotion ? 0 : 14);
 
-  // Logo breathing pulse
-  const logoScale = useSharedValue(1);
-
   // Blinking cursor
   const cursorOpacity = useSharedValue(1);
 
@@ -118,18 +204,6 @@ function LisaHeroCard({ message, onPress }: { message: string; onPress: () => vo
 
     opacity.value = withTiming(1, { duration: 480, easing: Easing.out(Easing.quad) });
     translateY.value = withTiming(0, { duration: 480, easing: Easing.out(Easing.quad) });
-
-    logoScale.value = withDelay(
-      700,
-      withRepeat(
-        withSequence(
-          withTiming(1.06, { duration: 1900, easing: Easing.inOut(Easing.sine) }),
-          withTiming(1.0, { duration: 1900, easing: Easing.inOut(Easing.sine) }),
-        ),
-        -1,
-        false,
-      ),
-    );
 
     cursorOpacity.value = withRepeat(
       withSequence(
@@ -173,10 +247,6 @@ function LisaHeroCard({ message, onPress }: { message: string; onPress: () => vo
     transform: [{ translateY: translateY.value }],
   }));
 
-  const logoStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: logoScale.value }],
-  }));
-
   const cursorStyle = useAnimatedStyle(() => ({
     opacity: cursorOpacity.value,
   }));
@@ -184,20 +254,20 @@ function LisaHeroCard({ message, onPress }: { message: string; onPress: () => vo
   return (
     <Animated.View style={[lisaCardStyles.wrapper, entranceStyle]}>
       <View style={lisaCardStyles.bubble}>
-        <Animated.View style={[lisaCardStyles.logoWrap, logoStyle]}>
-          <Animated.Image
-            source={require('../../../assets/dashboard_lisa.png')}
-            style={lisaCardStyles.avatarImage}
-            resizeMode="contain"
-          />
-        </Animated.View>
+
         <Text style={lisaCardStyles.bubbleText}>
           {displayedText}
           {isTyping && (
             <Animated.Text style={[lisaCardStyles.cursor, cursorStyle]}>|</Animated.Text>
           )}
         </Text>
-        <TouchableOpacity activeOpacity={0.8} style={lisaCardStyles.talkButton} onPress={onPress}>
+        <TouchableOpacity
+          activeOpacity={0.8}
+          style={lisaCardStyles.talkButton}
+          onPress={onPress}
+          accessibilityRole="button"
+          accessibilityLabel="Talk to Lisa"
+        >
           <Ionicons name="chatbubble-ellipses" size={20} color={colors.navy} />
           <Text style={lisaCardStyles.talkButtonText}>Talk to Lisa</Text>
         </TouchableOpacity>
@@ -206,26 +276,20 @@ function LisaHeroCard({ message, onPress }: { message: string; onPress: () => vo
   );
 }
 
+// Lisa card styles — blue retired, replaced with white glass + coral
 const lisaCardStyles = StyleSheet.create({
   wrapper: {
     marginBottom: spacing.xl,
   },
-  logoWrap: {
-    alignSelf: 'center',
-    marginBottom: spacing.sm,
-  },
-  avatarImage: {
-    width: 96,
-    height: 96,
-  },
   bubble: {
-    backgroundColor: 'rgba(101, 219, 255, 0.14)',
+    // White glass instead of blue tint
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
     borderWidth: 1,
-    borderColor: 'rgba(101, 219, 255, 0.45)',
+    borderColor: 'rgba(255, 255, 255, 0.40)',
     borderRadius: radii.lg,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
-    shadowColor: colors.blue,
+    shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.12,
     shadowRadius: 8,
@@ -234,27 +298,34 @@ const lisaCardStyles = StyleSheet.create({
   bubbleText: {
     fontSize: 14,
     fontFamily: typography.family.regular,
-    color: colors.text,
+    color: colors.background,
     lineHeight: 22,
     marginBottom: spacing.md,
+    textShadowColor: 'rgba(0, 0, 0, 0.85)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
   cursor: {
     fontSize: 14,
     fontFamily: typography.family.regular,
     color: colors.primary,
     lineHeight: 22,
+    textShadowColor: 'rgba(0, 0, 0, 0.85)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
   talkButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.blue,
+    // Coral instead of blue
+    backgroundColor: colors.primary,
     paddingVertical: Math.max(spacing.md, (minTouchTarget - 24) / 2),
     paddingHorizontal: spacing.xl,
     borderRadius: radii.lg,
     gap: spacing.sm,
     minHeight: minTouchTarget + 8,
-    shadowColor: colors.blue,
+    shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.45,
     shadowRadius: 2,
@@ -265,9 +336,12 @@ const lisaCardStyles = StyleSheet.create({
     fontFamily: typography.display.semibold,
     color: colors.navy,
     letterSpacing: 0.5,
-    textTransform: 'uppercase',
   },
 });
+
+// ---------------------------------------------------------------------------
+// DashboardScreen
+// ---------------------------------------------------------------------------
 
 export function DashboardScreen() {
   const navigation = useNavigation<NavProp>();
@@ -365,66 +439,105 @@ export function DashboardScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ContentTransition>
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
-        }
-      >
-        {/* Top section — white */}
-        <View style={styles.heroSection}>
-          <StaggeredZoomIn delayIndex={0} reduceMotion={reduceMotion}>
-            <Text style={styles.greeting}>{userName ? `Hi there, ${userName}` : 'Hi there'}</Text>
-          </StaggeredZoomIn>
-          {streak != null && streak > 0 && (
-            <StaggeredZoomIn delayIndex={1} reduceMotion={reduceMotion}>
-              <View style={styles.streakPill}>
-                <Ionicons name="flame" size={14} color={colors.primaryDark} />
-                <Text style={styles.streakPillText}>{streak} day streak</Text>
-              </View>
-            </StaggeredZoomIn>
-          )}
-          {trialStatus.expired && (
-            <StaggeredZoomIn delayIndex={2} reduceMotion={reduceMotion}>
-              <AccessEndedView variant="card" onPress={handleOpenDashboard} />
-            </StaggeredZoomIn>
-          )}
-          {!trialStatus.expired && !trialStatus.loading && trialStatus.daysLeft <= 2 && trialStatus.daysLeft >= 0 && (
-            <StaggeredZoomIn delayIndex={3} reduceMotion={reduceMotion}>
-              <View style={styles.trialNearBanner}>
-                <Text style={styles.trialNearText}>
-                  Your trial ends in {trialStatus.daysLeft === 0 ? 'today' : trialStatus.daysLeft === 1 ? '1 day' : `${trialStatus.daysLeft} days`}. Manage subscription at menolisa.com.
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+          }
+        >
+          {/* ----------------------------------------------------------------
+              Video hero — 60% screen height; video fills area (cover), no overlay
+          ---------------------------------------------------------------- */}
+          <View style={styles.videoHero}>
+            <AmbientVideoHero reduceMotion={reduceMotion} />
+
+            {/* Linear gradient top → bottom (transparent to darker) so overlay text is readable */}
+            <LinearGradient
+              colors={['transparent', 'rgba(0, 0, 0, 0.45)']}
+              style={styles.videoHeroGradient}
+              pointerEvents="none"
+            />
+
+            {/* Content pinned to the bottom of the hero */}
+            <View style={styles.videoOverlayContent}>
+              <StaggeredZoomIn delayIndex={0} reduceMotion={reduceMotion}>
+                <Text style={styles.greeting}>
+                  {userName ? `Hi there, ${userName}` : 'Hi there'}
                 </Text>
-                <TouchableOpacity
-                  activeOpacity={0.8}
-                  style={styles.trialNearButton}
-                  onPress={handleOpenDashboard}
-                >
-                  <Text style={styles.trialNearButtonText}>Manage subscription</Text>
-                </TouchableOpacity>
-              </View>
-            </StaggeredZoomIn>
-          )}
-          {error && (
-            <StaggeredZoomIn delayIndex={4} reduceMotion={reduceMotion}>
-              <View style={styles.errorBanner}>
-                <Text style={styles.errorText}>{error}</Text>
-              </View>
-            </StaggeredZoomIn>
-          )}
-          {!trialStatus.expired && (
-            <>
-              <StaggeredZoomIn delayIndex={5} reduceMotion={reduceMotion}>
-                <LisaHeroCard message={getDailyLisaMessage()} onPress={handleTalkToLisa} />
               </StaggeredZoomIn>
+
+              {streak != null && streak > 0 && (
+                <StaggeredZoomIn delayIndex={1} reduceMotion={reduceMotion}>
+                  <View style={styles.streakPill}>
+                    <Ionicons name="flame" size={14} color={colors.background} />
+                    <Text style={styles.streakPillText}>{streak} day streak</Text>
+                  </View>
+                </StaggeredZoomIn>
+              )}
+
+              {trialStatus.expired && (
+                <StaggeredZoomIn delayIndex={2} reduceMotion={reduceMotion}>
+                  <AccessEndedView variant="card" onPress={handleOpenDashboard} />
+                </StaggeredZoomIn>
+              )}
+
+              {!trialStatus.expired && !trialStatus.loading && trialStatus.daysLeft <= 2 && trialStatus.daysLeft >= 0 && (
+                <StaggeredZoomIn delayIndex={3} reduceMotion={reduceMotion}>
+                  <View style={styles.trialNearBanner}>
+                    <Text style={styles.trialNearText}>
+                      Your trial ends{' '}
+                      {trialStatus.daysLeft === 0
+                        ? 'today'
+                        : trialStatus.daysLeft === 1
+                        ? 'in 1 day'
+                        : `in ${trialStatus.daysLeft} days`}
+                      . Manage subscription at menolisa.com.
+                    </Text>
+                    <TouchableOpacity
+                      activeOpacity={0.8}
+                      style={styles.trialNearButton}
+                      onPress={handleOpenDashboard}
+                      accessibilityRole="button"
+                      accessibilityLabel="Manage subscription"
+                    >
+                      <Text style={styles.trialNearButtonText}>Manage subscription</Text>
+                    </TouchableOpacity>
+                  </View>
+                </StaggeredZoomIn>
+              )}
+
+              {error && (
+                <StaggeredZoomIn delayIndex={4} reduceMotion={reduceMotion}>
+                  <View style={styles.errorBanner}>
+                    <Text style={styles.errorText}>{error}</Text>
+                  </View>
+                </StaggeredZoomIn>
+              )}
+
+              {!trialStatus.expired && (
+                <StaggeredZoomIn delayIndex={5} reduceMotion={reduceMotion}>
+                  <LisaHeroCard message={getDailyLisaMessage()} onPress={handleTalkToLisa} />
+                </StaggeredZoomIn>
+              )}
+            </View>
+          </View>
+
+          {/* ----------------------------------------------------------------
+              Below video — white background: symptom box
+          ---------------------------------------------------------------- */}
+          {!trialStatus.expired && (
+            <View style={styles.belowVideoSection}>
               <StaggeredZoomIn delayIndex={6} reduceMotion={reduceMotion}>
                 <View style={styles.symptomCategoryBox}>
                   <TouchableOpacity
                     activeOpacity={0.8}
                     style={styles.symptomCategoryItem}
                     onPress={() => navigation.navigate('SymptomLogs')}
+                    accessibilityRole="button"
+                    accessibilityLabel="View symptom history"
                   >
-                    <Ionicons name="time" size={24} color={colors.gold} />
+                    {/* Icon updated to coral to retire gold */}
+                    <Ionicons name="time" size={24} color={colors.primary} />
                     <View style={styles.recentActivityTextWrap}>
                       <Text style={styles.recentActivityTitle}>Symptom history</Text>
                       <Text style={styles.recentActivitySubtitle}>See all your symptom logs</Text>
@@ -435,44 +548,52 @@ export function DashboardScreen() {
                     activeOpacity={0.8}
                     style={styles.symptomCategoryButton}
                     onPress={() => navigation.navigate('Symptoms')}
+                    accessibilityRole="button"
+                    accessibilityLabel="Log a new symptom"
                   >
                     <Ionicons name="add-circle" size={24} color={colors.navy} />
                     <Text style={styles.primaryButtonText}>Log symptom</Text>
                   </TouchableOpacity>
                 </View>
               </StaggeredZoomIn>
+            </View>
+          )}
+
+          {/* ----------------------------------------------------------------
+              Wavy divider + pink content section (unchanged)
+          ---------------------------------------------------------------- */}
+          {!trialStatus.expired && (
+            <>
+              <StaggeredZoomIn delayIndex={8} reduceMotion={reduceMotion}>
+                <WavyDivider />
+              </StaggeredZoomIn>
+
+              {/* Bottom section — pink (theme) */}
+              <View style={styles.contentSection}>
+                <StaggeredZoomIn delayIndex={9} reduceMotion={reduceMotion}>
+                  <View style={styles.disclaimerCard}>
+                    <Ionicons name="information-circle-outline" size={20} color={colors.textMuted} />
+                    <Text style={styles.disclaimerText}>
+                      MenoLisa is for tracking and information only. It is not medical advice. Always consult a
+                      healthcare provider for medical decisions.
+                    </Text>
+                  </View>
+                </StaggeredZoomIn>
+                <StaggeredZoomIn delayIndex={10} reduceMotion={reduceMotion}>
+                  <WhatLisaNoticedCard />
+                </StaggeredZoomIn>
+              </View>
             </>
           )}
-        </View>
-
-        {!trialStatus.expired && (
-          <>
-            <StaggeredZoomIn delayIndex={8} reduceMotion={reduceMotion}>
-              <WavyDivider />
-            </StaggeredZoomIn>
-
-            {/* Bottom section — pink (theme) */}
-            <View style={styles.contentSection}>
-              <StaggeredZoomIn delayIndex={9} reduceMotion={reduceMotion}>
-                <View style={styles.disclaimerCard}>
-                  <Ionicons name="information-circle-outline" size={20} color={colors.textMuted} />
-                  <Text style={styles.disclaimerText}>
-                    MenoLisa is for tracking and information only. It is not medical advice. Always consult a
-                    healthcare provider for medical decisions.
-                  </Text>
-                </View>
-              </StaggeredZoomIn>
-              <StaggeredZoomIn delayIndex={10} reduceMotion={reduceMotion}>
-                <WhatLisaNoticedCard />
-              </StaggeredZoomIn>
-            </View>
-          </>
-        )}
-      </ScrollView>
+        </ScrollView>
       </ContentTransition>
     </SafeAreaView>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Styles
+// ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
   container: {
@@ -482,12 +603,33 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: 0,
   },
-  heroSection: {
-    backgroundColor: colors.background,
-    paddingTop: spacing.lg,
+
+  // --- Video hero (replaces heroSection) ---
+  videoHero: {
+    height: VIDEO_HEIGHT,
+    overflow: 'hidden',
+    position: 'relative',
+    backgroundColor: colors.primaryLight,
+  },
+  videoHeroGradient: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  videoOverlayContent: {
+    flex: 1,
+    justifyContent: 'flex-end',
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.lg,
   },
+
+  // --- Below video, white bg ---
+  belowVideoSection: {
+    backgroundColor: colors.background,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.lg,
+  },
+
+  // --- Existing sections (unchanged) ---
   contentSection: {
     backgroundColor: colors.primaryLight,
     paddingHorizontal: spacing.lg,
@@ -514,13 +656,19 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     lineHeight: 18,
   },
+
+  // --- Greeting — white for readability over video overlay ---
   greeting: {
     fontSize: 24,
     fontFamily: typography.display.bold,
-    color: colors.text,
+    color: colors.background,
     marginBottom: spacing.lg,
-    textTransform: 'uppercase',
+    textShadowColor: 'rgba(0, 0, 0, 0.85)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 6,
   },
+
+  // --- Error banner ---
   errorBanner: {
     backgroundColor: colors.dangerBg,
     padding: spacing.sm,
@@ -532,6 +680,8 @@ const styles = StyleSheet.create({
     fontFamily: typography.family.regular,
     color: colors.danger,
   },
+
+  // --- Trial expired banner styles (kept for AccessEndedView context) ---
   trialExpiredBanner: {
     backgroundColor: colors.dangerBg,
     padding: spacing.md,
@@ -563,26 +713,30 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: typography.display.semibold,
     color: colors.background,
-    textTransform: 'uppercase',
   },
+
+  // --- Trial near banner — translucent on video overlay ---
   trialNearBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     flexWrap: 'wrap',
     gap: spacing.sm,
-    backgroundColor: 'rgba(255, 141, 161, 0.15)',
+    backgroundColor: 'rgba(255, 141, 161, 0.20)',
     padding: spacing.md,
     borderRadius: radii.md,
     marginBottom: spacing.md,
     borderWidth: 1,
-    borderColor: colors.primary + '40',
+    borderColor: colors.primary + '60',
   },
   trialNearText: {
     flex: 1,
     fontSize: 14,
     fontFamily: typography.family.regular,
-    color: colors.text,
+    color: colors.background,
     minWidth: 200,
+    textShadowColor: 'rgba(0, 0, 0, 0.85)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
   trialNearButton: {
     backgroundColor: colors.primary,
@@ -594,15 +748,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: typography.display.semibold,
     color: colors.background,
-    textTransform: 'uppercase',
+    textShadowColor: 'rgba(0, 0, 0, 0.85)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
+
+  // --- Streak pill — white glass on video overlay ---
   streakPill: {
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'flex-start',
-    backgroundColor: 'rgba(255, 184, 201, 0.25)',
+    backgroundColor: 'rgba(255, 255, 255, 0.20)',
     borderWidth: 1,
-    borderColor: colors.primary + '30',
+    borderColor: 'rgba(255, 255, 255, 0.35)',
     paddingVertical: 4,
     paddingHorizontal: spacing.sm,
     borderRadius: radii.pill,
@@ -612,17 +770,22 @@ const styles = StyleSheet.create({
   streakPillText: {
     fontSize: 13,
     fontFamily: typography.family.medium,
-    color: colors.primaryDark,
+    color: colors.background,
+    textShadowColor: 'rgba(0, 0, 0, 0.85)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
+
+  // --- Symptom category box — white with coral accent (gold retired) ---
   symptomCategoryBox: {
-    backgroundColor: 'rgba(255, 235, 118, 0.22)',
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 200, 50, 0.6)',
+    borderColor: colors.border,
     borderRadius: radii.lg,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
     marginBottom: spacing.xl,
-    shadowColor: colors.gold,
+    shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.12,
     shadowRadius: 8,
@@ -640,13 +803,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.gold,
+    // Coral instead of gold
+    backgroundColor: colors.primary,
     paddingVertical: Math.max(spacing.md, (minTouchTarget - 24) / 2),
     paddingHorizontal: spacing.xl,
     borderRadius: radii.lg,
     gap: spacing.sm,
     minHeight: minTouchTarget + 8,
-    shadowColor: colors.gold,
+    shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.45,
     shadowRadius: 2,
@@ -672,7 +836,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: typography.display.semibold,
     color: colors.text,
-    textTransform: 'uppercase',
   },
   recentActivitySubtitle: {
     fontSize: 14,
@@ -684,14 +847,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.gold,
+    backgroundColor: colors.primary,
     paddingVertical: Math.max(spacing.md, (minTouchTarget - 24) / 2),
     paddingHorizontal: spacing.xl,
     borderRadius: radii.lg,
     gap: spacing.sm,
     marginBottom: spacing.md,
     minHeight: minTouchTarget + 8,
-    shadowColor: colors.gold,
+    shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.55,
     shadowRadius: 2,
@@ -702,6 +865,5 @@ const styles = StyleSheet.create({
     fontFamily: typography.display.semibold,
     color: colors.navy,
     letterSpacing: 0.5,
-    textTransform: 'uppercase',
   },
 });

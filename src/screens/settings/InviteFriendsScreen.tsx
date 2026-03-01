@@ -262,7 +262,6 @@ const styles = StyleSheet.create({
     fontFamily: typography.family.semibold,
     color: colors.orange,
     letterSpacing: 1.5,
-    textTransform: 'uppercase',
     marginBottom: 2,
   },
   youGetText: {
@@ -304,7 +303,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: typography.display.semibold,
     color: colors.text,
-    textTransform: 'uppercase',
   },
   friendSubtext: {
     fontSize: 14,
@@ -319,7 +317,6 @@ const styles = StyleSheet.create({
     color: colors.text,
     textAlign: 'center',
     marginBottom: spacing.xs,
-    textTransform: 'uppercase',
   },
   subtext: {
     fontSize: 15,

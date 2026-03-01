@@ -287,7 +287,6 @@ const styles = StyleSheet.create({
     fontFamily: typography.display.semibold,
     color: colors.text,
     marginBottom: spacing.xs,
-    textTransform: 'uppercase',
   },
   emptyText: {
     fontSize: 15,
@@ -327,7 +326,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: typography.display.semibold,
     color: colors.text,
-    textTransform: 'uppercase',
   },
   cardBody: {
     fontSize: 14,

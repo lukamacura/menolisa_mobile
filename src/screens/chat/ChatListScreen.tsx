@@ -223,7 +223,6 @@ const styles = StyleSheet.create({
     fontFamily: typography.family.semibold,
     color: colors.background,
     letterSpacing: 0.5,
-    textTransform: 'uppercase',
   },
   errorBanner: {
     backgroundColor: colors.dangerBg,
@@ -250,7 +249,6 @@ const styles = StyleSheet.create({
     fontFamily: typography.display.semibold,
     color: colors.textMuted,
     marginTop: spacing.md,
-    textTransform: 'uppercase',
   },
   emptySubtext: {
     fontSize: 14,
@@ -276,7 +274,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: typography.display.semibold,
     color: colors.text,
-    textTransform: 'uppercase',
   },
   rowMeta: {
     fontSize: 12,

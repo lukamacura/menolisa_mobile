@@ -234,7 +234,6 @@ const styles = StyleSheet.create({
     fontFamily: typography.display.semibold,
     color: colors.text,
     marginTop: spacing.md,
-    textTransform: 'uppercase',
   },
   emptySubtitle: {
     fontSize: 15,
@@ -251,7 +250,6 @@ const styles = StyleSheet.create({
     fontFamily: typography.family.semibold,
     color: colors.textMuted,
     marginBottom: spacing.sm,
-    textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   logRow: {

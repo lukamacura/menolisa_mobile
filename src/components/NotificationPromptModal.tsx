@@ -85,7 +85,6 @@ const styles = StyleSheet.create({
     color: colors.text,
     textAlign: 'center',
     marginBottom: spacing.sm,
-    textTransform: 'uppercase',
   },
   message: {
     fontSize: 15,
@@ -107,7 +106,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: typography.display.semibold,
     color: colors.background,
-    textTransform: 'uppercase',
   },
   secondaryButton: {
     minHeight: minTouchTarget,
@@ -119,6 +117,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: typography.display.semibold,
     color: colors.textMuted,
-    textTransform: 'uppercase',
   },
 });

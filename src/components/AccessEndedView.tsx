@@ -82,7 +82,6 @@ const styles = StyleSheet.create({
     color: colors.text,
     textAlign: 'center',
     marginBottom: spacing.sm,
-    textTransform: 'uppercase',
   },
   subtitle: {
     fontSize: 15,
@@ -108,7 +107,6 @@ const styles = StyleSheet.create({
     fontFamily: typography.display.semibold,
     color: colors.background,
     letterSpacing: 0.5,
-    textTransform: 'uppercase',
   },
   card: {
     backgroundColor: colors.dangerBg,
@@ -123,7 +121,6 @@ const styles = StyleSheet.create({
     fontFamily: typography.display.semibold,
     color: colors.danger,
     marginBottom: 4,
-    textTransform: 'uppercase',
   },
   cardSubtitle: {
     fontSize: 14,
@@ -145,6 +142,5 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: typography.display.semibold,
     color: colors.background,
-    textTransform: 'uppercase',
   },
 });

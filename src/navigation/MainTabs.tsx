@@ -161,7 +161,6 @@ export function MainTabs() {
           fontFamily: typography.display.semibold,
           marginBottom: 0,
           paddingBottom: 2,
-          textTransform: 'uppercase',
         },
         tabBarItemStyle: {
           paddingTop: 6,

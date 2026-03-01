@@ -81,19 +81,43 @@ export const shadows = {
   },
 };
 
+/** Font families: Poppins (body/UI), Nunito (display/CTAs). Use via typography.presets for use-case-based styling. */
+const family = {
+  light: 'Poppins_300Light',
+  regular: 'Poppins_400Regular',
+  medium: 'Poppins_500Medium',
+  semibold: 'Poppins_600SemiBold',
+  bold: 'Poppins_700Bold',
+} as const;
+
+const display = {
+  semibold: 'Nunito_600SemiBold',
+  bold: 'Nunito_700Bold',
+} as const;
+
 export const typography = {
   /** Body and UI text (Poppins) */
-  family: {
-    light: 'Poppins_300Light',
-    regular: 'Poppins_400Regular',
-    medium: 'Poppins_500Medium',
-    semibold: 'Poppins_600SemiBold',
-    bold: 'Poppins_700Bold',
-  },
-  /** Buttons, greetings, and prominent headings (Nunito) – use with textTransform: 'uppercase' for Duolingo-style */
-  display: {
-    semibold: 'Nunito_600SemiBold',
-    bold: 'Nunito_700Bold',
-  },
+  family,
+  /** Buttons, greetings, and prominent headings (Nunito). Use sentence case for buttons (no uppercase). */
+  display,
+  /**
+   * Semantic presets by use case. Spread into StyleSheet text styles; set color in component.
+   * - Body/paragraphs: body, bodySmall, bodyMedium
+   * - Headings: heading1 (hero), heading2 (screen/section), heading3 (card title)
+   * - Buttons: button, buttonSmall (sentence case)
+   * - Labels & captions: label, caption
+   */
+  presets: {
+    body: { fontFamily: family.regular, fontSize: 16, lineHeight: 24 },
+    bodySmall: { fontFamily: family.regular, fontSize: 14, lineHeight: 22 },
+    bodyMedium: { fontFamily: family.medium, fontSize: 16, lineHeight: 24 },
+    caption: { fontFamily: family.regular, fontSize: 12, lineHeight: 18 },
+    label: { fontFamily: family.medium, fontSize: 14, lineHeight: 20 },
+    heading1: { fontFamily: display.bold, fontSize: 24, lineHeight: 32 },
+    heading2: { fontFamily: display.semibold, fontSize: 20, lineHeight: 28 },
+    heading3: { fontFamily: family.semibold, fontSize: 18, lineHeight: 26 },
+    button: { fontFamily: display.semibold, fontSize: 17, lineHeight: 22 },
+    buttonSmall: { fontFamily: display.semibold, fontSize: 14, lineHeight: 20 },
+  } as const,
 };
 

@@ -1278,7 +1278,6 @@ const styles = StyleSheet.create({
     fontFamily: typography.display.bold,
     color: colors.text,
     marginBottom: 6,
-    textTransform: 'uppercase',
   },
   questionSubtitle: {
     fontSize: 14,
@@ -1421,7 +1420,6 @@ const styles = StyleSheet.create({
     fontFamily: typography.display.semibold,
     color: colors.text,
     letterSpacing: 0.5,
-    textTransform: 'uppercase',
   },
   backButtonTextDisabled: {
     color: '#D1D5DB',
@@ -1447,7 +1445,6 @@ const styles = StyleSheet.create({
     fontFamily: typography.display.semibold,
     color: colors.background,
     letterSpacing: 0.5,
-    textTransform: 'uppercase',
   },
   nextButtonTextDisabled: {
     color: '#9CA3AF',
@@ -1472,7 +1469,6 @@ const styles = StyleSheet.create({
     fontFamily: typography.display.semibold,
     color: colors.text,
     marginBottom: 8,
-    textTransform: 'uppercase',
   },
   loadingMessage: {
     fontSize: 16,
@@ -1510,7 +1506,6 @@ const styles = StyleSheet.create({
     color: colors.text,
     textAlign: 'center',
     marginBottom: 14,
-    textTransform: 'uppercase',
   },
   resultsText: {
     fontSize: 14,
@@ -1552,7 +1547,6 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontFamily: typography.display.semibold,
     color: colors.text,
-    textTransform: 'uppercase',
   },
   scoreDisplay: {
     flexDirection: 'row',
@@ -1812,7 +1806,6 @@ const styles = StyleSheet.create({
     fontFamily: typography.display.semibold,
     color: colors.background,
     letterSpacing: 0.5,
-    textTransform: 'uppercase',
   },
   buttonDisabled: {
     opacity: 0.6,
@@ -1851,7 +1844,6 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: 12,
     textAlign: 'center',
-    textTransform: 'uppercase',
   },
   emailSubtitle: {
     fontSize: 15,
@@ -1996,7 +1988,6 @@ const styles = StyleSheet.create({
     fontFamily: typography.display.bold,
     color: '#1F2937',
     marginBottom: 12,
-    textTransform: 'uppercase',
   },
   emailSentText: {
     fontSize: 16,

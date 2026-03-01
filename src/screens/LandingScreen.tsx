@@ -188,7 +188,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: spacing.md,
     letterSpacing: 0.8,
-    textTransform: 'uppercase',
   },
   tagline: {
     fontFamily: typography.family.regular,
@@ -238,7 +237,6 @@ const styles = StyleSheet.create({
     fontSize: 17,
     letterSpacing: 0.5,
     color: colors.background,
-    textTransform: 'uppercase',
   },
   secondaryButton: {
     backgroundColor: colors.background,
@@ -256,6 +254,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     letterSpacing: 0.3,
     color: colors.textMuted,
-    textTransform: 'uppercase',
   },
 });

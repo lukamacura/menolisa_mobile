@@ -823,7 +823,6 @@ const styles = StyleSheet.create({
     color: colors.text,
     textAlign: 'center',
     lineHeight: 24,
-    textTransform: 'uppercase',
   },
   emptySubtext: {
     fontSize: 15,

@@ -411,7 +411,6 @@ const styles = StyleSheet.create({
     fontFamily: typography.display.semibold,
     color: colors.background,
     letterSpacing: 0.5,
-    textTransform: 'uppercase',
   },
   submitButtonTextDisabled: {
     color: colors.textMuted,
