@@ -10,6 +10,7 @@ import {
   TextInput,
   ScrollView,
   Alert,
+  Image,
 } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -27,7 +28,7 @@ import { apiFetchWithAuth, API_CONFIG } from '../../lib/api';
 import { useTrialStatus } from '../../hooks/useTrialStatus';
 import { AccessEndedView } from '../../components/AccessEndedView';
 import { TRIGGER_OPTIONS, type TimeSelection } from '../../lib/symptomTrackerConstants';
-import { getSymptomIconName } from '../../lib/symptomIconMapping';
+import { getSymptomIllustration } from '../../lib/symptomIllustration';
 
 type HomeStackParamList = {
   Dashboard: undefined;
@@ -285,18 +286,19 @@ export function SymptomsScreen() {
           </View>
         </StaggeredZoomIn>
       )}
-      <StaggeredZoomIn delayIndex={1} reduceMotion={reduceMotion} style={{ flex: 1 }}>
       <FlatList
         data={symptoms}
         keyExtractor={(item) => item.id}
+        numColumns={2}
+        columnWrapperStyle={styles.gridRow}
         contentContainerStyle={styles.listContent}
         ListHeaderComponent={
-          <View>
+          <View style={styles.listHeader}>
             {todayCount !== null ? (
               <View style={styles.todayBanner}>
                 <Text style={styles.todayBannerText}>
                   {todayCount === 0
-                    ? "Log how you're feeling — tap any symptom below"
+                    ? "Log how you're feeling - tap any symptom below"
                     : todayCount === 1
                       ? "You've logged 1 symptom today"
                       : `You've logged ${todayCount} symptoms today`}
@@ -319,23 +321,42 @@ export function SymptomsScreen() {
             No symptoms set up yet. You can add and manage symptoms in the web app, or ask your coach in Chat to log one for you.
           </Text>
         }
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            activeOpacity={1}
-            style={styles.symptomRow}
-            onPress={() => openLogModal(item)}
-          >
-            <Ionicons
-              name={getSymptomIconName(item.name, item.icon) as any}
-              size={22}
-              color={colors.primary}
-            />
-            <Text style={styles.symptomName}>{item.name}</Text>
-            <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
-          </TouchableOpacity>
-        )}
+        renderItem={({ item, index }) => {
+          const illustration = getSymptomIllustration(item.name, item.icon);
+          return (
+            <StaggeredZoomIn delayIndex={index + 2} reduceMotion={reduceMotion} style={styles.gridItem}>
+              <TouchableOpacity
+                activeOpacity={0.85}
+                style={styles.symptomCard}
+                onPress={() => openLogModal(item)}
+                accessibilityRole="button"
+                accessibilityLabel={item.name}
+              >
+                <View style={styles.symptomCardImageWrap}>
+                  {illustration.type === 'image' ? (
+                    <Image
+                      source={illustration.source}
+                      style={styles.symptomCardImage}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View style={styles.symptomCardIconFallback}>
+                      <Ionicons
+                        name={illustration.iconName as any}
+                        size={32}
+                        color={colors.primary}
+                      />
+                    </View>
+                  )}
+                </View>
+                <Text style={styles.symptomCardLabel} numberOfLines={2}>
+                  {item.name}
+                </Text>
+              </TouchableOpacity>
+            </StaggeredZoomIn>
+          );
+        }}
       />
-      </StaggeredZoomIn>
       </ContentTransition>
       <Modal
         visible={modalVisible}
@@ -616,6 +637,50 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     paddingBottom: spacing['2xl'],
   },
+  listHeader: {
+    marginBottom: spacing.sm,
+  },
+  gridRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  gridItem: {
+    flex: 1,
+  },
+  symptomCard: {
+    backgroundColor: colors.card,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+    minHeight: minTouchTarget + 80,
+    ...shadows.card,
+  },
+  symptomCardImageWrap: {
+    width: '100%',
+    aspectRatio: 1,
+    backgroundColor: colors.surface,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  symptomCardImage: {
+    width: '100%',
+    height: '100%',
+  },
+  symptomCardIconFallback: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  symptomCardLabel: {
+    ...typography.presets.label,
+    color: colors.text,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    minHeight: minTouchTarget,
+  },
   todayBanner: {
     backgroundColor: colors.surface,
     paddingVertical: spacing.md,
@@ -644,29 +709,10 @@ const styles = StyleSheet.create({
     color: colors.primary,
   },
   emptyText: {
-    fontSize: 16,
-    fontFamily: typography.family.regular,
+    ...typography.presets.bodySmall,
     color: colors.textMuted,
     textAlign: 'center',
     marginTop: spacing.xl,
-  },
-  symptomRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.card,
-    padding: spacing.md,
-    borderRadius: radii.md,
-    marginBottom: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: spacing.sm,
-    minHeight: minTouchTarget + spacing.sm,
-  },
-  symptomName: {
-    flex: 1,
-    fontSize: 16,
-    fontFamily: typography.family.medium,
-    color: colors.text,
   },
   modalOverlay: {
     flex: 1,

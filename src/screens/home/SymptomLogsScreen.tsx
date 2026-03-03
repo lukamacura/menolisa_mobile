@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
+  Image,
   StyleSheet,
   FlatList,
   ScrollView,
@@ -14,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { apiFetchWithAuth, API_CONFIG } from '../../lib/api';
 import { useTrialStatus } from '../../hooks/useTrialStatus';
 import { AccessEndedView } from '../../components/AccessEndedView';
-import { getSymptomIconName } from '../../lib/symptomIconMapping';
+import { getSymptomIllustration } from '../../lib/symptomIllustration';
 import { colors, spacing, radii, typography, minTouchTarget } from '../../theme/tokens';
 
 type SymptomLog = {
@@ -160,15 +161,24 @@ export function SymptomLogsScreen() {
             <Text style={styles.sectionTitle}>{item.dateLabel}</Text>
             {item.logs.map((log) => {
               const symptomName = log.symptoms?.name ?? 'Symptom';
-              const iconName = getSymptomIconName(symptomName, log.symptoms?.icon);
+              const illustration = getSymptomIllustration(symptomName, log.symptoms?.icon);
               return (
                 <View key={log.id} style={styles.logRow}>
-                  <View style={styles.logIconWrap}>
-                    <Ionicons
-                      name={iconName as any}
-                      size={24}
-                      color={colors.primary}
-                    />
+                  <View style={styles.logIconWrap} accessibilityLabel={symptomName}>
+                    {illustration.type === 'image' ? (
+                      <Image
+                        source={illustration.source}
+                        resizeMode="cover"
+                        style={styles.logIconImage}
+                        accessibilityLabel={symptomName}
+                      />
+                    ) : (
+                      <Ionicons
+                        name={illustration.iconName as any}
+                        size={24}
+                        color={colors.primary}
+                      />
+                    )}
                   </View>
                   <View style={styles.logMain}>
                     <Text style={styles.logName}>{symptomName}</Text>
@@ -270,6 +280,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primaryLight + '40',
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  logIconImage: {
+    width: 40,
+    height: 40,
+    borderRadius: radii.md,
   },
   logMain: {
     flex: 1,

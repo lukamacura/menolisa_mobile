@@ -83,7 +83,7 @@ const wavyStyles = StyleSheet.create({
     width: '100%',
     height: WAVE_HEIGHT,
     backgroundColor: colors.primaryLight,
-    marginTop: -1,
+    marginTop: -6,
   },
 });
 
@@ -96,7 +96,7 @@ const heroVideoStyles = StyleSheet.create({
 });
 
 // ---------------------------------------------------------------------------
-// AmbientVideoHero — looping background video with static image fallback
+// AmbientVideoHero - looping background video with static image fallback
 // ---------------------------------------------------------------------------
 
 interface AmbientVideoHeroProps {
@@ -107,7 +107,7 @@ function AmbientVideoHero({ reduceMotion }: AmbientVideoHeroProps) {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const player = useVideoPlayer(require('../../../assets/dashboard_lisa.mp4'), (p) => {
     p.muted = true;
-    // loop disabled — we replay manually after a 1.5–3 s pause (fits ~2–3 s clip)
+    // loop disabled - we replay manually after a 1.5–3 s pause (fits ~2–3 s clip)
   });
 
   const mountedRef = useRef(true);
@@ -125,7 +125,7 @@ function AmbientVideoHero({ reduceMotion }: AmbientVideoHeroProps) {
     let replayTimeout: ReturnType<typeof setTimeout>;
 
     const subscription = player.addListener('playingChange', ({ isPlaying }) => {
-      // video finished — schedule a replay after a random 1.5–3 s pause
+      // video finished - schedule a replay after a random 1.5–3 s pause
       if (!isPlaying && mountedRef.current) {
         const delay = 1500 + Math.random() * 1500;
         replayTimeout = setTimeout(() => {
@@ -172,11 +172,11 @@ type NavProp = CompositeNavigationProp<
 const LISA_DAILY_MESSAGES = [
   "Happy Sunday. I hope you found some rest this weekend. I'm here whenever you want to talk.",
   "New week, fresh start. How are you feeling as things pick back up? I'm listening.",
-  "Checking in — how's your body feeling today? Even small things are worth noticing.",
+  "Checking in - how's your body feeling today? Even small things are worth noticing.",
   "Midweek already. Take a breath with me. What's your body telling you right now?",
   "You're doing really well just by showing up. What's been on your mind today?",
   "Almost the weekend. How are you feeling as the week winds down? I'm here to listen.",
-  "A quieter day — a good time to check in with yourself. What do you need most right now?",
+  "A quieter day - a good time to check in with yourself. What do you need most right now?",
 ] as const;
 
 function getDailyLisaMessage(): string {
@@ -276,7 +276,7 @@ function LisaHeroCard({ message, onPress }: { message: string; onPress: () => vo
   );
 }
 
-// Lisa card styles — blue retired, replaced with white glass + coral
+// Lisa card styles - blue retired, replaced with white glass + coral
 const lisaCardStyles = StyleSheet.create({
   wrapper: {
     marginBottom: spacing.xl,
@@ -446,7 +446,7 @@ export function DashboardScreen() {
           }
         >
           {/* ----------------------------------------------------------------
-              Video hero — 60% screen height; video fills area (cover), no overlay
+              Video hero - 60% screen height; video fills area (cover), no overlay
           ---------------------------------------------------------------- */}
           <View style={styles.videoHero}>
             <AmbientVideoHero reduceMotion={reduceMotion} />
@@ -523,7 +523,7 @@ export function DashboardScreen() {
           </View>
 
           {/* ----------------------------------------------------------------
-              Below video — white background: symptom box
+              Below video - white background: symptom box
           ---------------------------------------------------------------- */}
           {!trialStatus.expired && (
             <View style={styles.belowVideoSection}>
@@ -546,13 +546,14 @@ export function DashboardScreen() {
                   </TouchableOpacity>
                   <TouchableOpacity
                     activeOpacity={0.8}
-                    style={styles.symptomCategoryButton}
+                    style={styles.symptomCategoryButtonSecondary}
                     onPress={() => navigation.navigate('Symptoms')}
                     accessibilityRole="button"
-                    accessibilityLabel="Log a new symptom"
+                    accessibilityLabel="Log how you feel"
                   >
-                    <Ionicons name="add-circle" size={24} color={colors.navy} />
-                    <Text style={styles.primaryButtonText}>Log symptom</Text>
+                    <Ionicons name="add-circle-outline" size={24} color={colors.primary} />
+                    {/* i18n: dashboard.cta.logHowYouFeel */}
+                    <Text style={styles.symptomCategoryButtonSecondaryText}>Log how you feel</Text>
                   </TouchableOpacity>
                 </View>
               </StaggeredZoomIn>
@@ -568,7 +569,7 @@ export function DashboardScreen() {
                 <WavyDivider />
               </StaggeredZoomIn>
 
-              {/* Bottom section — pink (theme) */}
+              {/* Bottom section - pink (theme) */}
               <View style={styles.contentSection}>
                 <StaggeredZoomIn delayIndex={9} reduceMotion={reduceMotion}>
                   <View style={styles.disclaimerCard}>
@@ -657,7 +658,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 
-  // --- Greeting — white for readability over video overlay ---
+  // --- Greeting - white for readability over video overlay ---
   greeting: {
     fontSize: 24,
     fontFamily: typography.display.bold,
@@ -715,7 +716,7 @@ const styles = StyleSheet.create({
     color: colors.background,
   },
 
-  // --- Trial near banner — translucent on video overlay ---
+  // --- Trial near banner - translucent on video overlay ---
   trialNearBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -753,7 +754,7 @@ const styles = StyleSheet.create({
     textShadowRadius: 4,
   },
 
-  // --- Streak pill — white glass on video overlay ---
+  // --- Streak pill - white glass on video overlay ---
   streakPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -776,7 +777,7 @@ const styles = StyleSheet.create({
     textShadowRadius: 4,
   },
 
-  // --- Symptom category box — white with coral accent (gold retired) ---
+  // --- Symptom category box - white with coral accent (gold retired) ---
   symptomCategoryBox: {
     backgroundColor: 'rgba(255, 255, 255, 0.95)',
     borderWidth: 1,
@@ -815,6 +816,23 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.45,
     shadowRadius: 2,
     elevation: 4,
+  },
+  symptomCategoryButtonSecondary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+    borderWidth: 2,
+    borderColor: colors.primary,
+    paddingVertical: Math.max(spacing.md, (minTouchTarget - 24) / 2),
+    paddingHorizontal: spacing.xl,
+    borderRadius: radii.lg,
+    gap: spacing.sm,
+    minHeight: minTouchTarget + 8,
+  },
+  symptomCategoryButtonSecondaryText: {
+    ...typography.presets.button,
+    color: colors.primary,
   },
   recentActivityCard: {
     flexDirection: 'row',
