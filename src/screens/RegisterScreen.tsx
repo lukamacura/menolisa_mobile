@@ -7,7 +7,7 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
-  Dimensions,
+  useWindowDimensions,
   Animated,
   Easing,
   SafeAreaView,
@@ -15,6 +15,7 @@ import {
   Platform,
   Pressable,
   Image,
+  ImageSourcePropType,
   Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,19 +23,66 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../lib/supabase';
-import { getApiUrl, getWebAppUrl } from '../lib/api';
+import { getApiUrl, getWebAppUrl, API_CONFIG } from '../lib/api';
 import { logger } from '../lib/logger';
 import { colors, radii, shadows, spacing, typography, minTouchTarget, landingGradient } from '../theme/tokens';
 import { StaggeredZoomIn, useReduceMotion } from '../components/StaggeredZoomIn';
 
 type NavigationProp = NativeStackNavigationProp<any>;
 
-type Step = 'q1_problems' | 'q2_severity' | 'q6_goal' | 'q7_name';
-type Phase = 'quiz' | 'results' | 'social_proof' | 'email';
+type Step =
+  | 'q1_age'
+  | 'q2_here_for'
+  | 'q3_goals'
+  | 'q4_symptoms'
+  | 'breather'
+  | 'q5_what_tried'
+  | 'q6_how_long'
+  | 'q7_qualifier'
+  | 'q8_name';
+type Phase = 'quiz' | 'loading' | 'results' | 'social_proof' | 'email';
 
-const STEPS: Step[] = ['q1_problems', 'q2_severity', 'q6_goal', 'q7_name'];
+const STEPS: Step[] = [
+  'q1_age',
+  'q2_here_for',
+  'q3_goals',
+  'q4_symptoms',
+  'breather',
+  'q5_what_tried',
+  'q6_how_long',
+  'q7_qualifier',
+  'q8_name',
+];
 
-const { width } = Dimensions.get('window');
+// Quiz illustration assets (assets/quiz/). Heights: 160 Q1–Q7, 140 breather/Q8, 180 results, loading ~80.
+const QUIZ_ILLUSTRATION_SOURCES: Record<string, ImageSourcePropType> = {
+  q1_age: require('../../assets/quiz/illustration_q1_age.png'),
+  q2_here_for: require('../../assets/quiz/illustration_q2_here_for.png'),
+  q3_goals: require('../../assets/quiz/illustration_q3_goals.png'),
+  q4_symptoms: require('../../assets/quiz/illustration_q4_symptoms.png'),
+  breather: require('../../assets/quiz/illustration_breather.png'),
+  q5_what_tried: require('../../assets/quiz/illustration_q5_what_tried.png'),
+  q6_how_long: require('../../assets/quiz/illustration_q6_how_long.png'),
+  q7_qualifier: require('../../assets/quiz/illustration_q7_qualifier.png'),
+  q8_name: require('../../assets/quiz/illustration_q8_name.png'),
+  loading: require('../../assets/quiz/illustration_loading.png'),
+  results: require('../../assets/quiz/illustration_results.png'),
+  social_proof: require('../../assets/quiz/illustration_social_proof.png'),
+  email: require('../../assets/quiz/illustration_email.png'),
+};
+
+/** Renders a quiz/phase illustration with consistent sizing. Use for all steps and phases. */
+function QuizIllustration({ source, height }: { source: ImageSourcePropType; height: number }) {
+  return (
+    <View style={[styles.quizIllustrationWrap, { height, maxHeight: height }]}>
+      <Image
+        source={source}
+        style={[styles.quizIllustrationImage, { height }]}
+        resizeMode="contain"
+      />
+    </View>
+  );
+}
 
 // Question options - matching web exactly
 const PROBLEM_OPTIONS = [
@@ -47,12 +95,6 @@ const PROBLEM_OPTIONS = [
   { id: 'anxiety', label: 'Anxiety', icon: 'alert-circle' },
   // Ionicons doesn't consistently expose "body" across sets; "walk" is safer.
   { id: 'joint_pain', label: 'Joint pain', icon: 'walk' },
-];
-
-const SEVERITY_OPTIONS = [
-  { id: 'mild', label: 'Mild - Annoying but manageable', icon: 'flag' },
-  { id: 'moderate', label: 'Moderate - Affecting my work/relationships', icon: 'bar-chart' },
-  { id: 'severe', label: "Severe - I'm struggling every day", icon: 'warning' },
 ];
 
 const TIMING_OPTIONS = [
@@ -81,24 +123,52 @@ const GOAL_OPTIONS = [
   { id: 'get_body_back', label: 'Get my body back', icon: 'battery-full' },
 ];
 
+const AGE_OPTIONS = [
+  { id: 'under_40', label: 'Under 40', icon: 'calendar-outline' },
+  { id: '40_45', label: '40–45', icon: 'calendar' },
+  { id: '46_50', label: '46–50', icon: 'calendar' },
+  { id: '51_plus', label: '51+', icon: 'calendar' },
+  { id: 'prefer_not', label: 'Prefer not to say', icon: 'ellipsis-horizontal' },
+];
 
-// Quality of Life Score calculation - same as web
+const HERE_FOR_OPTIONS = [
+  { id: 'perimenopause', label: 'Perimenopause', icon: 'pulse' },
+  { id: 'menopause', label: 'Menopause', icon: 'flower' },
+  { id: 'supporting', label: 'Supporting someone', icon: 'people' },
+  { id: 'curious', label: 'Just curious', icon: 'help-circle' },
+];
+
+const QUALIFIER_OPTIONS = [
+  { id: 'ready_to_act', label: 'Ready to take action', icon: 'rocket' },
+  { id: 'exploring', label: 'Exploring options', icon: 'compass' },
+  { id: 'understand_first', label: 'Want to understand first', icon: 'book' },
+];
+
+/** Derive severity for results copy from symptoms count + duration (no q2_severity in funnel). */
+const deriveSeverity = (symptomCount: number, howLong: string): 'mild' | 'moderate' | 'severe' => {
+  const longDuration = howLong === 'over_year' || howLong === 'several_years';
+  if (symptomCount >= 4 && longDuration) return 'severe';
+  if (symptomCount >= 3 || longDuration) return 'moderate';
+  return 'mild';
+};
+
+// Quality of Life Score calculation - same as web; severity can be explicit or derived
 const calculateQualityScore = (
   symptoms: string[],
-  severity: string,
+  severityOrDerived: string,
   timing: string,
   triedOptions: string[]
 ): number => {
   let score = 100;
   score -= symptoms.length * 7;
-  
+
   const severityPenalty: Record<string, number> = {
     mild: 5,
     moderate: 15,
     severe: 25,
   };
-  score -= severityPenalty[severity] || 10;
-  
+  score -= severityPenalty[severityOrDerived] || 10;
+
   const durationPenalty: Record<string, number> = {
     just_started: 0,
     been_while: 5,
@@ -106,11 +176,11 @@ const calculateQualityScore = (
     several_years: 15,
   };
   score -= durationPenalty[timing] || 5;
-  
+
   if (triedOptions.length > 0 && !triedOptions.includes('nothing')) {
     score += 3;
   }
-  
+
   return Math.max(31, Math.min(52, Math.round(score)));
 };
 
@@ -200,12 +270,14 @@ export function RegisterScreen() {
   const currentStep = STEPS[stepIndex];
 
 
-  // Quiz answers
-  const [topProblems, setTopProblems] = useState<string[]>([]);
-  const [severity, setSeverity] = useState<string>('');
-  const [timing, setTiming] = useState<string>('');
-  const [triedOptions, setTriedOptions] = useState<string[]>([]);
+  // Quiz answers (funnel 8-step + name last)
+  const [ageBand, setAgeBand] = useState<string>('');
+  const [hereFor, setHereFor] = useState<string>('');
   const [goal, setGoal] = useState<string[]>([]);
+  const [topProblems, setTopProblems] = useState<string[]>([]);
+  const [triedOptions, setTriedOptions] = useState<string[]>([]);
+  const [timing, setTiming] = useState<string>('');
+  const [qualifier, setQualifier] = useState<string>('');
   const [firstName, setFirstName] = useState<string>('');
 
   // Email & Password state
@@ -217,51 +289,74 @@ export function RegisterScreen() {
   const [error, setError] = useState<string | null>(null);
   const [userExists, setUserExists] = useState(false);
 
-  // Results loading state
-  const [isResultsLoading, setIsResultsLoading] = useState(true);
-  const [messageIndex, setMessageIndex] = useState(0);
+  // Loading phase (after Q8): 10–15s then transition to results
+  const LOADING_PHASE_DURATION_MS = 12000;
+  const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
   const [displayScore, setDisplayScore] = useState(0);
 
   // Animated values for step indicators
   const stepWidths = useRef(STEPS.map(() => new Animated.Value(8))).current;
 
-  // Loading (quiz → results) animation: smooth spin + scale
+  // Loading phase animation: continuous rotation + subtle pulse so the illustration is clearly "active"
   const loadingSpinValue = useRef(new Animated.Value(0)).current;
-  const loadingScaleValue = useRef(new Animated.Value(0.5)).current;
+  const loadingScaleValue = useRef(new Animated.Value(1)).current;
   const loadingMessageOpacity = useRef(new Animated.Value(1)).current;
   const easeInOut = Easing.bezier(0.42, 0, 0.58, 1);
   useEffect(() => {
-    if (!isResultsLoading) return;
-    const loop = Animated.loop(
+    if (phase !== 'loading') return;
+    // Continuous 360° rotation (one full turn every 4s), then reset and repeat
+    const spinLoop = Animated.loop(
       Animated.sequence([
-        Animated.parallel([
-          Animated.timing(loadingSpinValue, {
-            toValue: 1,
-            duration: 2400,
-            useNativeDriver: true,
-            easing: easeInOut,
-          }),
-          Animated.timing(loadingScaleValue, {
-            toValue: 1,
-            duration: 2400,
-            useNativeDriver: true,
-            easing: easeInOut,
-          }),
-        ]),
-        Animated.parallel([
-          Animated.timing(loadingSpinValue, { toValue: 0, duration: 0, useNativeDriver: true }),
-          Animated.timing(loadingScaleValue, {
-            toValue: 0.5,
-            duration: 2400,
-            useNativeDriver: true,
-            easing: easeInOut,
-          }),
-        ]),
+        Animated.timing(loadingSpinValue, {
+          toValue: 1,
+          duration: 4000,
+          useNativeDriver: true,
+          easing: Easing.linear,
+        }),
+        Animated.timing(loadingSpinValue, { toValue: 0, duration: 0, useNativeDriver: true }),
       ])
     );
-    loop.start();
-    return () => loop.stop();
-  }, [isResultsLoading, loadingSpinValue, loadingScaleValue]);
+    // Subtle scale pulse (1 -> 1.08 -> 1) so it feels alive
+    const scaleLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(loadingScaleValue, {
+          toValue: 1.08,
+          duration: 1200,
+          useNativeDriver: true,
+          easing: easeInOut,
+        }),
+        Animated.timing(loadingScaleValue, {
+          toValue: 1,
+          duration: 1200,
+          useNativeDriver: true,
+          easing: easeInOut,
+        }),
+      ])
+    );
+    spinLoop.start();
+    scaleLoop.start();
+    return () => {
+      spinLoop.stop();
+      scaleLoop.stop();
+    };
+  }, [phase, loadingSpinValue, loadingScaleValue]);
+
+  // After Q8: show loading screen for 10–15s then go to results
+  useEffect(() => {
+    if (phase !== 'loading') return;
+    const done = () => setPhase('results');
+    const t = setTimeout(done, LOADING_PHASE_DURATION_MS);
+    return () => clearTimeout(t);
+  }, [phase]);
+
+  // Rotate loading messages during loading phase
+  useEffect(() => {
+    if (phase !== 'loading') return;
+    const interval = setInterval(() => {
+      setLoadingMessageIndex((prev) => (prev + 1) % loadingMessages.length);
+    }, 2200);
+    return () => clearInterval(interval);
+  }, [phase]);
 
   const loadingSpin = loadingSpinValue.interpolate({
     inputRange: [0, 1],
@@ -300,49 +395,12 @@ export function RegisterScreen() {
     });
   }, [stepIndex, stepWidths]);
 
-  // Handle results loading animation (message rotation with crossfade, one at a time)
+  const derivedSeverity = deriveSeverity(topProblems.length, timing);
   useEffect(() => {
     if (phase !== 'results') return;
-    setIsResultsLoading(true);
-    setMessageIndex(0);
     setDisplayScore(0);
-
-    let timeoutId: ReturnType<typeof setTimeout>;
-    const scheduleNextMessage = () => {
-      timeoutId = setTimeout(() => {
-        Animated.timing(loadingMessageOpacity, {
-          toValue: 0,
-          duration: 200,
-          useNativeDriver: true,
-          easing: easeInOut,
-        }).start(() => {
-          setMessageIndex((prev) => (prev + 1) % loadingMessages.length);
-          Animated.timing(loadingMessageOpacity, {
-            toValue: 1,
-            duration: 320,
-            useNativeDriver: true,
-            easing: easeInOut,
-          }).start(scheduleNextMessage);
-        });
-      }, 650);
-    };
-    scheduleNextMessage();
-
-    const loadingTimer = setTimeout(() => {
-      setIsResultsLoading(false);
-    }, 5000);
-
-    return () => {
-      clearTimeout(timeoutId);
-      clearTimeout(loadingTimer);
-    };
-  }, [phase, loadingMessageOpacity]);
-
-  // Animate score counting up
-  useEffect(() => {
-    if (phase === 'results' && !isResultsLoading) {
-      const targetScore = calculateQualityScore(topProblems, severity, timing, triedOptions);
-      const duration = 1500;
+    const targetScore = calculateQualityScore(topProblems, derivedSeverity, timing, triedOptions);
+    const duration = 1500;
       const steps = 30;
       const increment = targetScore / steps;
       let current = 0;
@@ -358,8 +416,7 @@ export function RegisterScreen() {
       }, duration / steps);
 
       return () => clearInterval(timer);
-    }
-  }, [phase, isResultsLoading, topProblems, severity, timing, triedOptions]);
+  }, [phase, topProblems, derivedSeverity, timing, triedOptions]);
 
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   const passwordValid = password.length >= 8;
@@ -368,28 +425,40 @@ export function RegisterScreen() {
   const termsUrl = getWebAppUrl('/terms');
   const privacyUrl = getWebAppUrl('/privacy');
 
-  // Check if current step is answered - matching web logic exactly
-  const stepIsAnswered = useCallback((step: Step) => {
-    switch (step) {
-      case 'q1_problems':
-        return topProblems.length > 0; // Any number of symptoms (not limited to 3)
-      case 'q2_severity':
-        return severity !== '';
-      case 'q6_goal':
-        return goal.length > 0;
-      case 'q7_name':
-        return firstName.trim().length > 0;
-      default:
-        return false;
-    }
-  }, [topProblems, severity, goal, firstName]);
+  const stepIsAnswered = useCallback(
+    (step: Step) => {
+      switch (step) {
+        case 'q1_age':
+          return ageBand !== '';
+        case 'q2_here_for':
+          return hereFor !== '';
+        case 'q3_goals':
+          return goal.length > 0;
+        case 'q4_symptoms':
+          return topProblems.length > 0;
+        case 'breather':
+          return true;
+        case 'q5_what_tried':
+          return triedOptions.length > 0;
+        case 'q6_how_long':
+          return timing !== '';
+        case 'q7_qualifier':
+          return qualifier !== '';
+        case 'q8_name':
+          return firstName.trim().length > 0;
+        default:
+          return false;
+      }
+    },
+    [ageBand, hereFor, goal, topProblems, triedOptions, timing, qualifier, firstName]
+  );
 
   const goNext = useCallback(() => {
     if (!stepIsAnswered(currentStep)) return;
     if (stepIndex < STEPS.length - 1) {
       setStepIndex(stepIndex + 1);
     } else {
-      setPhase('results');
+      setPhase('loading');
     }
   }, [currentStep, stepIndex, stepIsAnswered]);
 
@@ -470,28 +539,25 @@ export function RegisterScreen() {
         return;
       }
 
-      // If we have a user, save quiz answers
       if (authData.user) {
         try {
-          // Save quiz answers via API
-          const quizAnswers = {
-            top_problems: topProblems,
-            severity: severity,
-            timing: timing,
-            tried_options: triedOptions,
-            goal: goal,
+          const quizPayload = {
+            age_band: ageBand || undefined,
+            here_for: hereFor || undefined,
+            goals: goal,
+            symptoms: topProblems,
+            what_tried: triedOptions,
+            how_long: timing || undefined,
+            qualifier: qualifier || undefined,
             name: firstName.trim() || null,
           };
-
-          await fetch(getApiUrl('/api/auth/save-quiz'), {
+          await fetch(getApiUrl(API_CONFIG.endpoints.saveQuiz), {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               userId: authData.user.id,
-              quizAnswers,
-              ...(referralCode ? { referralCode } : {}),
+              referralCode: referralCode ?? undefined,
+              quiz: quizPayload,
             }),
           });
         } catch (quizError) {
@@ -533,43 +599,141 @@ export function RegisterScreen() {
     </View>
   );
 
+  const { height: windowHeight } = useWindowDimensions();
+  const isSmallScreen = windowHeight < 640;
+  const quizIlloHeightQ17 = isSmallScreen ? 140 : 160;
+  const quizIlloHeightBreatherQ8 = isSmallScreen ? 120 : 140;
+
   const renderQuestion = () => {
     switch (currentStep) {
-      case 'q1_problems':
+      case 'q1_age':
         return (
           <View style={styles.questionContainer}>
+            <QuizIllustration source={QUIZ_ILLUSTRATION_SOURCES.q1_age} height={quizIlloHeightQ17} />
+            <Text style={styles.questionTitle}>What's your age or life stage?</Text>
+            <Text style={styles.questionSubtitle}>Choose one</Text>
+            <View style={styles.optionsScrollWrap}>
+              <ScrollView style={styles.optionsScroll} contentContainerStyle={styles.optionsScrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                <View style={styles.optionsContainer}>
+              {AGE_OPTIONS.map((option) => {
+                const isSelected = ageBand === option.id;
+                return (
+                  <Pressable
+                    key={option.id}
+                    style={[styles.optionCard, isSelected && styles.optionCardSelected]}
+                    onPress={() => setAgeBand(option.id)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: isSelected }}
+                  >
+                    <View style={[styles.iconContainer, isSelected && styles.iconContainerSelected]}>
+                      <Ionicons name={option.icon as any} size={18} color={isSelected ? colors.primary : colors.textMuted} />
+                    </View>
+                    <Text style={[styles.optionText, isSelected && styles.optionTextSelected]}>{option.label}</Text>
+                    {isSelected && <Ionicons name="checkmark" size={18} color={colors.primary} style={styles.checkIcon} />}
+                  </Pressable>
+                );
+              })}
+                </View>
+              </ScrollView>
+            </View>
+          </View>
+        );
+
+      case 'q2_here_for':
+        return (
+          <View style={styles.questionContainer}>
+            <QuizIllustration source={QUIZ_ILLUSTRATION_SOURCES.q2_here_for} height={quizIlloHeightQ17} />
+            <Text style={styles.questionTitle}>I'm here for…</Text>
+            <Text style={styles.questionSubtitle}>Choose one</Text>
+            <View style={styles.optionsScrollWrap}>
+              <ScrollView style={styles.optionsScroll} contentContainerStyle={styles.optionsScrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                <View style={styles.optionsContainer}>
+              {HERE_FOR_OPTIONS.map((option) => {
+                const isSelected = hereFor === option.id;
+                return (
+                  <Pressable
+                    key={option.id}
+                    style={[styles.optionCard, isSelected && styles.optionCardSelected]}
+                    onPress={() => setHereFor(option.id)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: isSelected }}
+                  >
+                    <View style={[styles.iconContainer, isSelected && styles.iconContainerSelected]}>
+                      <Ionicons name={option.icon as any} size={18} color={isSelected ? colors.primary : colors.textMuted} />
+                    </View>
+                    <Text style={[styles.optionText, isSelected && styles.optionTextSelected]}>{option.label}</Text>
+                    {isSelected && <Ionicons name="checkmark" size={18} color={colors.primary} style={styles.checkIcon} />}
+                  </Pressable>
+                );
+              })}
+                </View>
+              </ScrollView>
+            </View>
+          </View>
+        );
+
+      case 'q3_goals':
+        return (
+          <View style={styles.questionContainer}>
+            <QuizIllustration source={QUIZ_ILLUSTRATION_SOURCES.q3_goals} height={quizIlloHeightQ17} />
+            <Text style={styles.questionTitle}>What would success look like for you?</Text>
+            <Text style={styles.questionSubtitle}>Select all that apply</Text>
+            <View style={styles.optionsScrollWrap}>
+              <ScrollView style={styles.optionsScroll} contentContainerStyle={styles.optionsScrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                <View style={styles.optionsContainer}>
+              {GOAL_OPTIONS.map((option) => {
+                const isSelected = goal.includes(option.id);
+                return (
+                  <Pressable
+                    key={option.id}
+                    style={[styles.optionCard, isSelected && styles.optionCardSelected]}
+                    onPress={() => toggleGoal(option.id)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: isSelected }}
+                  >
+                    <View style={[styles.iconContainer, isSelected && styles.iconContainerSelected]}>
+                      <Ionicons name={option.icon as any} size={18} color={isSelected ? colors.primary : colors.textMuted} />
+                    </View>
+                    <Text style={[styles.optionText, isSelected && styles.optionTextSelected]}>{option.label}</Text>
+                    {isSelected && <Ionicons name="checkmark" size={18} color={colors.primary} style={styles.checkIcon} />}
+                  </Pressable>
+                );
+              })}
+                </View>
+              </ScrollView>
+            </View>
+          </View>
+        );
+
+      case 'q4_symptoms':
+        return (
+          <View style={styles.questionContainer}>
+            <QuizIllustration source={QUIZ_ILLUSTRATION_SOURCES.q4_symptoms} height={quizIlloHeightQ17} />
             <Text style={styles.questionTitle}>What's making life hardest right now?</Text>
             <Text style={styles.questionSubtitle}>Select all that apply</Text>
-            <View style={styles.optionsContainer}>
+            <View style={styles.optionsScrollWrap}>
+              <ScrollView style={styles.optionsScroll} contentContainerStyle={styles.optionsScrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                <View style={styles.optionsContainer}>
               {PROBLEM_OPTIONS.map((option) => {
                 const isSelected = topProblems.includes(option.id);
                 return (
                   <Pressable
                     key={option.id}
-                    style={[
-                      styles.optionCard,
-                      isSelected && styles.optionCardSelected,
-                    ]}
+                    style={[styles.optionCard, isSelected && styles.optionCardSelected]}
                     onPress={() => toggleProblem(option.id)}
                     accessibilityRole="button"
                     accessibilityState={{ selected: isSelected }}
                   >
                     <View style={[styles.iconContainer, isSelected && styles.iconContainerSelected]}>
-                      <Ionicons
-                        name={option.icon as any}
-                        size={18}
-                        color={isSelected ? colors.primary : colors.textMuted}
-                      />
+                      <Ionicons name={option.icon as any} size={18} color={isSelected ? colors.primary : colors.textMuted} />
                     </View>
-                    <Text style={[styles.optionText, isSelected && styles.optionTextSelected]}>
-                      {option.label}
-                    </Text>
-                    {isSelected && (
-                      <Ionicons name="checkmark" size={18} color={colors.primary} style={styles.checkIcon} />
-                    )}
+                    <Text style={[styles.optionText, isSelected && styles.optionTextSelected]}>{option.label}</Text>
+                    {isSelected && <Ionicons name="checkmark" size={18} color={colors.primary} style={styles.checkIcon} />}
                   </Pressable>
                 );
               })}
+                </View>
+              </ScrollView>
             </View>
             {topProblems.length > 0 && (
               <Text style={styles.selectionCount}>
@@ -579,97 +743,128 @@ export function RegisterScreen() {
           </View>
         );
 
-      case 'q2_severity':
+      case 'breather':
         return (
           <View style={styles.questionContainer}>
-            <Text style={styles.questionTitle}>How much is this affecting your daily life?</Text>
-            <View style={styles.optionsContainer}>
-              {SEVERITY_OPTIONS.map((option) => {
-                const isSelected = severity === option.id;
+            <QuizIllustration source={QUIZ_ILLUSTRATION_SOURCES.breather} height={quizIlloHeightBreatherQ8} />
+            <Text style={styles.questionTitle}>You're in good company</Text>
+            <Text style={styles.questionSubtitle}>
+              Thousands of women use MenoLisa to track symptoms and get support from Lisa. Take a breath - then we'll ask a couple more quick questions.
+            </Text>
+          </View>
+        );
+
+      case 'q5_what_tried':
+        return (
+          <View style={styles.questionContainer}>
+            <QuizIllustration source={QUIZ_ILLUSTRATION_SOURCES.q5_what_tried} height={quizIlloHeightQ17} />
+            <Text style={styles.questionTitle}>What have you tried so far?</Text>
+            <Text style={styles.questionSubtitle}>Select all that apply</Text>
+            <View style={styles.optionsScrollWrap}>
+              <ScrollView style={styles.optionsScroll} contentContainerStyle={styles.optionsScrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                <View style={styles.optionsContainer}>
+              {TRIED_OPTIONS.map((option) => {
+                const isSelected = triedOptions.includes(option.id);
                 return (
                   <Pressable
                     key={option.id}
-                    style={[
-                      styles.optionCard,
-                      isSelected && styles.optionCardSelected,
-                    ]}
-                    onPress={() => setSeverity(option.id)}
+                    style={[styles.optionCard, isSelected && styles.optionCardSelected]}
+                    onPress={() => toggleTriedOption(option.id)}
                     accessibilityRole="button"
                     accessibilityState={{ selected: isSelected }}
                   >
                     <View style={[styles.iconContainer, isSelected && styles.iconContainerSelected]}>
-                      <Ionicons
-                        name={option.icon as any}
-                        size={18}
-                        color={isSelected ? colors.primary : colors.textMuted}
-                      />
+                      <Ionicons name={option.icon as any} size={18} color={isSelected ? colors.primary : colors.textMuted} />
                     </View>
-                    <Text style={[styles.optionText, isSelected && styles.optionTextSelected]}>
-                      {option.label}
-                    </Text>
-                    {isSelected && (
-                      <Ionicons name="checkmark" size={18} color={colors.primary} style={styles.checkIcon} />
-                    )}
+                    <Text style={[styles.optionText, isSelected && styles.optionTextSelected]}>{option.label}</Text>
+                    {isSelected && <Ionicons name="checkmark" size={18} color={colors.primary} style={styles.checkIcon} />}
                   </Pressable>
                 );
               })}
+                </View>
+              </ScrollView>
             </View>
           </View>
         );
 
-      case 'q6_goal':
+      case 'q6_how_long':
         return (
           <View style={styles.questionContainer}>
-            <Text style={styles.questionTitle}>What would success look like for you?</Text>
-            <Text style={styles.questionSubtitle}>Pick any that apply:</Text>
-            <View style={styles.optionsContainer}>
-              {GOAL_OPTIONS.map((option) => {
-                const isSelected = goal.includes(option.id);
+            <QuizIllustration source={QUIZ_ILLUSTRATION_SOURCES.q6_how_long} height={quizIlloHeightQ17} />
+            <Text style={styles.questionTitle}>How long have symptoms been affecting you?</Text>
+            <Text style={styles.questionSubtitle}>Choose one</Text>
+            <View style={styles.optionsScrollWrap}>
+              <ScrollView style={styles.optionsScroll} contentContainerStyle={styles.optionsScrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                <View style={styles.optionsContainer}>
+              {TIMING_OPTIONS.map((option) => {
+                const isSelected = timing === option.id;
                 return (
                   <Pressable
                     key={option.id}
-                    style={[
-                      styles.optionCard,
-                      isSelected && styles.optionCardSelected,
-                    ]}
-                    onPress={() => toggleGoal(option.id)}
+                    style={[styles.optionCard, isSelected && styles.optionCardSelected]}
+                    onPress={() => setTiming(option.id)}
                     accessibilityRole="button"
                     accessibilityState={{ selected: isSelected }}
                   >
                     <View style={[styles.iconContainer, isSelected && styles.iconContainerSelected]}>
-                      <Ionicons
-                        name={option.icon as any}
-                        size={18}
-                        color={isSelected ? colors.primary : colors.textMuted}
-                      />
+                      <Ionicons name={option.icon as any} size={18} color={isSelected ? colors.primary : colors.textMuted} />
                     </View>
-                    <Text style={[styles.optionText, isSelected && styles.optionTextSelected]}>
-                      {option.label}
-                    </Text>
-                    {isSelected && (
-                      <Ionicons name="checkmark" size={18} color={colors.primary} style={styles.checkIcon} />
-                    )}
+                    <Text style={[styles.optionText, isSelected && styles.optionTextSelected]}>{option.label}</Text>
+                    {isSelected && <Ionicons name="checkmark" size={18} color={colors.primary} style={styles.checkIcon} />}
                   </Pressable>
                 );
               })}
+                </View>
+              </ScrollView>
             </View>
           </View>
         );
 
-      case 'q7_name':
+      case 'q7_qualifier':
+        return (
+          <View style={styles.questionContainer}>
+            <QuizIllustration source={QUIZ_ILLUSTRATION_SOURCES.q7_qualifier} height={quizIlloHeightQ17} />
+            <Text style={styles.questionTitle}>How ready are you to make a change?</Text>
+            <Text style={styles.questionSubtitle}>Choose one</Text>
+            <View style={styles.optionsScrollWrap}>
+              <ScrollView style={styles.optionsScroll} contentContainerStyle={styles.optionsScrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                <View style={styles.optionsContainer}>
+              {QUALIFIER_OPTIONS.map((option) => {
+                const isSelected = qualifier === option.id;
+                return (
+                  <Pressable
+                    key={option.id}
+                    style={[styles.optionCard, isSelected && styles.optionCardSelected]}
+                    onPress={() => setQualifier(option.id)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: isSelected }}
+                  >
+                    <View style={[styles.iconContainer, isSelected && styles.iconContainerSelected]}>
+                      <Ionicons name={option.icon as any} size={18} color={isSelected ? colors.primary : colors.textMuted} />
+                    </View>
+                    <Text style={[styles.optionText, isSelected && styles.optionTextSelected]}>{option.label}</Text>
+                    {isSelected && <Ionicons name="checkmark" size={18} color={colors.primary} style={styles.checkIcon} />}
+                  </Pressable>
+                );
+              })}
+                </View>
+              </ScrollView>
+            </View>
+          </View>
+        );
+
+      case 'q8_name':
         return (
           <View style={styles.questionContainerCentered}>
+            <QuizIllustration source={QUIZ_ILLUSTRATION_SOURCES.q8_name} height={quizIlloHeightBreatherQ8} />
             <Text style={styles.questionTitle}>What should Lisa call you?</Text>
             <Text style={styles.questionSubtitle}>Lisa will use this to personalize your experience</Text>
             <View style={styles.nameInputContainer}>
               <Ionicons name="person-circle" size={20} color={colors.textMuted} style={styles.nameInputIcon} />
               <TextInput
-                style={[
-                  styles.nameInput,
-                  Platform.OS === 'web' && ({ outlineStyle: 'none', outlineWidth: 0 } as object),
-                ]}
+                style={[styles.nameInput, Platform.OS === 'web' && ({ outlineStyle: 'none', outlineWidth: 0 } as object)]}
                 placeholder="First name"
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor={colors.textMuted}
                 value={firstName}
                 onChangeText={setFirstName}
                 autoCapitalize="words"
@@ -677,9 +872,7 @@ export function RegisterScreen() {
                 returnKeyType="done"
                 underlineColorAndroid="transparent"
               />
-              {firstName.trim().length > 0 && (
-                <Ionicons name="checkmark-circle" size={20} color={colors.primary} />
-              )}
+              {firstName.trim().length > 0 && <Ionicons name="checkmark-circle" size={20} color={colors.primary} />}
             </View>
           </View>
         );
@@ -689,44 +882,42 @@ export function RegisterScreen() {
     }
   };
 
-  const renderResults = () => {
-    if (isResultsLoading) {
-      return (
-        <SafeAreaView style={styles.resultsLoadingContainer}>
-          <LinearGradient
-            colors={landingGradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={StyleSheet.absoluteFill}
-          />
-          <Animated.View
-            style={[
-              styles.loadingIconContainer,
-              { transform: [{ rotate: loadingSpin }, { scale: loadingScaleValue }] },
-            ]}
-          >
-            <Image
-              source={require('../../assets/logo_transparent.png')}
-              style={styles.loadingLogo}
-              resizeMode="contain"
-            />
-          </Animated.View>
-          <Text style={styles.loadingTitle}>Getting to know you better...</Text>
-          <Animated.View style={{ opacity: loadingMessageOpacity }}>
-            <Text
-              style={[
-                styles.loadingMessage,
-                { color: loadingMessageColors[messageIndex] ?? colors.textMuted },
-              ]}
-            >
-              {loadingMessages[messageIndex]}
-            </Text>
-          </Animated.View>
-        </SafeAreaView>
-      );
-    }
+  const renderLoadingPhase = () => (
+    <SafeAreaView style={styles.resultsLoadingContainer}>
+      <LinearGradient
+        colors={landingGradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+      <Animated.View
+        style={[
+          styles.loadingIconContainer,
+          { transform: [{ rotate: loadingSpin }, { scale: loadingScaleValue }] },
+        ]}
+      >
+        <Image
+          source={QUIZ_ILLUSTRATION_SOURCES.loading}
+          style={styles.loadingIllustrationImage}
+          resizeMode="contain"
+        />
+      </Animated.View>
+      <Text style={styles.loadingTitle}>Getting to know you better...</Text>
+      <Animated.View style={{ opacity: loadingMessageOpacity }}>
+        <Text
+          style={[
+            styles.loadingMessage,
+            { color: loadingMessageColors[loadingMessageIndex] ?? colors.textMuted },
+          ]}
+        >
+          {loadingMessages[loadingMessageIndex]}
+        </Text>
+      </Animated.View>
+    </SafeAreaView>
+  );
 
-    const score = calculateQualityScore(topProblems, severity, timing, triedOptions);
+  const renderResults = () => {
+    const score = calculateQualityScore(topProblems, derivedSeverity, timing, triedOptions);
 
     return (
       <SafeAreaView style={styles.resultsContainer}>
@@ -744,24 +935,15 @@ export function RegisterScreen() {
           scrollEventThrottle={16}
           bounces={true}
         >
-          {/* Lisa Icon */}
-          <View style={styles.resultsIconContainer}>
-            <LinearGradient
-              colors={[colors.primary, colors.primaryLight]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.resultsIcon}
-            >
-              <Ionicons name="pulse" size={28} color="#fff" />
-            </LinearGradient>
-          </View>
+          <QuizIllustration source={QUIZ_ILLUSTRATION_SOURCES.results} height={180} />
+
 
           <Text style={styles.resultsHeadline}>
-            {getSeverityHeadline(severity, firstName || 'you')}
+            {getSeverityHeadline(derivedSeverity, firstName || 'you')}
           </Text>
 
           <Text style={styles.resultsText}>
-            {getSeverityPainText(severity, topProblems.length, firstName || 'you')}
+            {getSeverityPainText(derivedSeverity, topProblems.length, firstName || 'you')}
           </Text>
 
           {/* Score Card - gradient, theme colors, interactive */}
@@ -876,10 +1058,9 @@ export function RegisterScreen() {
         scrollEventThrottle={16}
         bounces={true}
       >
-        {/* Top image: same size as login/register. Replace source with your PNG when ready (e.g. assets/social-proof.png) */}
         <View style={styles.socialProofImageWrap}>
           <Image
-            source={require('../../assets/social.png')}
+            source={QUIZ_ILLUSTRATION_SOURCES.social_proof}
             style={styles.socialProofImage}
             resizeMode="contain"
           />
@@ -1017,7 +1198,7 @@ export function RegisterScreen() {
             bounces={true}
           >
           <Image
-            source={require('../../assets/register.png')}
+            source={QUIZ_ILLUSTRATION_SOURCES.email}
             style={styles.registerImage}
             resizeMode="contain"
           />
@@ -1145,6 +1326,10 @@ export function RegisterScreen() {
     );
   };
 
+  if (phase === 'loading') {
+    return renderLoadingPhase();
+  }
+
   if (phase === 'results') {
     return renderResults();
   }
@@ -1158,7 +1343,7 @@ export function RegisterScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, styles.quizPhaseContainer, { height: windowHeight }]}>
       <LinearGradient
         colors={landingGradient}
         start={{ x: 0, y: 0 }}
@@ -1166,24 +1351,24 @@ export function RegisterScreen() {
         style={StyleSheet.absoluteFill}
       />
 
-      {/* Question Content */}
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        decelerationRate={0.98}
-        scrollEventThrottle={16}
-        bounces={true}
-      >
-        <StaggeredZoomIn delayIndex={0} reduceMotion={reduceMotion}>
-          <View style={styles.questionCard}>
-            {renderQuestion()}
-          </View>
+      {/* Wrapper with flex:1 so ScrollView is constrained and footer stays on screen */}
+      <View style={styles.quizScrollWrapper}>
+        <StaggeredZoomIn delayIndex={0} reduceMotion={reduceMotion} style={styles.quizScrollWrapper}>
+          <ScrollView
+            style={styles.quizScrollView}
+            contentContainerStyle={styles.quizScrollContent}
+            showsVerticalScrollIndicator={true}
+            keyboardShouldPersistTaps="handled"
+            bounces={true}
+          >
+            <View style={styles.questionCard}>
+              {renderQuestion()}
+            </View>
+          </ScrollView>
         </StaggeredZoomIn>
-      </ScrollView>
+      </View>
 
-      {/* Step indicators + Navigation Buttons at bottom */}
+      {/* Step indicators + Navigation Buttons at bottom - always visible, never scrolled away */}
       <StaggeredZoomIn delayIndex={1} reduceMotion={reduceMotion}>
       <View style={styles.footer}>
         <View style={styles.stepIndicatorsWrapper}>
@@ -1212,7 +1397,7 @@ export function RegisterScreen() {
             disabled={!stepIsAnswered(currentStep)}
           >
             <Text style={[styles.nextButtonText, !stepIsAnswered(currentStep) && styles.nextButtonTextDisabled]}>
-              {stepIndex === STEPS.length - 1 ? 'Continue' : 'Next'}
+              {currentStep === 'breather' || stepIndex === STEPS.length - 1 ? 'Continue' : 'Next'}
             </Text>
             <Ionicons
               name="arrow-forward"
@@ -1242,17 +1427,27 @@ const styles = StyleSheet.create({
   stepIndicatorsContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 8,
+    gap: spacing.xs,
   },
   stepIndicator: {
     height: 8,
     borderRadius: 6,
   },
-  // Question styles
-  scrollView: {
-    flex: 1,
+  // Quiz phase: fixed height so footer stays on screen; content scrolls when needed
+  quizPhaseContainer: {
+    maxHeight: '100%',
   },
-  scrollContent: {
+  /** Constrains scroll area so footer stays visible; must be flex:1 + minHeight:0 for ScrollView to get bounded height */
+  quizScrollWrapper: {
+    flex: 1,
+    minHeight: 0,
+  },
+  quizScrollView: {
+    flex: 1,
+    minHeight: 0,
+  },
+  quizScrollContent: {
+    flexGrow: 1,
     paddingHorizontal: spacing.md,
     paddingTop: spacing['2xl'],
     paddingBottom: spacing.xl,
@@ -1265,13 +1460,37 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     ...shadows.card,
   },
+  quizIllustrationWrap: {
+    width: '100%',
+    marginBottom: spacing.md,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quizIllustrationImage: {
+    width: '100%',
+  },
   questionContainer: {
     flex: 1,
+    minHeight: 0,
   },
   questionContainerCentered: {
     flex: 1,
+    minHeight: 0,
     justifyContent: 'center',
-    paddingVertical: 40,
+    paddingVertical: spacing.xl,
+  },
+  /** Wraps scrollable options so total quiz content never exceeds device height. */
+  optionsScrollWrap: {
+    flex: 1,
+    minHeight: 0,
+  },
+  optionsScroll: {
+    flex: 1,
+  },
+  optionsScrollContent: {
+    flexGrow: 1,
+    paddingBottom: spacing.sm,
   },
   questionTitle: {
     fontSize: 22,
@@ -1287,7 +1506,7 @@ const styles = StyleSheet.create({
   },
   optionsContainer: {
     width: '100%',
-    gap: 8,
+    gap: spacing.xs,
   },
   optionsGrid: {
     flexDirection: 'row',
@@ -1458,11 +1677,16 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   loadingIconContainer: {
-    marginBottom: 24,
+    alignSelf: 'stretch',
+    width: '100%',
+    minHeight: 140,
+    marginBottom: spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  loadingLogo: {
-    width: 64,
-    height: 64,
+  loadingIllustrationImage: {
+    width: 200,
+    height: 120,
   },
   loadingTitle: {
     fontSize: 20,

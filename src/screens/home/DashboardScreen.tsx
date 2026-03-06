@@ -8,7 +8,7 @@ import {
   RefreshControl,
   Dimensions,
   Alert,
-
+  Platform,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -289,11 +289,7 @@ const lisaCardStyles = StyleSheet.create({
     borderRadius: radii.lg,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 2,
+    ...(Platform.OS === 'web' ? { boxShadow: `0 2px 8px ${colors.primary}1f` } : { shadowColor: colors.primary, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.12, shadowRadius: 8, elevation: 2 }),
   },
   bubbleText: {
     fontSize: 14,
@@ -301,18 +297,14 @@ const lisaCardStyles = StyleSheet.create({
     color: colors.background,
     lineHeight: 22,
     marginBottom: spacing.md,
-    textShadowColor: 'rgba(0, 0, 0, 0.85)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
+    ...(Platform.OS === 'web' ? { textShadow: '0 1px 4px rgba(0,0,0,0.85)' } : { textShadowColor: 'rgba(0, 0, 0, 0.85)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 }),
   },
   cursor: {
     fontSize: 14,
     fontFamily: typography.family.regular,
     color: colors.primary,
     lineHeight: 22,
-    textShadowColor: 'rgba(0, 0, 0, 0.85)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
+    ...(Platform.OS === 'web' ? { textShadow: '0 1px 4px rgba(0,0,0,0.85)' } : { textShadowColor: 'rgba(0, 0, 0, 0.85)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 }),
   },
   talkButton: {
     flexDirection: 'row',
@@ -454,8 +446,7 @@ export function DashboardScreen() {
             {/* Linear gradient top → bottom (transparent to darker) so overlay text is readable */}
             <LinearGradient
               colors={['transparent', 'rgba(0, 0, 0, 0.45)']}
-              style={styles.videoHeroGradient}
-              pointerEvents="none"
+              style={[styles.videoHeroGradient, { pointerEvents: 'none' }]}
             />
 
             {/* Content pinned to the bottom of the hero */}
@@ -664,9 +655,7 @@ const styles = StyleSheet.create({
     fontFamily: typography.display.bold,
     color: colors.background,
     marginBottom: spacing.lg,
-    textShadowColor: 'rgba(0, 0, 0, 0.85)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 6,
+    ...(Platform.OS === 'web' ? { textShadow: '0 2px 6px rgba(0,0,0,0.85)' } : { textShadowColor: 'rgba(0, 0, 0, 0.85)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 6 }),
   },
 
   // --- Error banner ---
@@ -735,9 +724,7 @@ const styles = StyleSheet.create({
     fontFamily: typography.family.regular,
     color: colors.background,
     minWidth: 200,
-    textShadowColor: 'rgba(0, 0, 0, 0.85)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
+    ...(Platform.OS === 'web' ? { textShadow: '0 1px 4px rgba(0,0,0,0.85)' } : { textShadowColor: 'rgba(0, 0, 0, 0.85)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 }),
   },
   trialNearButton: {
     backgroundColor: colors.primary,
@@ -749,9 +736,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: typography.display.semibold,
     color: colors.background,
-    textShadowColor: 'rgba(0, 0, 0, 0.85)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
+    ...(Platform.OS === 'web' ? { textShadow: '0 1px 4px rgba(0,0,0,0.85)' } : { textShadowColor: 'rgba(0, 0, 0, 0.85)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 }),
   },
 
   // --- Streak pill - white glass on video overlay ---
@@ -772,9 +757,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: typography.family.medium,
     color: colors.background,
-    textShadowColor: 'rgba(0, 0, 0, 0.85)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
+    ...(Platform.OS === 'web' ? { textShadow: '0 1px 4px rgba(0,0,0,0.85)' } : { textShadowColor: 'rgba(0, 0, 0, 0.85)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 }),
   },
 
   // --- Symptom category box - white with coral accent (gold retired) ---

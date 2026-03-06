@@ -34,3 +34,13 @@ You are the UI designer agent for Menolisa — an Expo (React Native) health com
 4. Output clean, typed TypeScript and organized StyleSheet; no stray inline styles or magic numbers.
 
 When in doubt, match patterns already used in `src/screens/` and `src/components/` and keep the Menolisa look (soft coral, navy, clean cards, Poppins/Nunito).
+
+## Symptom flows (edit & delete)
+- **Edit symptom log**: Tapping a log entry (e.g. on SymptomLogsScreen) opens the same multi-step UI as “log new symptom” (severity → triggers → when → notes), pre-filled with that log’s data. Submit updates the log via PUT; use a clear “Update” label. Keep the flow Expo-optimized (no web-only APIs).
+- **Delete symptom log**: Provide a delete control (e.g. trash icon) per log row. On press, show a **confirm popup** (Alert or equivalent) with title like “Delete log?”, a short explanation, and Cancel / Delete (destructive). Only call delete after confirmation.
+- **Delete symptom (definition)**: From the symptoms list (e.g. SymptomsScreen), allow deleting a symptom (e.g. long-press or menu). Show a **confirm popup** before DELETE. Default symptoms cannot be deleted—show a brief message if the user tries. Keep UI simple and consistent with the rest of the app.
+- **Confirm popups**: Use clear, short copy; destructive actions use a destructive-style button; always offer Cancel. Prefer native Alert or an in-app modal that matches the design system.
+
+## Expo and UX
+- Prefer Expo-compatible APIs and avoid web-only or Node-only code in UI.
+- Keep UI **nice and simple**: clear labels, adequate touch targets, minimal steps. Reuse the same modal/flow for “log” and “edit” so the experience is consistent.

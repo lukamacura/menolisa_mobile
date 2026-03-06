@@ -196,6 +196,8 @@ export function ChatThreadScreen() {
   const flatListRef = useRef<FlatList>(null);
   const sendIconOpacity = useRef(new Animated.Value(1)).current;
   const sendSpinnerOpacity = useRef(new Animated.Value(0)).current;
+  const toolToastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [toolToast, setToolToast] = useState<{ title: string; message: string } | null>(null);
 
   const MIN_INPUT_HEIGHT = SEND_BTN_SIZE;
   const MAX_INPUT_HEIGHT = 120;
@@ -266,7 +268,18 @@ export function ChatThreadScreen() {
   }, [loadMessages]);
 
   const showToolToast = useCallback((title: string, message: string) => {
-    Alert.alert(title, message);
+    if (toolToastTimeoutRef.current) clearTimeout(toolToastTimeoutRef.current);
+    setToolToast({ title, message });
+    toolToastTimeoutRef.current = setTimeout(() => {
+      setToolToast(null);
+      toolToastTimeoutRef.current = null;
+    }, 4000);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (toolToastTimeoutRef.current) clearTimeout(toolToastTimeoutRef.current);
+    };
   }, []);
 
   const sendMessage = useCallback(
@@ -563,6 +576,15 @@ export function ChatThreadScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      {toolToast && (
+        <View style={[styles.toolToast, { top: insets.top + spacing.sm }]}>
+          <Ionicons name="checkmark-circle" size={20} color={colors.success} style={styles.toolToastIcon} />
+          <View style={styles.toolToastContent}>
+            <Text style={styles.toolToastTitle}>{toolToast.title}</Text>
+            <Text style={styles.toolToastMessage} numberOfLines={2}>{toolToast.message}</Text>
+          </View>
+        </View>
+      )}
       <StaggeredZoomIn delayIndex={0} reduceMotion={reduceMotion} style={styles.flex}>
       <KeyboardAvoidingView
         style={styles.flex}
@@ -704,14 +726,12 @@ export function ChatThreadScreen() {
               disabled={!input.trim() || sending}
             >
               <Animated.View
-                style={[StyleSheet.absoluteFillObject, styles.sendBtnContent, { opacity: sendIconOpacity }]}
-                pointerEvents="none"
+                style={[StyleSheet.absoluteFillObject, styles.sendBtnContent, { opacity: sendIconOpacity, pointerEvents: 'none' }]}
               >
                 <Ionicons name="send" size={22} color="#fff" />
               </Animated.View>
               <Animated.View
-                style={[StyleSheet.absoluteFillObject, styles.sendBtnContent, { opacity: sendSpinnerOpacity }]}
-                pointerEvents="none"
+                style={[StyleSheet.absoluteFillObject, styles.sendBtnContent, { opacity: sendSpinnerOpacity, pointerEvents: 'none' }]}
               >
                 <ActivityIndicator size="small" color="#fff" />
               </Animated.View>
@@ -781,6 +801,37 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontFamily: typography.family.regular,
     color: colors.textMuted,
+  },
+  toolToast: {
+    position: 'absolute',
+    left: spacing.md,
+    right: spacing.md,
+    zIndex: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...shadows.card,
+  },
+  toolToastIcon: {
+    marginRight: spacing.sm,
+  },
+  toolToastContent: {
+    flex: 1,
+    minWidth: 0,
+  },
+  toolToastTitle: {
+    ...typography.presets.label,
+    color: colors.text,
+  },
+  toolToastMessage: {
+    ...typography.presets.bodySmall,
+    color: colors.textMuted,
+    marginTop: 2,
   },
   errorBanner: {
     backgroundColor: CHAT.errorBg,

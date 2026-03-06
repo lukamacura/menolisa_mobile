@@ -37,10 +37,13 @@ export const API_CONFIG = {
   baseURL: API_BASE_URL,
   endpoints: {
     symptomLogs: '/api/symptom-logs',
+    symptomLogsDelete: '/api/symptom-logs/delete',
     symptoms: '/api/symptoms',
     chatSessions: '/api/chat-sessions',
     chat: '/api/langchain-rag',
+    /** Save 8-step funnel quiz. Body: { quiz: { age_band, here_for, goals, symptoms, what_tried, how_long, qualifier, name } }. Backend upserts user_profiles: age_band, here_for, goals, top_problems←symptoms, tried_options←what_tried, timing←how_long, qualifier, name. */
     intake: '/api/intake',
+    saveQuiz: '/api/intake',
     notifications: '/api/notifications',
     notificationsUnreadCount: '/api/notifications/unread-count',
     notificationsPreferences: '/api/notifications/preferences',
@@ -161,11 +164,23 @@ export const apiFetchWithAuth = async (
   }
 
   const contentType = response.headers.get('content-type');
-  if (contentType?.includes('application/json')) {
-    return response.json();
+  const isJson = contentType?.includes('application/json');
+  if (response.status === 204 || response.headers.get('content-length') === '0') {
+    return {};
+  }
+  if (isJson) {
+    return response.json().catch(() => ({}));
   }
   return response.text();
 };
+
+/** Delete one symptom log by id. Uses POST /api/symptom-logs/delete with body { id } for reliability. */
+export async function deleteSymptomLog(logId: string): Promise<void> {
+  await apiFetchWithAuth(API_CONFIG.endpoints.symptomLogsDelete, {
+    method: 'POST',
+    body: JSON.stringify({ id: logId }),
+  });
+}
 
 /** Permanently delete the current user's account and all data. Call after confirmation. */
 export async function deleteAccount(): Promise<void> {

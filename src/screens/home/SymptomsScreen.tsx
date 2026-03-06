@@ -191,6 +191,38 @@ export function SymptomsScreen() {
     setShowLogSuccess(false);
   };
 
+  const handleDeleteSymptom = useCallback((symptom: Symptom) => {
+    if (symptom.is_default) {
+      Alert.alert('Cannot delete', 'Default symptoms cannot be removed.');
+      return;
+    }
+    const symptomId = symptom.id;
+    Alert.alert(
+      'Delete symptom?',
+      `Remove "${symptom.name}" from your list? All logs for this symptom will remain, but you won't see it in the tracker anymore.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            const runDelete = async () => {
+              await apiFetchWithAuth(API_CONFIG.endpoints.symptoms, {
+                method: 'DELETE',
+                body: JSON.stringify({ id: symptomId }),
+              });
+              setSymptoms((prev) => prev.filter((s) => s.id !== symptomId));
+              loadSymptoms();
+            };
+            runDelete().catch((e) => {
+              Alert.alert('Error', e instanceof Error ? e.message : 'Failed to delete symptom');
+            });
+          },
+        },
+      ]
+    );
+  }, [loadSymptoms]);
+
   const toggleTrigger = (trigger: string) => {
     setSelectedTriggers((prev) =>
       prev.includes(trigger) ? prev.filter((t) => t !== trigger) : [...prev, trigger]
@@ -329,6 +361,7 @@ export function SymptomsScreen() {
                 activeOpacity={0.85}
                 style={styles.symptomCard}
                 onPress={() => openLogModal(item)}
+                onLongPress={() => handleDeleteSymptom(item)}
                 accessibilityRole="button"
                 accessibilityLabel={item.name}
               >

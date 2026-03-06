@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 export const colors = {
   // Brand (soft coral/salmon)
   primary: '#ff8da1',
@@ -56,29 +58,37 @@ export const spacing = {
 /** Minimum touch target for 40+ accessibility (iOS HIG / Material) */
 export const minTouchTarget = 44;
 
+/** react-native-web prefers boxShadow over shadow* props. */
+const isWeb = Platform.OS === 'web';
 export const shadows = {
-  card: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.08,
-    shadowRadius: 18,
-    elevation: 6,
-  },
-  glowPrimary: {
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.18,
-    shadowRadius: 16,
-    elevation: 6,
-  },
+  card: isWeb
+    ? { boxShadow: '0 8px 18px rgba(0,0,0,0.08)' }
+    : {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.08,
+        shadowRadius: 18,
+        elevation: 6,
+      },
+  glowPrimary: isWeb
+    ? { boxShadow: `0 6px 16px ${colors.primary}2e` }
+    : {
+        shadowColor: colors.primary,
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.18,
+        shadowRadius: 16,
+        elevation: 6,
+      },
   /** Bottom shadow for primary buttons (solid, slightly extruded look) */
-  buttonPrimary: {
-    shadowColor: colors.primaryDark,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 2,
-    elevation: 4,
-  },
+  buttonPrimary: isWeb
+    ? { boxShadow: `0 4px 2px ${colors.primaryDark}59` }
+    : {
+        shadowColor: colors.primaryDark,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.35,
+        shadowRadius: 2,
+        elevation: 4,
+      },
 };
 
 /** Font families: Poppins (body/UI), Nunito (display/CTAs). Use via typography.presets for use-case-based styling. */

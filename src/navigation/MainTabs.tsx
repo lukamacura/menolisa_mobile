@@ -173,11 +173,9 @@ export function MainTabs() {
           paddingTop: 8,
           paddingBottom: 0,
           height: 60 + 22 + contentBottomPadding,
-          elevation: 8,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: -2 },
-          shadowOpacity: 0.06,
-          shadowRadius: 8,
+          ...(Platform.OS === 'web'
+            ? { boxShadow: '0 -2px 8px rgba(0,0,0,0.06)' }
+            : { elevation: 8, shadowColor: '#000', shadowOffset: { width: 0, height: -2 }, shadowOpacity: 0.06, shadowRadius: 8 }),
         },
       }}
     >

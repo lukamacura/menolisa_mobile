@@ -21,6 +21,8 @@ const SYMPTOM_IMAGES: Record<string, ImageSourcePropType> = {
   night_sweats: require('../../assets/symptoms/night_sweats.png'),
   period: require('../../assets/symptoms/period.png'),
   weight_gain: require('../../assets/symptoms/weight_gain.png'),
+  /** Fallback when no specific symptom asset exists (e.g. chat auto-log). Replace with dedicated neutral.png if desired. */
+  neutral: require('../../assets/symptoms/fatigue.png'),
 };
 
 function nameToSlug(name: string): string {
@@ -37,11 +39,16 @@ export type SymptomIllustrationResult =
 /**
  * Returns either an image source for the symptom illustration or an icon name for fallback.
  * Use when rendering the symptom grid; fallback to Ionicons for custom/missing assets.
+ * If the API provides an icon key (e.g. from chat auto-log), use that asset when it exists.
  */
 export function getSymptomIllustration(
   symptomName: string,
   apiIcon?: string | null
 ): SymptomIllustrationResult {
+  const apiSource = apiIcon && SYMPTOM_IMAGES[apiIcon];
+  if (apiSource) {
+    return { type: 'image', source: apiSource };
+  }
   const slug = nameToSlug(symptomName);
   const source = SYMPTOM_IMAGES[slug];
   if (source) {

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   ScrollView,
   RefreshControl,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { apiFetchWithAuth, API_CONFIG, openWebDashboard } from '../../lib/api';
@@ -49,6 +50,8 @@ function getNotificationStyle(type: string | null): {
       return { icon: 'hand-left-outline', iconColor: colors.primary, bgColor: 'rgba(255, 141, 161, 0.12)' };
     case 'success':
       return { icon: 'checkmark-circle-outline', iconColor: colors.success, bgColor: 'rgba(16, 185, 129, 0.12)' };
+    case 'symptom_logged':
+      return { icon: 'checkmark-circle-outline', iconColor: colors.success, bgColor: 'rgba(16, 185, 129, 0.12)' };
     case 'error':
       return { icon: 'alert-circle-outline', iconColor: colors.danger, bgColor: colors.dangerBg };
     default:
@@ -75,6 +78,8 @@ function getDisplayTitle(item: NotificationItem): string {
       return 'Welcome';
     case 'success':
       return 'Success';
+    case 'symptom_logged':
+      return 'Symptom logged';
     case 'error':
       return 'Notice';
     default:
@@ -107,9 +112,11 @@ export function NotificationsScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);

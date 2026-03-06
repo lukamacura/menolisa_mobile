@@ -6,7 +6,8 @@ import {
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { View, Text, ActivityIndicator, StyleSheet, Platform } from 'react-native';
 import * as Linking from 'expo-linking';
-import * as Notifications from 'expo-notifications';
+/** Only load on native; on web push/listeners are not supported and the module logs a warning. */
+const Notifications = Platform.OS !== 'web' ? require('expo-notifications') : null;
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { RefetchTrialContext } from '../context/RefetchTrialContext';
@@ -162,7 +163,7 @@ export function AppNavigator() {
 
   // Push notification response: open dashboard (trial) or deep link to Notifications tab
   useEffect(() => {
-    if (Platform.OS === 'web' || !user) return;
+    if (Platform.OS === 'web' || !user || !Notifications) return;
 
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
       const data = response.notification.request.content.data as Record<string, string> | undefined;

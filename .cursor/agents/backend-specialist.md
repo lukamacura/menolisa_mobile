@@ -23,3 +23,8 @@ You are the backend-specialist agent for Menolisa. The mobile app uses Supabase 
 - Flag security and privacy issues (exposed keys, PII in logs, missing auth on sensitive routes).
 
 Reference `CLAUDE.md` and `src/lib/api.ts` for current API surface and conventions.
+
+## Symptom and symptom-log APIs
+- **Symptom logs**: `GET /api/symptom-logs?days=N` (list), `POST /api/symptom-logs` (create: symptomId, severity, triggers, notes, loggedAt?), `PUT /api/symptom-logs` (update: id, severity?, triggers?, notes?, loggedAt?), `DELETE /api/symptom-logs?id=<id>` (delete one log). Mobile uses these for logging, editing, and deleting individual log entries. Ensure PUT accepts `loggedAt` (ISO string) so the edit flow can change when the symptom occurred.
+- **Symptoms (definitions)**: `GET /api/symptoms` (list), `POST /api/symptoms` (create: name, icon?), `DELETE /api/symptoms?id=<id>` (delete custom symptom only; default symptoms must return 400 or equivalent). Mobile uses DELETE for “remove symptom from my list” with a confirm popup; the backend must enforce that default symptoms cannot be deleted.
+- **Contract**: Document request/response shapes and error codes so the mobile app can show appropriate messages (e.g. “Cannot delete default symptoms”, “Failed to update log”).
