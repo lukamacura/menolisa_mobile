@@ -289,11 +289,11 @@ export function ChatThreadScreen() {
 
       if (trialExpired) {
         Alert.alert(
-          'Trial Expired',
-          'Your trial has ended. Manage your subscription at menolisa.com to continue.',
+          'Trial ended',
+          "I'm just getting to know your patterns. Continue with Lisa at menolisa.com to keep the insights coming.",
           [
             { text: 'OK', style: 'cancel' },
-            { text: 'Manage subscription', onPress: () => openWebDashboard().catch(() => {}) },
+            { text: 'Continue with Lisa', onPress: () => openWebDashboard().catch(() => {}) },
           ]
         );
         return;

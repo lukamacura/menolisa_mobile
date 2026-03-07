@@ -476,13 +476,11 @@ export function DashboardScreen() {
                 <StaggeredZoomIn delayIndex={3} reduceMotion={reduceMotion}>
                   <View style={styles.trialNearBanner}>
                     <Text style={styles.trialNearText}>
-                      Your trial ends{' '}
                       {trialStatus.daysLeft === 0
-                        ? 'today'
+                        ? 'Your free access ends tonight. Lisa has started learning your patterns—keep the insights coming.'
                         : trialStatus.daysLeft === 1
-                        ? 'in 1 day'
-                        : `in ${trialStatus.daysLeft} days`}
-                      . Manage subscription at menolisa.com.
+                        ? 'Your free access ends in 1 day. Lisa has started learning your patterns—keep the insights coming.'
+                        : 'Your free access ends in 2 days. Lisa has started learning your patterns—keep the insights coming.'}
                     </Text>
                     <TouchableOpacity
                       activeOpacity={0.8}

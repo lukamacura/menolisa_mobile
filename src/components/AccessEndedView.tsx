@@ -1,21 +1,28 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, spacing, radii, typography, minTouchTarget } from '../theme/tokens';
+import { colors, spacing, radii, typography, minTouchTarget, shadows } from '../theme/tokens';
 import { openWebDashboard } from '../lib/api';
 
-const TITLE = 'Your access has ended';
-const SUBTITLE = 'Manage your subscription at menolisa.com to continue using Lisa and symptom tracking.';
-const BUTTON_LABEL = 'Manage subscription';
+// Strategy-aligned copy (i18n-ready constants)
+const PAYWALL_HEADLINE =
+  "I'm just getting to know your body's patterns. Stay with me and I'll keep connecting the dots.";
+const PAYWALL_VALUE_LINE =
+  'By Week 2, Lisa typically identifies 3–5 patterns most women miss.';
+const BUTTON_LABEL_CONTINUE = 'Continue with Lisa';
+const BUTTON_LABEL_MANAGE = 'Manage subscription';
+const REMIND_LATER_LABEL = 'Remind me later';
 
 type Variant = 'card' | 'fullScreen';
 
 type AccessEndedViewProps = {
   variant: Variant;
   onPress?: () => void;
+  /** When provided (fullScreen only), shows "Remind me later"; on press dismisses paywall for this session. */
+  onRemindLater?: () => void;
 };
 
-export function AccessEndedView({ variant, onPress }: AccessEndedViewProps) {
+export function AccessEndedView({ variant, onPress, onRemindLater }: AccessEndedViewProps) {
   const handlePress = () => {
     if (onPress) {
       onPress();
@@ -29,18 +36,31 @@ export function AccessEndedView({ variant, onPress }: AccessEndedViewProps) {
       <View style={styles.fullScreen}>
         <View style={styles.fullScreenCard}>
           <View style={styles.iconWrap}>
-            <Ionicons name="lock-closed" size={48} color={colors.textMuted} />
+            <Ionicons name="heart-outline" size={48} color={colors.primary} />
           </View>
-          <Text style={styles.title}>{TITLE}</Text>
-          <Text style={styles.subtitle}>{SUBTITLE}</Text>
+          <Text style={styles.headline}>{PAYWALL_HEADLINE}</Text>
+          <Text style={styles.valueLine}>{PAYWALL_VALUE_LINE}</Text>
           <TouchableOpacity
             activeOpacity={0.8}
             style={styles.primaryButton}
             onPress={handlePress}
+            accessibilityRole="button"
+            accessibilityLabel={BUTTON_LABEL_CONTINUE}
           >
-            <Text style={styles.primaryButtonText}>{BUTTON_LABEL}</Text>
-            <Ionicons name="open-outline" size={18} color={colors.navy} />
+            <Text style={styles.primaryButtonText}>{BUTTON_LABEL_CONTINUE}</Text>
+            <Ionicons name="open-outline" size={18} color={colors.background} />
           </TouchableOpacity>
+          {onRemindLater != null && (
+            <TouchableOpacity
+              activeOpacity={0.8}
+              style={styles.secondaryButton}
+              onPress={onRemindLater}
+              accessibilityRole="button"
+              accessibilityLabel={REMIND_LATER_LABEL}
+            >
+              <Text style={styles.secondaryButtonText}>{REMIND_LATER_LABEL}</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     );
@@ -48,14 +68,16 @@ export function AccessEndedView({ variant, onPress }: AccessEndedViewProps) {
 
   return (
     <View style={styles.card}>
-      <Text style={styles.cardTitle}>{TITLE}</Text>
-      <Text style={styles.cardSubtitle}>{SUBTITLE}</Text>
+      <Text style={styles.cardHeadline}>{PAYWALL_HEADLINE}</Text>
+      <Text style={styles.cardValueLine}>{PAYWALL_VALUE_LINE}</Text>
       <TouchableOpacity
         activeOpacity={0.8}
         style={styles.cardButton}
         onPress={handlePress}
+        accessibilityRole="button"
+        accessibilityLabel={BUTTON_LABEL_MANAGE}
       >
-        <Text style={styles.cardButtonText}>{BUTTON_LABEL}</Text>
+        <Text style={styles.cardButtonText}>{BUTTON_LABEL_MANAGE}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -76,19 +98,17 @@ const styles = StyleSheet.create({
   iconWrap: {
     marginBottom: spacing.lg,
   },
-  title: {
-    fontSize: 22,
-    fontFamily: typography.display.semibold,
+  headline: {
+    ...typography.presets.heading2,
     color: colors.text,
     textAlign: 'center',
     marginBottom: spacing.sm,
   },
-  subtitle: {
-    fontSize: 15,
-    fontFamily: typography.family.regular,
+  valueLine: {
+    ...typography.presets.body,
     color: colors.textMuted,
     textAlign: 'center',
-    lineHeight: 22,
+    lineHeight: 24,
     marginBottom: spacing.xl,
   },
   primaryButton: {
@@ -101,33 +121,41 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     gap: spacing.sm,
     minHeight: minTouchTarget + 8,
+    ...shadows.buttonPrimary,
   },
   primaryButtonText: {
-    fontSize: 17,
-    fontFamily: typography.display.semibold,
+    ...typography.presets.button,
     color: colors.background,
-    letterSpacing: 0.5,
+  },
+  secondaryButton: {
+    marginTop: spacing.md,
+    minHeight: minTouchTarget,
+    justifyContent: 'center',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  secondaryButtonText: {
+    ...typography.presets.buttonSmall,
+    color: colors.textMuted,
   },
   card: {
-    backgroundColor: colors.dangerBg,
+    backgroundColor: colors.rowNavyBg,
     borderWidth: 1,
-    borderColor: colors.danger,
+    borderColor: colors.borderStrong,
     borderRadius: radii.lg,
     padding: spacing.lg,
     marginBottom: spacing.xl,
   },
-  cardTitle: {
-    fontSize: 17,
-    fontFamily: typography.display.semibold,
-    color: colors.danger,
-    marginBottom: 4,
-  },
-  cardSubtitle: {
-    fontSize: 14,
-    fontFamily: typography.family.regular,
+  cardHeadline: {
+    ...typography.presets.heading3,
     color: colors.text,
+    marginBottom: spacing.xs,
+  },
+  cardValueLine: {
+    ...typography.presets.bodySmall,
+    color: colors.textMuted,
     marginBottom: spacing.md,
-    lineHeight: 20,
+    lineHeight: 22,
   },
   cardButton: {
     alignSelf: 'flex-start',
@@ -137,10 +165,10 @@ const styles = StyleSheet.create({
     borderRadius: radii.sm,
     minHeight: minTouchTarget,
     justifyContent: 'center',
+    ...shadows.buttonPrimary,
   },
   cardButtonText: {
-    fontSize: 15,
-    fontFamily: typography.display.semibold,
+    ...typography.presets.buttonSmall,
     color: colors.background,
   },
 });
