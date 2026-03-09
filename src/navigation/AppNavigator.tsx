@@ -184,23 +184,27 @@ export function AppNavigator() {
     return <LoadingScreen />;
   }
 
+  // User with temp_password (signed up at gate) must complete set-password on Register; don't show Main yet
+  const needsPassword = !!user?.user_metadata?.temp_password;
+  const showMain = !!user && !needsPassword;
+
   return (
     <RefetchTrialContext.Provider value={refetchTrialRef}>
       <NavigationContainer ref={navigationRef}>
         <Stack.Navigator
-        key={user ? 'main' : 'auth'}
-        screenOptions={{ headerShown: false }}
-        initialRouteName={user ? 'Main' : 'Landing'}
-      >
-        {user ? (
-          <Stack.Screen name="Main" component={MainTabs} />
-        ) : (
-          <>
-            <Stack.Screen name="Landing" component={LandingScreenWithButton} />
-            <Stack.Screen name="Register" component={RegisterScreen} />
-            <Stack.Screen name="Login" component={LoginScreen} />
-          </>
-        )}
+          key={showMain ? 'main' : 'auth'}
+          screenOptions={{ headerShown: false }}
+          initialRouteName={showMain ? 'Main' : needsPassword ? 'Register' : 'Landing'}
+        >
+          {showMain ? (
+            <Stack.Screen name="Main" component={MainTabs} />
+          ) : (
+            <>
+              <Stack.Screen name="Landing" component={LandingScreenWithButton} />
+              <Stack.Screen name="Register" component={RegisterScreen} />
+              <Stack.Screen name="Login" component={LoginScreen} />
+            </>
+          )}
         </Stack.Navigator>
       </NavigationContainer>
     </RefetchTrialContext.Provider>

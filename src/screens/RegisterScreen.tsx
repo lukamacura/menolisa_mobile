@@ -23,6 +23,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../context/AuthContext';
 import { getApiUrl, getWebAppUrl, API_CONFIG } from '../lib/api';
 import { logger } from '../lib/logger';
 import { colors, radii, shadows, spacing, typography, minTouchTarget, landingGradient } from '../theme/tokens';
@@ -40,7 +41,7 @@ type Step =
   | 'q6_how_long'
   | 'q7_qualifier'
   | 'q8_name';
-type Phase = 'quiz' | 'loading' | 'results' | 'social_proof' | 'email';
+type Phase = 'quiz' | 'gate' | 'loading' | 'results' | 'email';
 
 const STEPS: Step[] = [
   'q1_age',
@@ -67,7 +68,6 @@ const QUIZ_ILLUSTRATION_SOURCES: Record<string, ImageSourcePropType> = {
   q8_name: require('../../assets/quiz/illustration_q8_name.png'),
   loading: require('../../assets/quiz/illustration_loading.png'),
   results: require('../../assets/quiz/illustration_results.png'),
-  social_proof: require('../../assets/quiz/illustration_social_proof.png'),
   email: require('../../assets/quiz/illustration_email.png'),
 };
 
@@ -218,14 +218,18 @@ const getSeverityHeadline = (severity: string, name: string): string => {
 
 const getSeverityPainText = (severity: string, symptomCount: number, name: string): string => {
   const displayName = name || 'you';
+  const symptomWord = symptomCount === 1 ? 'symptom' : 'symptoms';
+  const theseThis = symptomCount === 1 ? 'this' : 'these';
+  const themIt = symptomCount === 1 ? 'it' : 'them';
+  const theyIt = symptomCount === 1 ? 'it' : 'they';
   switch (severity) {
     case 'severe':
-      return `${symptomCount} symptoms controlling your life. You've probably tried to explain it to people who don't get it. You've probably wondered if this is just your new normal. It's not. And ${displayName}, you don't have to keep living like this.`;
+      return `${symptomCount} ${symptomWord} controlling your life. You've probably tried to explain it to people who don't get it. You've probably wondered if this is just your new normal. It's not. And ${displayName}, you don't have to keep living like this.`;
     case 'moderate':
-      return `${symptomCount} symptoms. Affecting your work. Your mood. Your relationships. ${displayName}, you're spending so much energy just trying to function normally - energy you shouldn't have to spend.`;
+      return `${symptomCount} ${symptomWord}. Affecting your work. Your mood. Your relationships. ${displayName}, you're spending so much energy just trying to function normally - energy you shouldn't have to spend.`;
     case 'mild':
     default:
-      return `${displayName}, these ${symptomCount} symptoms might feel manageable now. But without understanding what's causing them, they often get worse. Let's figure this out before they do.`;
+      return `${displayName}, ${theseThis} ${symptomCount} ${symptomWord} might feel manageable now. But without understanding what's causing ${themIt}, ${theyIt} often get${symptomCount === 1 ? 's' : ''} worse. Let's figure this out before ${theyIt} ${symptomCount === 1 ? 'does' : 'do'}.`;
   }
 };
 
@@ -244,7 +248,17 @@ export function RegisterScreen() {
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute();
   const reduceMotion = useReduceMotion();
+  const { user: authUser } = useAuth();
   const [referralCode, setReferralCode] = useState<string | null>(null);
+
+  // When app opens with session that has temp_password (e.g. reopened mid-flow), show set-password phase.
+  // Only move to email phase when still on quiz so we don't skip loading/results after gate submit.
+  useEffect(() => {
+    if (!authUser?.user_metadata?.temp_password || !authUser?.email) return;
+    setPhase((p) => (p === 'quiz' ? 'email' : p));
+    setEmail(authUser.email);
+    setSignedUpAtGate(true);
+  }, [authUser?.id, authUser?.user_metadata?.temp_password, authUser?.email]);
 
   useEffect(() => {
     const params = route.params as { ref?: string } | undefined;
@@ -288,9 +302,10 @@ export function RegisterScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [userExists, setUserExists] = useState(false);
+  const [signedUpAtGate, setSignedUpAtGate] = useState(false);
 
-  // Loading phase (after Q8): 10–15s then transition to results
-  const LOADING_PHASE_DURATION_MS = 12000;
+  // Loading phase (after gate): ~3s then transition to results (match web)
+  const LOADING_PHASE_DURATION_MS = 3000;
   const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
   const [displayScore, setDisplayScore] = useState(0);
 
@@ -421,6 +436,76 @@ export function RegisterScreen() {
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   const passwordValid = password.length >= 8;
   const canSubmit = emailValid && passwordValid && agreedToTerms && !loading;
+  const canSubmitGate = emailValid && !loading;
+
+  const generateTempPassword = (): string => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%';
+    const arr = new Uint8Array(16);
+    if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+      crypto.getRandomValues(arr);
+    } else {
+      for (let i = 0; i < 16; i++) arr[i] = Math.floor(Math.random() * 256);
+    }
+    return Array.from(arr, (b) => chars[b % chars.length]).join('');
+  };
+
+  const handleGateSubmit = useCallback(async () => {
+    if (!canSubmitGate) return;
+    setError(null);
+    setUserExists(false);
+    setLoading(true);
+    try {
+      const emailLower = email.toLowerCase().trim();
+      const tempPassword = generateTempPassword();
+      const quizAnswers = {
+        top_problems: topProblems,
+        severity: derivedSeverity,
+        timing,
+        tried_options: triedOptions,
+        goal,
+        name: firstName.trim() || null,
+      };
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: emailLower,
+        password: tempPassword,
+        options: {
+          data: { quiz_completed: true, temp_password: true },
+        },
+      });
+      if (authError) {
+        if (authError.message.includes('User already registered')) {
+          setUserExists(true);
+          setLoading(false);
+          return;
+        }
+        setError(authError.message);
+        setLoading(false);
+        return;
+      }
+      if (authData.user) {
+        try {
+          await fetch(getApiUrl(API_CONFIG.endpoints.saveQuizAuth), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: authData.user.id,
+              quizAnswers,
+              ...(referralCode ? { referralCode } : {}),
+            }),
+          });
+        } catch (quizErr) {
+          logger.warn('Failed to save quiz answers at gate:', quizErr);
+        }
+        setSignedUpAtGate(true);
+        setPhase('loading');
+      }
+      setLoading(false);
+    } catch (e) {
+      logger.error('Gate sign-up error:', e);
+      setError(e instanceof Error ? e.message : 'Something went wrong. Please try again.');
+      setLoading(false);
+    }
+  }, [canSubmitGate, email, firstName, topProblems, derivedSeverity, timing, triedOptions, goal, referralCode]);
 
   const termsUrl = getWebAppUrl('/terms');
   const privacyUrl = getWebAppUrl('/privacy');
@@ -458,7 +543,7 @@ export function RegisterScreen() {
     if (stepIndex < STEPS.length - 1) {
       setStepIndex(stepIndex + 1);
     } else {
-      setPhase('loading');
+      setPhase('gate');
     }
   }, [currentStep, stepIndex, stepIsAnswered]);
 
@@ -678,6 +763,9 @@ export function RegisterScreen() {
             <QuizIllustration source={QUIZ_ILLUSTRATION_SOURCES.q3_goals} height={quizIlloHeightQ17} />
             <Text style={styles.questionTitle}>What would success look like for you?</Text>
             <Text style={styles.questionSubtitle}>Select all that apply</Text>
+            {goal.length > 0 ? (
+              <Text style={styles.multiSelectHint}>{goal.length} selected. You can choose more than one.</Text>
+            ) : null}
             <View style={styles.optionsScrollWrap}>
               <ScrollView style={styles.optionsScroll} contentContainerStyle={styles.optionsScrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
                 <View style={styles.optionsContainer}>
@@ -711,6 +799,9 @@ export function RegisterScreen() {
             <QuizIllustration source={QUIZ_ILLUSTRATION_SOURCES.q4_symptoms} height={quizIlloHeightQ17} />
             <Text style={styles.questionTitle}>What's making life hardest right now?</Text>
             <Text style={styles.questionSubtitle}>Select all that apply</Text>
+            {topProblems.length > 0 ? (
+              <Text style={styles.multiSelectHint}>{topProblems.length} selected. You can choose more than one.</Text>
+            ) : null}
             <View style={styles.optionsScrollWrap}>
               <ScrollView style={styles.optionsScroll} contentContainerStyle={styles.optionsScrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
                 <View style={styles.optionsContainer}>
@@ -760,6 +851,9 @@ export function RegisterScreen() {
             <QuizIllustration source={QUIZ_ILLUSTRATION_SOURCES.q5_what_tried} height={quizIlloHeightQ17} />
             <Text style={styles.questionTitle}>What have you tried so far?</Text>
             <Text style={styles.questionSubtitle}>Select all that apply</Text>
+            {triedOptions.length > 0 ? (
+              <Text style={styles.multiSelectHint}>{triedOptions.length} selected. You can choose more than one.</Text>
+            ) : null}
             <View style={styles.optionsScrollWrap}>
               <ScrollView style={styles.optionsScroll} contentContainerStyle={styles.optionsScrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
                 <View style={styles.optionsContainer}>
@@ -881,6 +975,103 @@ export function RegisterScreen() {
         return null;
     }
   };
+
+  const renderGate = () => (
+    <SafeAreaView style={styles.emailContainer}>
+      <LinearGradient
+        colors={landingGradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
+      >
+        <ScrollView contentContainerStyle={styles.emailContent} keyboardShouldPersistTaps="handled">
+          <Image
+            source={QUIZ_ILLUSTRATION_SOURCES.email}
+            style={styles.registerImage}
+            resizeMode="contain"
+          />
+          {userExists ? (
+            <>
+              <View style={styles.userExistsIcon}>
+                <Ionicons name="checkmark-circle" size={48} color={colors.primary} />
+              </View>
+              <Text style={styles.emailTitle}>You already have an account</Text>
+              <Text style={styles.emailSubtitle}>
+                An account with <Text style={styles.emailBold}>{email}</Text> already exists. Log in to see your results.
+              </Text>
+              <TouchableOpacity
+                activeOpacity={1}
+                style={styles.gradientButton}
+                onPress={() => navigation.navigate('Login')}
+              >
+                <View style={styles.gradientButtonInner}>
+                  <Text style={styles.gradientButtonText}>Go to Login</Text>
+                  <Ionicons name="arrow-forward" size={20} color={colors.background} />
+                </View>
+              </TouchableOpacity>
+              <TouchableOpacity activeOpacity={1} onPress={() => { setUserExists(false); setEmail(''); }}>
+                <Text style={styles.linkText}>Use a different email</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              <Text style={styles.emailTitle}>Your personalized Menopause Score is ready.</Text>
+              <Text style={styles.emailSubtitle}>Enter your email to see your results.</Text>
+              {firstName.trim() ? (
+                <Text style={styles.emailSubtitleSmall}>We'll call you {firstName.trim()}.</Text>
+              ) : null}
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Email</Text>
+                <TextInput
+                  style={[styles.emailInput, !emailValid && email.length > 0 && styles.emailInputError]}
+                  placeholder="you@example.com"
+                  placeholderTextColor="#9CA3AF"
+                  value={email}
+                  onChangeText={setEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoComplete="email"
+                  autoCorrect={false}
+                />
+              </View>
+              {error ? (
+                <View style={styles.errorContainer}>
+                  <Text style={styles.errorText}>{error}</Text>
+                </View>
+              ) : null}
+              <TouchableOpacity
+                activeOpacity={1}
+                style={[styles.gradientButton, !canSubmitGate && styles.buttonDisabled]}
+                onPress={handleGateSubmit}
+                disabled={!canSubmitGate}
+              >
+                <View style={styles.gradientButtonInner}>
+                  {loading ? (
+                    <>
+                      <ActivityIndicator color={colors.background} />
+                      <Text style={styles.gradientButtonText}>Loading…</Text>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={[styles.gradientButtonText, !canSubmitGate && styles.buttonTextDisabled]}>
+                        Show my results
+                      </Text>
+                      <Ionicons name="arrow-forward" size={20} color={canSubmitGate ? colors.background : '#9CA3AF'} />
+                    </>
+                  )}
+                </View>
+              </TouchableOpacity>
+            </>
+          )}
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
 
   const renderLoadingPhase = () => (
     <SafeAreaView style={styles.resultsLoadingContainer}>
@@ -1026,15 +1217,17 @@ export function RegisterScreen() {
           <Text style={styles.resultsDisclaimer}>This is for information only, not medical advice.</Text>
         </ScrollView>
 
-        {/* Next Button - Fixed at bottom */}
+        {/* What happens next — fixed at bottom, same as web */}
         <View style={styles.resultsFooter}>
+          <Text style={styles.whatHappensNextTitle}>What happens next</Text>
+          <Text style={styles.whatHappensNextText}>Set a password to save your results and use the dashboard.</Text>
           <TouchableOpacity
             activeOpacity={1}
             style={styles.gradientButton}
-            onPress={() => setPhase('social_proof')}
+            onPress={() => setPhase('email')}
           >
             <View style={styles.gradientButtonInner}>
-              <Text style={styles.gradientButtonText}>Next</Text>
+              <Text style={styles.gradientButtonText}>Set my password & continue</Text>
               <Ionicons name="arrow-forward" size={20} color={colors.background} />
             </View>
           </TouchableOpacity>
@@ -1043,95 +1236,121 @@ export function RegisterScreen() {
     );
   };
 
-  const renderSocialProof = () => (
-    <SafeAreaView style={styles.socialProofScreenContainer}>
-      <LinearGradient
-        colors={landingGradient}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={StyleSheet.absoluteFill}
-      />
-      <ScrollView
-        contentContainerStyle={styles.socialProofScrollContent}
-        showsVerticalScrollIndicator={false}
-        decelerationRate={0.98}
-        scrollEventThrottle={16}
-        bounces={true}
-      >
-        <View style={styles.socialProofImageWrap}>
-          <Image
-            source={QUIZ_ILLUSTRATION_SOURCES.social_proof}
-            style={styles.socialProofImage}
-            resizeMode="contain"
-          />
-        </View>
-
-        <Text style={styles.socialProofHeadline}>
-          You're not alone on this journey
-        </Text>
-        <Text style={styles.socialProofSubhead}>
-          Women 40+ use MenoLisa to track symptoms, spot patterns, and get support from Lisa - their personal AI coach.
-        </Text>
-
-        {/* Trust badges - store-safe, no medical claims */}
-        <View style={styles.socialProofBadges}>
-          <View style={styles.socialProofBadge}>
-            <View style={styles.socialProofBadgeIconWrap}>
-              <Ionicons name="book" size={20} color={colors.navy} />
-            </View>
-            <Text style={styles.socialProofBadgeText}>Evidence-informed</Text>
-          </View>
-          <View style={styles.socialProofBadge}>
-            <View style={[styles.socialProofBadgeIconWrap, styles.socialProofBadgeIconPrimary]}>
-              <Ionicons name="lock-closed" size={20} color={colors.primary} />
-            </View>
-            <Text style={styles.socialProofBadgeText}>Private & secure</Text>
-          </View>
-          <View style={styles.socialProofBadge}>
-            <View style={[styles.socialProofBadgeIconWrap, styles.socialProofBadgeIconGold]}>
-              <Ionicons name="gift" size={20} color={colors.navy} />
-            </View>
-            <Text style={styles.socialProofBadgeText}>3-day free trial</Text>
-          </View>
-        </View>
-
-        {/* Value props - marketing, no outcome claims */}
-        <View style={styles.socialProofValues}>
-          <View style={styles.socialProofValueRow}>
-            <Ionicons name="checkmark-circle" size={22} color={colors.primary} />
-            <Text style={styles.socialProofValueText}>Track symptoms and see what Lisa notices over time</Text>
-          </View>
-          <View style={styles.socialProofValueRow}>
-            <Ionicons name="checkmark-circle" size={22} color={colors.primary} />
-            <Text style={styles.socialProofValueText}>Research-informed guidance, tailored to you</Text>
-          </View>
-          <View style={styles.socialProofValueRow}>
-            <Ionicons name="checkmark-circle" size={22} color={colors.primary} />
-            <Text style={styles.socialProofValueText}>Your data stays private-always</Text>
-          </View>
-        </View>
-
-        <Text style={styles.socialProofDisclaimer}>
-          MenoLisa is for tracking and information only. It is not medical advice. Always consult a healthcare provider for medical decisions.
-        </Text>
-      </ScrollView>
-
-      <View style={styles.socialProofFooter}>
-        <TouchableOpacity
-          activeOpacity={1}
-          style={styles.gradientButton}
-          onPress={() => setPhase('email')}
-        >
-          <View style={styles.gradientButtonInner}>
-            <Text style={styles.gradientButtonText}>Continue</Text>
-            <Ionicons name="arrow-forward" size={20} color={colors.background} />
-          </View>
-        </TouchableOpacity>
-      </View>
-    </SafeAreaView>
-  );
+  const handleSetPasswordSubmit = useCallback(async () => {
+    if (!passwordValid || loading) return;
+    setError(null);
+    setLoading(true);
+    try {
+      const { error: updateError } = await supabase.auth.updateUser({
+        password,
+        data: { temp_password: false },
+      });
+      if (updateError) {
+        setError(updateError.message);
+        setLoading(false);
+        return;
+      }
+      logger.log('Password set successfully');
+      // Auth state listener will navigate to main app
+    } finally {
+      setLoading(false);
+    }
+  }, [password, passwordValid, loading]);
 
   const renderEmail = () => {
+    // Coming from gate: set-password-only (same as web)
+    if (signedUpAtGate) {
+      const canSetPassword = passwordValid && !loading;
+      return (
+        <SafeAreaView style={styles.emailContainer}>
+          <LinearGradient
+            colors={landingGradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+          <KeyboardAvoidingView
+            style={styles.flex}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
+          >
+            <ScrollView contentContainerStyle={styles.emailContent} keyboardShouldPersistTaps="handled">
+              <Image
+                source={QUIZ_ILLUSTRATION_SOURCES.email}
+                style={styles.registerImage}
+                resizeMode="contain"
+              />
+              <Text style={styles.emailTitle}>Set your password</Text>
+              <Text style={styles.emailSubtitle}>Choose a password to save your results and sign in anytime.</Text>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Email</Text>
+                <TextInput
+                  style={[styles.emailInput, styles.emailInputReadOnly]}
+                  value={email}
+                  editable={false}
+                  placeholderTextColor="#9CA3AF"
+                />
+              </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Password</Text>
+                <View style={styles.passwordContainer}>
+                  <TextInput
+                    style={[styles.emailInput, styles.passwordInput, !passwordValid && password.length > 0 && styles.emailInputError]}
+                    placeholder="Create a password (8+ characters)"
+                    placeholderTextColor="#9CA3AF"
+                    value={password}
+                    onChangeText={setPassword}
+                    secureTextEntry={!showPassword}
+                    autoCapitalize="none"
+                    autoComplete="new-password"
+                    returnKeyType="done"
+                    onSubmitEditing={handleSetPasswordSubmit}
+                  />
+                  <TouchableOpacity
+                    activeOpacity={1}
+                    style={styles.passwordToggle}
+                    onPress={() => setShowPassword(!showPassword)}
+                  >
+                    <Ionicons name={showPassword ? 'eye-off' : 'eye'} size={22} color={colors.textMuted} />
+                  </TouchableOpacity>
+                </View>
+                {password.length > 0 && password.length < 8 && (
+                  <Text style={styles.helperText}>Password must be at least 8 characters</Text>
+                )}
+              </View>
+              {error ? (
+                <View style={styles.errorContainer}>
+                  <Text style={styles.errorText}>{error}</Text>
+                </View>
+              ) : null}
+              <TouchableOpacity
+                activeOpacity={1}
+                style={[styles.gradientButton, !canSetPassword && styles.buttonDisabled]}
+                onPress={handleSetPasswordSubmit}
+                disabled={!canSetPassword}
+              >
+                <View style={styles.gradientButtonInner}>
+                  {loading ? (
+                    <>
+                      <ActivityIndicator color={colors.background} />
+                      <Text style={styles.gradientButtonText}>Saving…</Text>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={[styles.gradientButtonText, !canSetPassword && styles.buttonTextDisabled]}>
+                        Continue to my account
+                      </Text>
+                      <Ionicons name="arrow-forward" size={20} color={canSetPassword ? colors.background : '#9CA3AF'} />
+                    </>
+                  )}
+                </View>
+              </TouchableOpacity>
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
+      );
+    }
+
     // User already exists - show login prompt
     if (userExists) {
       return (
@@ -1326,16 +1545,16 @@ export function RegisterScreen() {
     );
   };
 
+  if (phase === 'gate') {
+    return renderGate();
+  }
+
   if (phase === 'loading') {
     return renderLoadingPhase();
   }
 
   if (phase === 'results') {
     return renderResults();
-  }
-
-  if (phase === 'social_proof') {
-    return renderSocialProof();
   }
 
   if (phase === 'email') {
@@ -1372,6 +1591,13 @@ export function RegisterScreen() {
       <StaggeredZoomIn delayIndex={1} reduceMotion={reduceMotion}>
       <View style={styles.footer}>
         <View style={styles.stepIndicatorsWrapper}>
+          <Text style={styles.progressText}>
+            {currentStep === 'breather'
+              ? 'Quick pause'
+              : stepIndex >= STEPS.length - 2
+                ? 'Almost there'
+                : `Question ${stepIndex + 1} of ${STEPS.length}`}
+          </Text>
           {renderStepIndicators()}
         </View>
         <View style={styles.footerButtonsRow}>
@@ -1423,6 +1649,14 @@ const styles = StyleSheet.create({
     paddingTop: spacing.xs,
     paddingBottom: spacing.sm,
     alignItems: 'center',
+  },
+  progressText: {
+    fontSize: 16,
+    fontFamily: typography.family.semibold,
+    color: '#3D3D3D',
+    marginBottom: 8,
+    textAlign: 'center',
+    minHeight: 24,
   },
   stepIndicatorsContainer: {
     flexDirection: 'row',
@@ -1497,6 +1731,13 @@ const styles = StyleSheet.create({
     fontFamily: typography.display.bold,
     color: colors.text,
     marginBottom: 6,
+  },
+  multiSelectHint: {
+    fontSize: 14,
+    fontFamily: typography.family.medium,
+    color: colors.primary,
+    marginTop: 4,
+    marginBottom: 4,
   },
   questionSubtitle: {
     fontSize: 14,
@@ -1904,7 +2145,21 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: 'rgba(255, 255, 255, 0.65)',
   },
-  // Social proof screen (full screen)
+  whatHappensNextTitle: {
+    fontSize: 18,
+    fontFamily: typography.family.bold,
+    color: '#3D3D3D',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  whatHappensNextText: {
+    fontSize: 14,
+    fontFamily: typography.family.regular,
+    color: '#5A5A5A',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  // Social proof screen (full screen) — kept for potential reuse
   socialProofScreenContainer: {
     flex: 1,
     backgroundColor: 'transparent',
@@ -2105,6 +2360,10 @@ const styles = StyleSheet.create({
   },
   emailInputError: {
     borderColor: '#EF4444',
+  },
+  emailInputReadOnly: {
+    backgroundColor: 'rgba(0,0,0,0.06)',
+    color: colors.textMuted,
   },
   inputGroup: {
     marginBottom: 8,

@@ -41,9 +41,11 @@ export const API_CONFIG = {
     symptoms: '/api/symptoms',
     chatSessions: '/api/chat-sessions',
     chat: '/api/langchain-rag',
-    /** Save 8-step funnel quiz. Body: { quiz: { age_band, here_for, goals, symptoms, what_tried, how_long, qualifier, name } }. Backend upserts user_profiles: age_band, here_for, goals, top_problems←symptoms, tried_options←what_tried, timing←how_long, qualifier, name. */
+    /** Save 8-step funnel quiz. Body: { quiz: { age_band, here_for, goals, symptoms, what_tried, how_long, qualifier, name } }. Backend upserts user_profiles. */
     intake: '/api/intake',
     saveQuiz: '/api/intake',
+    /** Same as web gate: creates profile + user_trials. Body: { userId, quizAnswers: { top_problems, severity, timing, tried_options, goal, name }, referralCode }. */
+    saveQuizAuth: '/api/auth/save-quiz',
     notifications: '/api/notifications',
     notificationsUnreadCount: '/api/notifications/unread-count',
     notificationsPreferences: '/api/notifications/preferences',
