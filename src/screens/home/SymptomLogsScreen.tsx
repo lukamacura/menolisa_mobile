@@ -296,7 +296,7 @@ export function SymptomLogsScreen() {
   if (trialStatus.expired) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
-        <AccessEndedView variant="fullScreen" />
+        <AccessEndedView variant="fullScreen" reduceMotion={reduceMotion} />
       </SafeAreaView>
     );
   }

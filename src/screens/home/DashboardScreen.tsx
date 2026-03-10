@@ -344,6 +344,7 @@ export function DashboardScreen() {
   const [error, setError] = useState<string | null>(null);
   const [streak, setStreak] = useState<number | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
+  const [endingSoonPaywallDismissed, setEndingSoonPaywallDismissed] = useState(false);
   const reduceMotion = useReduceMotion();
 
   // Register refetch so trial status refreshes when user returns from web dashboard
@@ -428,8 +429,43 @@ export function DashboardScreen() {
     );
   }
 
+  const showEndingSoonPaywall =
+    !trialStatus.expired &&
+    !trialStatus.loading &&
+    trialStatus.daysLeft <= 2 &&
+    trialStatus.daysLeft >= 0 &&
+    !endingSoonPaywallDismissed;
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      {trialStatus.expired && (
+        <View
+          style={[StyleSheet.absoluteFillObject, styles.paywallOverlay]}
+          pointerEvents="box-none"
+        >
+          <AccessEndedView
+            variant="fullScreen"
+            trialState="expired"
+            onPress={handleOpenDashboard}
+            reduceMotion={reduceMotion}
+          />
+        </View>
+      )}
+      {showEndingSoonPaywall && (
+        <View
+          style={[StyleSheet.absoluteFillObject, styles.paywallOverlay]}
+          pointerEvents="box-none"
+        >
+          <AccessEndedView
+            variant="fullScreen"
+            trialState="ending_soon"
+            daysLeft={trialStatus.daysLeft}
+            onPress={handleOpenDashboard}
+            onSkip={() => setEndingSoonPaywallDismissed(true)}
+            reduceMotion={reduceMotion}
+          />
+        </View>
+      )}
       <ContentTransition>
         <ScrollView
           contentContainerStyle={styles.scrollContent}
@@ -462,35 +498,6 @@ export function DashboardScreen() {
                   <View style={styles.streakPill}>
                     <Ionicons name="flame" size={14} color={colors.background} />
                     <Text style={styles.streakPillText}>{streak} day streak</Text>
-                  </View>
-                </StaggeredZoomIn>
-              )}
-
-              {trialStatus.expired && (
-                <StaggeredZoomIn delayIndex={2} reduceMotion={reduceMotion}>
-                  <AccessEndedView variant="card" onPress={handleOpenDashboard} />
-                </StaggeredZoomIn>
-              )}
-
-              {!trialStatus.expired && !trialStatus.loading && trialStatus.daysLeft <= 2 && trialStatus.daysLeft >= 0 && (
-                <StaggeredZoomIn delayIndex={3} reduceMotion={reduceMotion}>
-                  <View style={styles.trialNearBanner}>
-                    <Text style={styles.trialNearText}>
-                      {trialStatus.daysLeft === 0
-                        ? 'Your free access ends tonight. Lisa has started learning your patterns—keep the insights coming.'
-                        : trialStatus.daysLeft === 1
-                        ? 'Your free access ends in 1 day. Lisa has started learning your patterns—keep the insights coming.'
-                        : 'Your free access ends in 2 days. Lisa has started learning your patterns—keep the insights coming.'}
-                    </Text>
-                    <TouchableOpacity
-                      activeOpacity={0.8}
-                      style={styles.trialNearButton}
-                      onPress={handleOpenDashboard}
-                      accessibilityRole="button"
-                      accessibilityLabel="Manage subscription"
-                    >
-                      <Text style={styles.trialNearButtonText}>Manage subscription</Text>
-                    </TouchableOpacity>
                   </View>
                 </StaggeredZoomIn>
               )}
@@ -589,6 +596,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  paywallOverlay: {
+    zIndex: 9999,
+    elevation: 9999,
   },
   scrollContent: {
     paddingBottom: 0,

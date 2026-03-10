@@ -6,13 +6,13 @@ import {
   ScrollView,
   TextInput,
   ActivityIndicator,
-  SafeAreaView,
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
   Image,
   Linking,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
@@ -106,7 +106,7 @@ export function LoginScreen() {
   }, [canSubmit, email, password]);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <LinearGradient
         colors={landingGradient}
         start={{ x: 0, y: 0 }}

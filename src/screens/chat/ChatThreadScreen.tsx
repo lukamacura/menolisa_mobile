@@ -290,7 +290,7 @@ export function ChatThreadScreen() {
       if (trialExpired) {
         Alert.alert(
           'Trial ended',
-          "I'm just getting to know your patterns. Continue with Lisa at menolisa.com to keep the insights coming.",
+          "I'm just getting to know your patterns. Continue with Lisa at www.menolisa.com to keep the insights coming.",
           [
             { text: 'OK', style: 'cancel' },
             { text: 'Continue with Lisa', onPress: () => openWebDashboard().catch(() => {}) },
@@ -434,12 +434,6 @@ export function ChatThreadScreen() {
                       const sev = toolArgs.severity ? String(toolArgs.severity).charAt(0).toUpperCase() + String(toolArgs.severity).slice(1) : 'Unknown';
                       message = [toolArgs.name, `Severity: ${sev}`].filter(Boolean).join(' | ');
                       if (toolArgs.triggers?.length) message += ` | Triggers: ${toolArgs.triggers.join(', ')}`;
-                    } else if (toolName === 'log_nutrition') {
-                      title = 'Meal Logged';
-                      message = `${toolArgs.food_item || ''} (${toolArgs.meal_type || ''})`;
-                    } else if (toolName === 'log_fitness') {
-                      title = 'Workout Logged';
-                      message = `${toolArgs.exercise_name || ''} (${toolArgs.exercise_type || ''})`;
                     }
                     if (title && message) showToolToast(title, message);
                   } else if (data.type === 'done') {
@@ -564,7 +558,7 @@ export function ChatThreadScreen() {
   if (trialExpired) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
-        <AccessEndedView variant="fullScreen" />
+        <AccessEndedView variant="fullScreen" reduceMotion={reduceMotion} />
       </SafeAreaView>
     );
   }

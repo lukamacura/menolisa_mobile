@@ -6,6 +6,8 @@ import {
   TouchableOpacity,
   Share,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -19,6 +21,7 @@ import { apiFetchWithAuth, API_CONFIG } from '../lib/api';
 import { colors, spacing, radii, typography, minTouchTarget } from '../theme/tokens';
 import { WhatLisaNoticedCardSkeleton } from './skeleton';
 
+type HomeStackParams = { HealthSummaryReport: undefined };
 type ActionSteps = { easy: string; medium: string; advanced: string };
 
 type Insight = {
@@ -43,6 +46,7 @@ function getTrendStyle(trend: string): { bg: string; text: string } {
 }
 
 export function WhatLisaNoticedCard() {
+  const navigation = useNavigation<NativeStackNavigationProp<HomeStackParams, 'HealthSummaryReport'>>();
   const [insight, setInsight] = useState<Insight | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -215,6 +219,15 @@ export function WhatLisaNoticedCard() {
           </TouchableOpacity>
         </View>
 
+        <TouchableOpacity
+          onPress={() => navigation.navigate('HealthSummaryReport')}
+          style={styles.getFullReportBtn}
+          accessibilityLabel="Get full report"
+        >
+          <Ionicons name="document-text-outline" size={20} color={colors.primary} />
+          <Text style={styles.getFullReportBtnText}>Get full report</Text>
+        </TouchableOpacity>
+
         {insight.whyThisMatters ? (
           <TouchableOpacity
             onPress={() => setWhyExpanded(!whyExpanded)}
@@ -370,6 +383,24 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   shareBtnText: {
+    fontSize: 14,
+    fontFamily: typography.family.medium,
+    color: colors.primary,
+  },
+  getFullReportBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: spacing.md,
+    minHeight: minTouchTarget,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  getFullReportBtnText: {
     fontSize: 14,
     fontFamily: typography.family.medium,
     color: colors.primary,

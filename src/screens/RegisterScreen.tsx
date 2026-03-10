@@ -10,7 +10,6 @@ import {
   useWindowDimensions,
   Animated,
   Easing,
-  SafeAreaView,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -18,6 +17,7 @@ import {
   ImageSourcePropType,
   Linking,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -270,7 +270,7 @@ export function RegisterScreen() {
     Linking.getInitialURL().then((url) => {
       if (!url) return;
       try {
-        const parsed = new URL(url.replace(/^menolisa:\/\//, 'https://menolisa.com/'));
+        const parsed = new URL(url.replace(/^menolisa:\/\//, 'https://www.menolisa.com/'));
         const ref = parsed.searchParams.get('ref');
         if (ref && ref.trim()) setReferralCode(ref.trim());
       } catch {
@@ -606,8 +606,6 @@ export function RegisterScreen() {
       });
 
       if (authError) {
-        console.error('Registration error:', authError);
-        
         // Handle specific Supabase error messages
         if (authError.message.includes('User already registered')) {
           setUserExists(true);
@@ -977,7 +975,7 @@ export function RegisterScreen() {
   };
 
   const renderGate = () => (
-    <SafeAreaView style={styles.emailContainer}>
+    <SafeAreaView style={styles.emailContainer} edges={['top', 'bottom']}>
       <LinearGradient
         colors={landingGradient}
         start={{ x: 0, y: 0 }}
@@ -1074,7 +1072,7 @@ export function RegisterScreen() {
   );
 
   const renderLoadingPhase = () => (
-    <SafeAreaView style={styles.resultsLoadingContainer}>
+    <SafeAreaView style={styles.resultsLoadingContainer} edges={['top', 'bottom']}>
       <LinearGradient
         colors={landingGradient}
         start={{ x: 0, y: 0 }}
@@ -1111,7 +1109,7 @@ export function RegisterScreen() {
     const score = calculateQualityScore(topProblems, derivedSeverity, timing, triedOptions);
 
     return (
-      <SafeAreaView style={styles.resultsContainer}>
+      <SafeAreaView style={styles.resultsContainer} edges={['top', 'bottom']}>
         <LinearGradient
           colors={landingGradient}
           start={{ x: 0, y: 0 }}
@@ -1262,7 +1260,7 @@ export function RegisterScreen() {
     if (signedUpAtGate) {
       const canSetPassword = passwordValid && !loading;
       return (
-        <SafeAreaView style={styles.emailContainer}>
+        <SafeAreaView style={styles.emailContainer} edges={['top', 'bottom']}>
           <LinearGradient
             colors={landingGradient}
             start={{ x: 0, y: 0 }}
@@ -1354,7 +1352,7 @@ export function RegisterScreen() {
     // User already exists - show login prompt
     if (userExists) {
       return (
-        <SafeAreaView style={styles.emailContainer}>
+        <SafeAreaView style={styles.emailContainer} edges={['top', 'bottom']}>
           <LinearGradient
             colors={landingGradient}
             start={{ x: 0, y: 0 }}
@@ -1397,7 +1395,7 @@ export function RegisterScreen() {
     }
 
     return (
-      <SafeAreaView style={styles.emailContainer}>
+      <SafeAreaView style={styles.emailContainer} edges={['top', 'bottom']}>
         <LinearGradient
           colors={landingGradient}
           start={{ x: 0, y: 0 }}
@@ -1562,7 +1560,7 @@ export function RegisterScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.container, styles.quizPhaseContainer, { height: windowHeight }]}>
+    <SafeAreaView style={[styles.container, styles.quizPhaseContainer, { height: windowHeight }]} edges={['top', 'bottom']}>
       <LinearGradient
         colors={landingGradient}
         start={{ x: 0, y: 0 }}

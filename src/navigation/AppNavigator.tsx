@@ -104,7 +104,7 @@ export function AppNavigator() {
         
         try {
           // Extract tokens from URL
-          const urlObj = new URL(url.replace('menolisa://', 'https://menolisa.com/'));
+          const urlObj = new URL(url.replace('menolisa://', 'https://www.menolisa.com/'));
           const hash = urlObj.hash.substring(1); // Remove the # symbol
           const params = new URLSearchParams(hash);
           

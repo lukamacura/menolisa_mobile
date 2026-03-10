@@ -10,7 +10,7 @@
 import { Linking, Platform } from 'react-native';
 import { supabase } from './supabase';
 
-const PRODUCTION_API_URL = 'https://menolisa.com';
+const PRODUCTION_API_URL = 'https://www.menolisa.com';
 
 /** Base URL for opening web app pages in the browser (dashboard, terms, privacy, etc.). Always production. */
 export const WEB_APP_BASE_URL = PRODUCTION_API_URL;
@@ -106,7 +106,7 @@ export const getApiUrl = (endpoint: string): string => {
 
 /**
  * URL for opening a web app page in the browser. Always uses menolisa.com so links
- * (dashboard, terms, privacy, forgot-password) open the real site even when testing on same WiFi.
+ * (dashboard, terms, privacy, forgot-password) open the real site (www.menolisa.com) even when testing on same WiFi.
  */
 export function getWebAppUrl(path: string): string {
   const normalized = path.startsWith('/') ? path : `/${path}`;

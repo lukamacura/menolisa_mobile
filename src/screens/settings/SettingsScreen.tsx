@@ -148,7 +148,7 @@ export function SettingsScreen() {
               <Ionicons name="globe-outline" size={22} color={colors.navy} />
               <View style={styles.rowTextWrap}>
                 <Text style={styles.navyRowLabel}>Manage subscription</Text>
-                <Text style={styles.navyRowSubtext}>Manage your plan and billing at menolisa.com</Text>
+                <Text style={styles.navyRowSubtext}>Manage your plan and billing at www.menolisa.com</Text>
               </View>
               <Ionicons name="open-outline" size={18} color={colors.navy} />
             </TouchableOpacity>
