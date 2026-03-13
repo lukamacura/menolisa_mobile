@@ -236,8 +236,7 @@ export function SettingsScreen() {
 
         <StaggeredZoomIn delayIndex={8} reduceMotion={reduceMotion}>
           <Text style={styles.disclaimer}>
-            MenoLisa is for tracking and information only. It is not medical advice. Always consult a
-            healthcare provider for medical decisions.
+            MenoLisa is for informational purposes only and is not a substitute for professional medical advice, diagnosis, or treatment. Always consult a qualified healthcare provider.
           </Text>
         </StaggeredZoomIn>
       </ScrollView>

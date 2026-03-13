@@ -678,7 +678,7 @@ export function ChatThreadScreen() {
             );
           }}
         />
-        <Text style={styles.chatDisclaimer}>Lisa is for support only, not medical advice.</Text>
+        <Text style={styles.chatDisclaimer}>MenoLisa is for informational purposes only and is not a substitute for professional medical advice, diagnosis, or treatment. Always consult a qualified healthcare provider.</Text>
         <View style={styles.inputRow}>
           <View style={styles.composerContainer}>
             <TextInput

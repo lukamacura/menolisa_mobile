@@ -22,6 +22,16 @@
 - Dashboard screen: `src/screens/home/DashboardScreen.tsx`
 - Design tokens: `src/theme/tokens.ts` (read-only source of truth)
 - Expo config (plugins): `app.config.js`
+- Medical disclaimer modal: `src/components/MedicalDisclaimerModal.tsx`
+- App navigator (disclaimer wired here): `src/navigation/AppNavigator.tsx`
+
+## Google Play Policy Compliance — Medical Disclaimers
+- Full canonical disclaimer: "MenoLisa is for informational purposes only and is not a substitute for professional medical advice, diagnosis, or treatment. Always consult a qualified healthcare provider."
+- AsyncStorage key for one-time modal: `@menolisa:disclaimer_accepted`
+- `MedicalDisclaimerModal` shown on first app launch from `AppNavigator`; uses `statusBarTranslucent`, no `onRequestClose` (user must tap "I understand")
+- Quiz footer disclaimer (RegisterScreen) uses shorter form; styled `presets.caption` / `colors.textMuted`
+- SymptomsScreen disclaimer (tracking-specific) added as `ListFooterComponent` on the symptom FlatList
+- Chat disclaimer in `ChatThreadScreen` line ~681; Settings disclaimer line ~238
 
 ## Style Conventions
 - Glass card on dark overlay: `backgroundColor: 'rgba(255,255,255,0.18)'`, `borderColor: 'rgba(255,255,255,0.40)'`

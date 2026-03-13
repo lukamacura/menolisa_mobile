@@ -104,13 +104,6 @@ export function LandingScreenWithButton() {
                   Navigate menopause with confidence. Your journey, our support.
                 </Text>
               </StaggeredZoomIn>
-              <StaggeredZoomIn delayIndex={3} reduceMotion={reduceMotion}>
-                <View style={styles.disclaimerWrap}>
-                  <Text style={styles.disclaimerText}>
-                    For information only. Not medical advice.
-                  </Text>
-                </View>
-              </StaggeredZoomIn>
             </View>
           </View>
 
@@ -196,22 +189,6 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     textAlign: 'center',
     paddingHorizontal: spacing.sm,
-  },
-  disclaimerWrap: {
-    marginTop: spacing.xl,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    backgroundColor: 'rgba(220, 38, 38, 0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(220, 38, 38, 0.35)',
-    borderRadius: radii.md,
-    alignSelf: 'stretch',
-  },
-  disclaimerText: {
-    fontSize: 12,
-    fontFamily: typography.family.semibold,
-    color: colors.danger,
-    textAlign: 'center',
   },
   ctaSection: {
     alignItems: 'center',

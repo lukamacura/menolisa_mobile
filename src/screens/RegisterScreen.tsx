@@ -1588,6 +1588,9 @@ export function RegisterScreen() {
       {/* Step indicators + Navigation Buttons at bottom - always visible, never scrolled away */}
       <StaggeredZoomIn delayIndex={1} reduceMotion={reduceMotion}>
       <View style={styles.footer}>
+        <Text style={styles.quizDisclaimer}>
+          MenoLisa is for informational purposes only and is not a substitute for professional medical advice. Always consult a qualified healthcare provider.
+        </Text>
         <View style={styles.stepIndicatorsWrapper}>
           <Text style={styles.progressText}>
             {currentStep === 'breather'
@@ -1641,6 +1644,13 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  quizDisclaimer: {
+    ...typography.presets.caption,
+    color: colors.textMuted,
+    textAlign: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
   },
   // Step indicators (at bottom, above Back/Next)
   stepIndicatorsWrapper: {

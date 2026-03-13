@@ -1,10 +1,11 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   NavigationContainer,
   createNavigationContainerRef,
 } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { View, Text, ActivityIndicator, StyleSheet, Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Linking from 'expo-linking';
 /** Only load on native; on web push/listeners are not supported and the module logs a warning. */
 const Notifications = Platform.OS !== 'web' ? require('expo-notifications') : null;
@@ -17,6 +18,7 @@ import { LandingScreenWithButton } from '../screens/LandingScreen';
 import { RegisterScreen } from '../screens/RegisterScreen';
 import { LoginScreen } from '../screens/LoginScreen';
 import { MainTabs } from './MainTabs';
+import { MedicalDisclaimerModal } from '../components/MedicalDisclaimerModal';
 
 const Stack = createNativeStackNavigator();
 const navigationRef = createNavigationContainerRef();
@@ -31,9 +33,33 @@ function LoadingScreen() {
   );
 }
 
+const DISCLAIMER_KEY = '@menolisa:disclaimer_accepted';
+
 export function AppNavigator() {
   const { user, loading } = useAuth();
   const refetchTrialRef = useRef<(() => Promise<void>) | null>(null);
+  const [disclaimerVisible, setDisclaimerVisible] = useState(false);
+
+  // Show medical disclaimer on first launch
+  useEffect(() => {
+    AsyncStorage.getItem(DISCLAIMER_KEY).then((value) => {
+      if (!value) {
+        setDisclaimerVisible(true);
+      }
+    }).catch(() => {
+      // If AsyncStorage fails, show the modal as a safe fallback
+      setDisclaimerVisible(true);
+    });
+  }, []);
+
+  const handleDisclaimerAccept = async () => {
+    try {
+      await AsyncStorage.setItem(DISCLAIMER_KEY, 'true');
+    } catch {
+      // Non-fatal: modal will be hidden regardless
+    }
+    setDisclaimerVisible(false);
+  };
 
   // Handle web auth callback (tokens in URL hash)
   useEffect(() => {
@@ -207,6 +233,10 @@ export function AppNavigator() {
           )}
         </Stack.Navigator>
       </NavigationContainer>
+      <MedicalDisclaimerModal
+        visible={disclaimerVisible}
+        onAccept={handleDisclaimerAccept}
+      />
     </RefetchTrialContext.Provider>
   );
 }

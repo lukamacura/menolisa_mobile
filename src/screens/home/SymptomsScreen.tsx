@@ -353,6 +353,11 @@ export function SymptomsScreen() {
             No symptoms set up yet. You can add and manage symptoms in the web app, or ask your coach in Chat to log one for you.
           </Text>
         }
+        ListFooterComponent={
+          <Text style={styles.symptomsDisclaimer}>
+            Symptom logs are for personal tracking only and are not a medical record. Share with your healthcare provider.
+          </Text>
+        }
         renderItem={({ item, index }) => {
           const illustration = getSymptomIllustration(item.name, item.icon);
           return (
@@ -653,6 +658,14 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  symptomsDisclaimer: {
+    ...typography.presets.caption,
+    color: colors.textMuted,
+    textAlign: 'center',
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.sm,
   },
   errorBanner: {
     backgroundColor: colors.dangerBg,
