@@ -127,11 +127,13 @@ export function LoginScreen() {
           bounces={true}
         >
           <StaggeredZoomIn delayIndex={0} reduceMotion={reduceMotion}>
-            <Image
-              source={require('../../assets/login.png')}
-              style={styles.loginImage}
-              resizeMode="contain"
-            />
+            <View style={styles.loginImageWrap}>
+              <Image
+                source={require('../../assets/login.png')}
+                style={styles.loginImage}
+                resizeMode="contain"
+              />
+            </View>
           </StaggeredZoomIn>
           <StaggeredZoomIn delayIndex={1} reduceMotion={reduceMotion}>
             <View style={styles.header}>
@@ -238,9 +240,9 @@ export function LoginScreen() {
                     size={20}
                     color={
                       errorType === 'user_not_found'
-                        ? '#3B82F6'
+                        ? colors.info
                         : errorType === 'rate_limit'
-                        ? '#F59E0B'
+                        ? colors.warning
                         : colors.danger
                     }
                   />
@@ -311,10 +313,14 @@ const styles = StyleSheet.create({
     paddingTop: spacing['2xl'],
     paddingBottom: spacing['2xl'],
   },
+  loginImageWrap: {
+    width: '100%',
+    height: 180,
+    marginBottom: spacing.md,
+  },
   loginImage: {
     width: '100%',
-    maxHeight: 200,
-    marginBottom: spacing.md,
+    height: '100%',
   },
   header: {
     marginBottom: spacing['2xl'],
@@ -358,7 +364,7 @@ const styles = StyleSheet.create({
     fontFamily: typography.family.regular,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
-    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+    backgroundColor: colors.surface,
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
@@ -397,7 +403,7 @@ const styles = StyleSheet.create({
   },
   submitButtonDisabled: {
     opacity: 0.6,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: colors.borderStrong,
   },
   submitButtonInner: {
     flexDirection: 'row',
@@ -420,15 +426,15 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     borderRadius: radii.lg,
     borderWidth: 1,
-    borderColor: 'rgba(220, 38, 38, 0.30)',
+    borderColor: colors.danger + '4D',
   },
   errorContainerInfo: {
-    backgroundColor: 'rgba(219, 234, 254, 0.8)',
-    borderColor: 'rgba(59, 130, 246, 0.30)',
+    backgroundColor: colors.infoBg,
+    borderColor: colors.info + '4D',
   },
   errorContainerWarning: {
-    backgroundColor: 'rgba(254, 243, 199, 0.8)',
-    borderColor: 'rgba(245, 158, 11, 0.30)',
+    backgroundColor: colors.warningBg,
+    borderColor: colors.warning + '4D',
   },
   errorHeader: {
     flexDirection: 'row',
@@ -442,10 +448,10 @@ const styles = StyleSheet.create({
     color: colors.danger,
   },
   errorTitleInfo: {
-    color: '#3B82F6',
+    color: colors.info,
   },
   errorTitleWarning: {
-    color: '#F59E0B',
+    color: colors.warning,
   },
   errorText: {
     fontSize: 14,
@@ -454,26 +460,26 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   errorTextInfo: {
-    color: '#1E40AF',
+    color: colors.info,
   },
   errorTextWarning: {
-    color: '#92400E',
+    color: colors.warning,
   },
   errorAction: {
     marginTop: spacing.md,
     paddingTop: spacing.md,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(59, 130, 246, 0.20)',
+    borderTopColor: colors.info + '33',
   },
   errorActionText: {
     fontSize: 12,
-    color: '#1E40AF',
+    color: colors.info,
     marginBottom: spacing.xs,
   },
   errorActionLink: {
     fontSize: 12,
     fontFamily: typography.family.semibold,
-    color: '#3B82F6',
+    color: colors.info,
     textDecorationLine: 'underline',
   },
   footer: {

@@ -41,7 +41,7 @@ type Step =
   | 'q6_how_long'
   | 'q7_qualifier'
   | 'q8_name';
-type Phase = 'quiz' | 'gate' | 'loading' | 'results' | 'email';
+type Phase = 'welcome' | 'quiz' | 'gate' | 'loading' | 'results' | 'email';
 
 const STEPS: Step[] = [
   'q1_age',
@@ -279,7 +279,7 @@ export function RegisterScreen() {
     });
   }, [route.params]);
 
-  const [phase, setPhase] = useState<Phase>('quiz');
+  const [phase, setPhase] = useState<Phase>('welcome');
   const [stepIndex, setStepIndex] = useState(0);
   const currentStep = STEPS[stepIndex];
 
@@ -974,6 +974,40 @@ export function RegisterScreen() {
     }
   };
 
+  const renderWelcome = () => (
+    <SafeAreaView style={styles.welcomeContainer} edges={['top', 'bottom']}>
+      <LinearGradient
+        colors={landingGradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+      <View style={styles.welcomeContent}>
+        <Image
+          source={require('../../assets/welcome.png')}
+          style={styles.welcomeImage}
+          resizeMode="contain"
+        />
+        <Text style={styles.welcomeHeading}>Hi there, I'm Lisa.</Text>
+        <Text style={styles.welcomeSubtext}>
+          Just <Text style={styles.welcomeSubtextBold}>9 quick questions</Text> before your journey to feeling like yourself again.
+        </Text>
+      </View>
+      <View style={styles.welcomeFooter}>
+        <TouchableOpacity
+          activeOpacity={1}
+          style={styles.gradientButton}
+          onPress={() => setPhase('quiz')}
+        >
+          <View style={styles.gradientButtonInner}>
+            <Text style={styles.gradientButtonText}>Let's go</Text>
+            <Ionicons name="arrow-forward" size={20} color={colors.background} />
+          </View>
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
+  );
+
   const renderGate = () => (
     <SafeAreaView style={styles.emailContainer} edges={['top', 'bottom']}>
       <LinearGradient
@@ -1028,7 +1062,7 @@ export function RegisterScreen() {
                 <TextInput
                   style={[styles.emailInput, !emailValid && email.length > 0 && styles.emailInputError]}
                   placeholder="you@example.com"
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor={colors.textMuted}
                   value={email}
                   onChangeText={setEmail}
                   keyboardType="email-address"
@@ -1059,7 +1093,7 @@ export function RegisterScreen() {
                       <Text style={[styles.gradientButtonText, !canSubmitGate && styles.buttonTextDisabled]}>
                         Show my results
                       </Text>
-                      <Ionicons name="arrow-forward" size={20} color={canSubmitGate ? colors.background : '#9CA3AF'} />
+                      <Ionicons name="arrow-forward" size={20} color={canSubmitGate ? colors.background : colors.textMuted} />
                     </>
                   )}
                 </View>
@@ -1286,7 +1320,7 @@ export function RegisterScreen() {
                   style={[styles.emailInput, styles.emailInputReadOnly]}
                   value={email}
                   editable={false}
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor={colors.textMuted}
                 />
               </View>
               <View style={styles.inputGroup}>
@@ -1295,7 +1329,7 @@ export function RegisterScreen() {
                   <TextInput
                     style={[styles.emailInput, styles.passwordInput, !passwordValid && password.length > 0 && styles.emailInputError]}
                     placeholder="Create a password (8+ characters)"
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor={colors.textMuted}
                     value={password}
                     onChangeText={setPassword}
                     secureTextEntry={!showPassword}
@@ -1338,7 +1372,7 @@ export function RegisterScreen() {
                       <Text style={[styles.gradientButtonText, !canSetPassword && styles.buttonTextDisabled]}>
                         Continue to my account
                       </Text>
-                      <Ionicons name="arrow-forward" size={20} color={canSetPassword ? colors.background : '#9CA3AF'} />
+                      <Ionicons name="arrow-forward" size={20} color={canSetPassword ? colors.background : colors.textMuted} />
                     </>
                   )}
                 </View>
@@ -1433,7 +1467,7 @@ export function RegisterScreen() {
             <TextInput
               style={[styles.emailInput, !emailValid && email.length > 0 && styles.emailInputError]}
               placeholder="you@example.com"
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor={colors.textMuted}
               value={email}
               onChangeText={setEmail}
               keyboardType="email-address"
@@ -1451,7 +1485,7 @@ export function RegisterScreen() {
               <TextInput
                 style={[styles.emailInput, styles.passwordInput, !passwordValid && password.length > 0 && styles.emailInputError]}
                 placeholder="Create a password (8+ characters)"
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor={colors.textMuted}
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry={!showPassword}
@@ -1525,7 +1559,7 @@ export function RegisterScreen() {
                   <Text style={[styles.gradientButtonText, !canSubmit && styles.buttonTextDisabled]}>
                     Start my free trial
                   </Text>
-                  <Ionicons name="arrow-forward" size={20} color={canSubmit ? colors.background : '#9CA3AF'} />
+                  <Ionicons name="arrow-forward" size={20} color={canSubmit ? colors.background : colors.textMuted} />
                 </>
               )}
             </View>
@@ -1542,6 +1576,10 @@ export function RegisterScreen() {
       </SafeAreaView>
     );
   };
+
+  if (phase === 'welcome') {
+    return renderWelcome();
+  }
 
   if (phase === 'gate') {
     return renderGate();
@@ -1610,7 +1648,7 @@ export function RegisterScreen() {
             <Ionicons
               name="arrow-back"
               size={18}
-              color="#1F2937"
+              color={colors.text}
             />
             <Text style={styles.backButtonText}>
               {stepIndex === 0 ? 'Back' : 'Back'}
@@ -1629,7 +1667,7 @@ export function RegisterScreen() {
             <Ionicons
               name="arrow-forward"
               size={18}
-              color={stepIsAnswered(currentStep) ? '#fff' : '#9CA3AF'}
+              color={stepIsAnswered(currentStep) ? colors.textInverse : colors.textMuted}
             />
           </TouchableOpacity>
         </View>
@@ -1661,7 +1699,7 @@ const styles = StyleSheet.create({
   progressText: {
     fontSize: 16,
     fontFamily: typography.family.semibold,
-    color: '#3D3D3D',
+    color: colors.text,
     marginBottom: 8,
     textAlign: 'center',
     minHeight: 24,
@@ -1698,7 +1736,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: radii.xl,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.7)',
+    borderColor: colors.card + 'B3',
     padding: spacing.lg,
     ...shadows.card,
   },
@@ -1768,7 +1806,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    backgroundColor: colors.card + 'CC',
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
@@ -1779,7 +1817,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: 10,
-    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    backgroundColor: colors.card + 'CC',
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
@@ -1792,16 +1830,16 @@ const styles = StyleSheet.create({
     opacity: 0.96,
   },
   optionCardSelected: {
-    backgroundColor: 'rgba(255, 141, 161, 0.10)',
-    borderColor: 'rgba(255, 141, 161, 0.35)',
+    backgroundColor: colors.primaryLight + '26',
+    borderColor: colors.primary + '59',
   },
   iconContainer: {
     padding: 7,
     borderRadius: 10,
-    backgroundColor: 'rgba(17, 24, 39, 0.05)',
+    backgroundColor: colors.navy + '0D',
   },
   iconContainerSelected: {
-    backgroundColor: 'rgba(255, 141, 161, 0.18)',
+    backgroundColor: colors.primaryLight + '40',
   },
   optionText: {
     fontSize: 14,
@@ -1832,7 +1870,7 @@ const styles = StyleSheet.create({
   nameInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    backgroundColor: colors.card + 'E6',
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
@@ -1858,8 +1896,8 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: spacing.md,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.65)',
-    backgroundColor: 'rgba(255, 255, 255, 0.72)',
+    borderTopColor: colors.card + 'A6',
+    backgroundColor: colors.card + 'B8',
   },
   footerButtonsRow: {
     flexDirection: 'row',
@@ -1890,7 +1928,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   backButtonTextDisabled: {
-    color: '#D1D5DB',
+    color: colors.borderStrong,
   },
   nextButton: {
     flex: 1,
@@ -1906,7 +1944,7 @@ const styles = StyleSheet.create({
     ...shadows.buttonPrimary,
   },
   nextButtonDisabled: {
-    backgroundColor: '#F3F4F6',
+    backgroundColor: colors.border,
   },
   nextButtonText: {
     fontSize: 17,
@@ -1915,7 +1953,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   nextButtonTextDisabled: {
-    color: '#9CA3AF',
+    color: colors.textMuted,
   },
   // Results loading
   resultsLoadingContainer: {
@@ -2001,7 +2039,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.xl,
     padding: spacing.lg,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.7)',
+    borderColor: colors.card + 'B3',
   },
   scoreHeader: {
     flexDirection: 'row',
@@ -2149,21 +2187,21 @@ const styles = StyleSheet.create({
     right: 0,
     padding: 16,
     paddingBottom: 24,
-    backgroundColor: 'rgba(255, 255, 255, 0.82)',
+    backgroundColor: colors.card + 'D1',
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.65)',
+    borderTopColor: colors.card + 'A6',
   },
   whatHappensNextTitle: {
     fontSize: 18,
     fontFamily: typography.family.bold,
-    color: '#3D3D3D',
+    color: colors.text,
     textAlign: 'center',
     marginBottom: 8,
   },
   whatHappensNextText: {
     fontSize: 14,
     fontFamily: typography.family.regular,
-    color: '#5A5A5A',
+    color: colors.textMuted,
     textAlign: 'center',
     marginBottom: 16,
   },
@@ -2268,9 +2306,9 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     padding: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.88)',
+    backgroundColor: colors.card + 'E0',
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.7)',
+    borderTopColor: colors.card + 'B3',
   },
   // Primary CTA button (Landing style + bottom shadow)
   gradientButton: {
@@ -2296,10 +2334,10 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.6,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: colors.borderStrong,
   },
   buttonTextDisabled: {
-    color: '#9CA3AF',
+    color: colors.textMuted,
   },
   // Email styles
   emailContainer: {
@@ -2321,7 +2359,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 20,
     padding: 20,
-    backgroundColor: 'rgba(255, 141, 161, 0.1)',
+    backgroundColor: colors.primaryLight + '26',
     borderRadius: 50,
     alignSelf: 'center',
   },
@@ -2359,7 +2397,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: typography.family.medium,
     padding: 16,
-    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+    backgroundColor: colors.surface,
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
@@ -2367,10 +2405,10 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   emailInputError: {
-    borderColor: '#EF4444',
+    borderColor: colors.danger,
   },
   emailInputReadOnly: {
-    backgroundColor: 'rgba(0,0,0,0.06)',
+    backgroundColor: colors.navy + '0D',
     color: colors.textMuted,
   },
   inputGroup: {
@@ -2407,7 +2445,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: 'rgba(220, 38, 38, 0.30)',
+    borderColor: colors.danger + '4D',
   },
   errorText: {
     color: colors.danger,
@@ -2456,14 +2494,14 @@ const styles = StyleSheet.create({
   },
   linkText: {
     fontSize: 14,
-    color: '#6B7280',
+    color: colors.textMuted,
     textAlign: 'center',
     textDecorationLine: 'underline',
   },
   // Email sent styles
   emailSentContainer: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: colors.background,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 20,
@@ -2471,25 +2509,65 @@ const styles = StyleSheet.create({
   emailSentIcon: {
     marginBottom: 20,
     padding: 24,
-    backgroundColor: 'rgba(255, 141, 161, 0.1)',
+    backgroundColor: colors.primaryLight + '26',
     borderRadius: 50,
   },
   emailSentTitle: {
     fontSize: 28,
     fontFamily: typography.display.bold,
-    color: '#1F2937',
+    color: colors.text,
     marginBottom: 12,
   },
   emailSentText: {
     fontSize: 16,
-    color: '#6B7280',
+    color: colors.textMuted,
     textAlign: 'center',
     marginBottom: 8,
   },
   emailSentSubtext: {
     fontSize: 14,
-    color: '#6B7280',
+    color: colors.textMuted,
     textAlign: 'center',
     lineHeight: 22,
+  },
+  // Welcome screen
+  welcomeContainer: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  welcomeContent: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+  },
+  welcomeImage: {
+    width: '80%',
+    height: 260,
+    marginBottom: spacing['2xl'],
+  },
+  welcomeHeading: {
+    fontSize: 28,
+    fontFamily: typography.display.bold,
+    color: colors.text,
+    textAlign: 'center',
+    marginBottom: spacing.md,
+  },
+  welcomeSubtext: {
+    fontSize: 16,
+    fontFamily: typography.family.regular,
+    color: colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 24,
+    paddingHorizontal: spacing.sm,
+  },
+  welcomeSubtextBold: {
+    fontFamily: typography.family.bold,
+    color: colors.text,
+  },
+  welcomeFooter: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xl,
+    paddingTop: spacing.md,
   },
 });

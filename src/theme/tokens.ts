@@ -1,42 +1,52 @@
 import { Platform } from 'react-native';
 
 export const colors = {
-  // Brand (soft coral/salmon)
-  primary: '#ff8da1',
-  primaryLight: '#ffb8c9',
-  primaryDark: '#e67a8f',
-  navy: '#1D3557',
-  blue: '#65dbff',
-  blueLight: '#a6eaff',
-  gold: '#ffeb76',
+  // Brand core
+  primary: '#F47C97',
+  primaryLight: '#F9B8C8',
+  primaryDark: '#D95F7E',
+
+  // Secondary + accents
+  navy: '#2E2A4D',
+  blue: '#3ABFA3',
+  blueLight: '#BDEEE4',
+  gold: '#FFB38A',
+  lavender: '#8B7CF6',
+  plumSoft: '#EAE8F5',
   /** Referral / Invite friends – visible orange */
   orange: '#E85D04',
   orangeLight: 'rgba(232, 93, 4, 0.12)',
 
   /** Settings row tints (semantic backgrounds for action rows) */
-  rowNavyBg: 'rgba(29, 53, 87, 0.14)',
-  rowBlueBg: 'rgba(101, 219, 255, 0.18)',
-  rowGoldBg: 'rgba(255, 235, 118, 0.32)',
+  rowNavyBg: 'rgba(46, 42, 77, 0.14)',
+  rowBlueBg: 'rgba(58, 191, 163, 0.18)',
+  rowGoldBg: 'rgba(255, 179, 138, 0.30)',
   rowRedBg: 'rgba(220, 38, 38, 0.10)',
 
-  // UI
-  background: '#FFFFFF',
-  surface: 'rgba(255, 255, 255, 0.92)',
+  // UI surfaces + text
+  background: '#FFFDFB',
+  surface: 'rgba(255, 255, 255, 0.94)',
+  surfaceElevated: '#FFF6F8',
   card: '#FFFFFF',
-  text: '#1F2937',
-  textMuted: '#6B7280',
-  border: 'rgba(17, 24, 39, 0.10)',
-  borderStrong: 'rgba(17, 24, 39, 0.14)',
+  text: '#1F1B2D',
+  textMuted: '#6B647C',
+  textInverse: '#FFFFFF',
+  border: '#E8DDE3',
+  borderStrong: '#DCCFD8',
 
-  // Feedback
-  danger: '#DC2626',
-  dangerBg: 'rgba(220, 38, 38, 0.10)',
-  warning: '#F97316',
-  success: '#10B981',
+  // Feedback / status
+  danger: '#C83A54',
+  dangerBg: '#FDECEF',
+  warning: '#D98A1F',
+  warningBg: '#FFF4E5',
+  success: '#22A06B',
+  successBg: '#EAF8F1',
+  info: '#4B8DF8',
+  infoBg: '#EAF1FF',
 };
 
 /** Soft gradient used on Landing (and auth/quiz screens for consistency) */
-export const landingGradient = ['#FDF8F9', '#F9F2F4', '#F5EDF0'] as const;
+export const landingGradient = ['#FFF6F8', '#F9F1F7', '#F3ECFA'] as const;
 
 export const radii = {
   sm: 10,

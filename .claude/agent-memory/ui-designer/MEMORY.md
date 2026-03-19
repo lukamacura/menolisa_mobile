@@ -36,7 +36,39 @@
 ## Style Conventions
 - Glass card on dark overlay: `backgroundColor: 'rgba(255,255,255,0.18)'`, `borderColor: 'rgba(255,255,255,0.40)'`
 - Streak pill on dark overlay: `backgroundColor: 'rgba(255,255,255,0.20)'`, `borderColor: 'rgba(255,255,255,0.35)'`, text `colors.background`
-- Symptom box (white bg section): `backgroundColor: 'rgba(255,255,255,0.95)'`, `borderColor: colors.border`, `shadowColor: colors.primary`
+- Symptom box pattern retired — replaced by two-card `actionCardsRow` layout (see below)
+- Action cards (white bg, equal): `borderColor: colors.border`, `shadowColor: colors.navy`, `shadowOpacity: 0.08`, `minHeight: 160`
+- Action card icon wells: coral (`colors.primary`) for Chat, navy (`colors.navy`) for Track — both 56×56, `borderRadius: radii.md`
+
+## rgba → Opaque Fixes (Android rendering)
+Low-opacity rgba backgrounds render inconsistently on Android. Always use opaque equivalents:
+- `rgba(16,185,129,0.08)` → `'#EDF9F4'` (green tint — what's working box)
+- `rgba(59,130,246,0.08)` → `'#EEF4FD'` (blue tint — doctor box bg)
+- `rgba(59,130,246,0.25)` → `'#BDD1F5'` (blue tint — doctor box border)
+- `rgba(16,185,129,0.2)` → `'#E1F7F1'` (green badge bg — Easy/improving)
+- `rgba(245,158,11,0.2)` → `'#FEF3C7'` (amber badge bg — Medium/worsening)
+- `rgba(255,141,161,0.2)` → `'#FDEAEE'` (primary badge bg — Advanced)
+- `rgba(107,114,128,0.15)` → `'#F0F0F2'` (neutral badge bg — stable trend)
+- Overlays on dark video/images are the only acceptable use of rgba (intentional translucency)
+
+## WhatLisaNoticedCard conventions
+- `src/components/WhatLisaNoticedCard.tsx` — no navigation import (HealthSummaryReport route removed)
+- Action step badge labels: easy="Start here", medium="A bit more energy", advanced="Go deeper"
+- Doctor section header: "For your next appointment" (not "For your healthcare provider")
+- `doctorLabel` color: `colors.navy` (not hardcoded `#1D4ED8`)
+- Freshness bar shown when `insight.dataPoints` present; opaque `colors.border` divider below
+- Content order: headline → why → whatsWorking → freshness bar → action steps → doctor box → whyThisMatters
+
+## DailyMoodModal
+- `src/components/DailyMoodModal.tsx` — full-screen, once-per-day, 4 mood options (1–4)
+- Uses `LinearGradient` with `landingGradient` from tokens; wraps in `SafeAreaView` (react-native-safe-area-context)
+- Mood buttons: `MOOD_BTN_SIZE = max(80, (SCREEN_WIDTH - padding - gaps) / 4)`; `borderRadius: radii.xl`
+- Selected: `colors.primary` bg, white label; unselected: `rgba(255,141,161,0.10)` bg (intentional — on light gradient)
+- Entry animation: `FadeIn.duration(300)` from reanimated on the content `Animated.View`
+- CTA disabled state: `colors.primaryLight` bg, semi-transparent text — never block submission visually with red
+- Image placeholder: `assets/mood-checkin.png` 280×240 — watercolor illustration (see file comment for prompt)
 
 ## StaggeredZoomIn delay indices (Dashboard)
-- 0: greeting, 1: streak pill, 2: trial expired, 3: trial near, 4: error, 5: LisaHeroCard, 6: symptom box, 8: wavy divider, 9: disclaimer, 10: WhatLisaNoticedCard
+- 0: greeting, 1: streak pill, 4: error, 5: daily message line, 6: action cards row (Chat + Track), 7: history link, 8: wavy divider, 9: WhatLisaNoticedCard, 10: disclaimer
+- LisaHeroCard component definition remains in file but is no longer rendered in JSX (safe to remove in a future cleanup pass)
+- Hero overlay now contains ONLY greeting + streak pill — no action CTA inside the video

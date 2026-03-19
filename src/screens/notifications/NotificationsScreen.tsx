@@ -37,25 +37,25 @@ function getNotificationStyle(type: string | null): {
   const t = (type || '').toLowerCase();
   switch (t) {
     case 'reminder':
-      return { icon: 'alarm-outline', iconColor: colors.primary, bgColor: 'rgba(255, 141, 161, 0.12)' };
+      return { icon: 'alarm-outline', iconColor: colors.primary, bgColor: colors.primaryLight + '33' };
     case 'weekly_insights':
-      return { icon: 'analytics-outline', iconColor: colors.navy, bgColor: 'rgba(29, 53, 87, 0.08)' };
+      return { icon: 'analytics-outline', iconColor: colors.navy, bgColor: colors.plumSoft };
     case 'lisa_message':
-      return { icon: 'chatbubble-ellipses-outline', iconColor: colors.primary, bgColor: 'rgba(255, 141, 161, 0.12)' };
+      return { icon: 'chatbubble-ellipses-outline', iconColor: colors.primary, bgColor: colors.primaryLight + '33' };
     case 'achievement':
-      return { icon: 'trophy-outline', iconColor: colors.gold, bgColor: 'rgba(255, 235, 118, 0.25)' };
+      return { icon: 'trophy-outline', iconColor: colors.gold, bgColor: colors.gold + '30' };
     case 'trial':
-      return { icon: 'time-outline', iconColor: colors.primary, bgColor: 'rgba(255, 141, 161, 0.12)' };
+      return { icon: 'time-outline', iconColor: colors.primary, bgColor: colors.primaryLight + '33' };
     case 'welcome':
-      return { icon: 'hand-left-outline', iconColor: colors.primary, bgColor: 'rgba(255, 141, 161, 0.12)' };
+      return { icon: 'hand-left-outline', iconColor: colors.primary, bgColor: colors.primaryLight + '33' };
     case 'success':
-      return { icon: 'checkmark-circle-outline', iconColor: colors.success, bgColor: 'rgba(16, 185, 129, 0.12)' };
+      return { icon: 'checkmark-circle-outline', iconColor: colors.success, bgColor: colors.successBg };
     case 'symptom_logged':
-      return { icon: 'checkmark-circle-outline', iconColor: colors.success, bgColor: 'rgba(16, 185, 129, 0.12)' };
+      return { icon: 'checkmark-circle-outline', iconColor: colors.success, bgColor: colors.successBg };
     case 'error':
       return { icon: 'alert-circle-outline', iconColor: colors.danger, bgColor: colors.dangerBg };
     default:
-      return { icon: 'notifications-outline', iconColor: colors.textMuted, bgColor: 'rgba(17, 24, 39, 0.06)' };
+      return { icon: 'notifications-outline', iconColor: colors.textMuted, bgColor: colors.surfaceElevated };
   }
 }
 
@@ -225,7 +225,7 @@ export function NotificationsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FDF8FA',
+    backgroundColor: colors.background,
   },
   header: {
     flexDirection: 'row',
@@ -260,7 +260,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     borderRadius: radii.md,
     borderWidth: 1,
-    borderColor: 'rgba(220, 38, 38, 0.2)',
+    borderColor: colors.danger + '33',
   },
   errorIcon: {
     marginRight: spacing.sm,
@@ -284,7 +284,7 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: 'rgba(17, 24, 39, 0.06)',
+    backgroundColor: colors.navy + '12',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.lg,
@@ -315,7 +315,7 @@ const styles = StyleSheet.create({
   cardUnread: {
     borderLeftWidth: 4,
     borderLeftColor: colors.primary,
-    backgroundColor: 'rgba(255, 141, 161, 0.04)',
+    backgroundColor: colors.primaryLight + '14',
   },
   iconWrap: {
     width: 44,

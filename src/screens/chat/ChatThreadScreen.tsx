@@ -631,7 +631,7 @@ export function ChatThreadScreen() {
                   style={[
                     styles.bubble,
                     item.role === 'user' ? styles.bubbleUser : styles.bubbleAssistant,
-                    item.role === 'assistant' && Platform.OS === 'ios' && styles.bubbleAssistantWide,
+                    item.role === 'assistant' && (Platform.OS === 'ios' || Platform.OS === 'web') && styles.bubbleAssistantWide,
                   ]}
                 >
                   {item.role === 'user' ? (
@@ -722,12 +722,12 @@ export function ChatThreadScreen() {
               <Animated.View
                 style={[StyleSheet.absoluteFillObject, styles.sendBtnContent, { opacity: sendIconOpacity, pointerEvents: 'none' }]}
               >
-                <Ionicons name="send" size={22} color="#fff" />
+                <Ionicons name="send" size={22} color={colors.textInverse} />
               </Animated.View>
               <Animated.View
                 style={[StyleSheet.absoluteFillObject, styles.sendBtnContent, { opacity: sendSpinnerOpacity, pointerEvents: 'none' }]}
               >
-                <ActivityIndicator size="small" color="#fff" />
+                <ActivityIndicator size="small" color={colors.textInverse} />
               </Animated.View>
             </TouchableOpacity>
           </View>
@@ -740,23 +740,23 @@ export function ChatThreadScreen() {
 
 /* Chat UI theme: calm, readable, 40+ friendly */
 const CHAT = {
-  screenBg: '#FDF8FA',
+  screenBg: colors.background,
   userBubble: colors.primary,
-  userBubbleText: '#FFFFFF',
-  lisaBubble: '#FFFFFF',
-  lisaBubbleBorder: 'rgba(255, 141, 161, 0.18)',
+  userBubbleText: colors.textInverse,
+  lisaBubble: colors.card,
+  lisaBubbleBorder: colors.primaryLight + '45',
   lisaBubbleShadow: 'rgba(0,0,0,0.04)',
   lisaLabel: colors.textMuted,
   bodyFontSize: 17,
   lineHeight: 24,
-  composerBg: '#FFFFFF',
-  composerBorder: 'rgba(255, 141, 161, 0.2)',
-  chipBg: '#FFF5F9',
-  chipBorder: 'rgba(255, 141, 161, 0.35)',
+  composerBg: colors.card,
+  composerBorder: colors.primaryLight + '4D',
+  chipBg: colors.primaryLight + '26',
+  chipBorder: colors.primary + '59',
   chipText: colors.primaryDark,
   emptyIcon: colors.primaryLight,
-  errorBg: '#FEF2F2',
-  errorBorder: 'rgba(220, 38, 38, 0.15)',
+  errorBg: colors.dangerBg,
+  errorBorder: colors.danger + '26',
 };
 
 const styles = StyleSheet.create({
@@ -844,7 +844,7 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   messageList: {
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.sm,
     paddingTop: spacing.sm,
     paddingBottom: spacing.md,
   },
@@ -888,7 +888,7 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   bubble: {
-    maxWidth: '88%',
+    maxWidth: '94%',
     paddingVertical: 14,
     paddingHorizontal: 18,
     borderRadius: 20,
@@ -981,7 +981,7 @@ const styles = StyleSheet.create({
   inputRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.sm,
     paddingVertical: spacing.sm,
     paddingBottom: spacing.lg,
     backgroundColor: CHAT.screenBg,

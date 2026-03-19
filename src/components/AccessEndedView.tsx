@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import {
   View,
   Text,
@@ -13,45 +13,19 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radii, typography, minTouchTarget, shadows } from '../theme/tokens';
 import { openWebDashboard } from '../lib/api';
 
-const { width: WINDOW_WIDTH, height: WINDOW_HEIGHT } = Dimensions.get('window');
+const { width: WINDOW_WIDTH } = Dimensions.get('window');
 
-// Expired: three copy variants (no em dashes)
-const COPY_VARIANTS: Array<{ heading: string; subheading: string }> = [
-  {
-    heading: "Your patterns are ready. Don't leave them behind.",
-    subheading:
-      'By week two Lisa usually finds 3 to 5 patterns most women miss. Unlock your report and keep the insights.',
-  },
-  {
-    heading: 'Lisa is just getting to know you. Stay and keep connecting.',
-    subheading:
-      "She's learning your body's signals. Subscribe to keep your conversation and patterns with you.",
-  },
-  {
-    heading: 'Take back control of your symptoms.',
-    subheading:
-      'Unlock your full report and keep tracking patterns with Lisa. Your data stays safe.',
-  },
-];
+const COPY_EXPIRED = {
+  heading: 'Lisa has been learning your body. Keep going.',
+  subheading:
+    "She's already spotting patterns most women miss. Your insights are saved — subscribe to pick up right where you left off.",
+};
 
-// Ending soon (0-2 days left): three copy variants
-const COPY_VARIANTS_ENDING_SOON: Array<{ heading: string; subheading: string }> = [
-  {
-    heading: "Your patterns are taking shape. Don't miss what Lisa finds next.",
-    subheading:
-      'By week two she usually spots 3 to 5 patterns most women miss. Choose a plan and keep your insights.',
-  },
-  {
-    heading: 'Lisa is just getting to know you. Keep the connection going.',
-    subheading:
-      "She's learning your body's signals. Subscribe before your trial ends and keep everything you've built.",
-  },
-  {
-    heading: 'Stay in control of your symptoms.',
-    subheading:
-      'Your trial is ending soon. Unlock your full report and keep tracking patterns with Lisa.',
-  },
-];
+const COPY_ENDING_SOON = {
+  heading: 'Your patterns are just starting to show.',
+  subheading:
+    "Lisa gets sharper the longer she knows you. Choose a plan and keep everything she's learned about your body.",
+};
 
 const URGENCY_EXPIRED = 'Your trial has ended. Your data is saved for 30 days.';
 
@@ -60,16 +34,15 @@ function getUrgencyEndingSoon(daysLeft: number): string {
   if (daysLeft === 1) return 'Your free access ends in 1 day.';
   return 'Your free access ends in 2 days.';
 }
+
 const BUTTON_LABEL_CONTINUE = 'Continue with Lisa';
 const BUTTON_LABEL_MANAGE = 'Manage subscription';
 const REMIND_LATER_LABEL = 'Remind me later';
+const SKIP_LABEL = 'Skip';
 
 const PRICE_MONTHLY = 12;
 const PRICE_ANNUAL = 79;
 const PRICE_ANNUAL_PER_MONTH = 6.58;
-
-const TEXT_FADE_MS = 200;
-const COPY_ROTATE_INTERVAL_MS = 2000;
 
 type Variant = 'card' | 'fullScreen';
 export type TrialPaywallState = 'expired' | 'ending_soon';
@@ -85,11 +58,7 @@ type AccessEndedViewProps = {
   onRemindLater?: () => void;
   /** When provided, shows a small "Skip" link under the CTA that calls this to close the paywall. */
   onSkip?: () => void;
-  /** Optional: reduce motion disables word stagger animation. */
-  reduceMotion?: boolean;
 };
-
-const SKIP_LABEL = 'Skip';
 
 export function AccessEndedView({
   variant,
@@ -98,21 +67,10 @@ export function AccessEndedView({
   onPress,
   onRemindLater,
   onSkip,
-  reduceMotion = false,
 }: AccessEndedViewProps) {
-  const variants = trialState === 'ending_soon' ? COPY_VARIANTS_ENDING_SOON : COPY_VARIANTS;
-  const [copyIndex, setCopyIndex] = useState(0);
-  const copy = variants[copyIndex];
+  const copy = trialState === 'ending_soon' ? COPY_ENDING_SOON : COPY_EXPIRED;
   const urgencyLine =
     trialState === 'expired' ? URGENCY_EXPIRED : getUrgencyEndingSoon(daysLeft);
-
-  useEffect(() => {
-    const len = trialState === 'ending_soon' ? COPY_VARIANTS_ENDING_SOON.length : COPY_VARIANTS.length;
-    const id = setInterval(() => {
-      setCopyIndex((prev) => (prev + 1) % len);
-    }, COPY_ROTATE_INTERVAL_MS);
-    return () => clearInterval(id);
-  }, [trialState]);
 
   const handlePress = () => {
     if (onPress) {
@@ -137,38 +95,14 @@ export function AccessEndedView({
       </View>
       <View style={isFullScreen ? styles.copyWrap : styles.copyWrapCard}>
         <View style={styles.headingWrap}>
-          {reduceMotion ? (
-            <Text style={isFullScreen ? styles.headline : styles.cardHeadline}>
-              {copy.heading}
-            </Text>
-          ) : (
-            <Animated.View
-              key={copyIndex}
-              entering={FadeIn.duration(TEXT_FADE_MS)}
-              style={styles.revealBlock}
-            >
-              <Text style={isFullScreen ? styles.headline : styles.cardHeadline}>
-                {copy.heading}
-              </Text>
-            </Animated.View>
-          )}
+          <Text style={isFullScreen ? styles.headline : styles.cardHeadline}>
+            {copy.heading}
+          </Text>
         </View>
         <View style={styles.subheadingWrap}>
-          {reduceMotion ? (
-            <Text style={isFullScreen ? styles.valueLine : styles.cardValueLine}>
-              {copy.subheading}
-            </Text>
-          ) : (
-            <Animated.View
-              key={copyIndex}
-              entering={FadeIn.delay(40).duration(TEXT_FADE_MS)}
-              style={styles.revealBlock}
-            >
-              <Text style={isFullScreen ? styles.valueLine : styles.cardValueLine}>
-                {copy.subheading}
-              </Text>
-            </Animated.View>
-          )}
+          <Text style={isFullScreen ? styles.valueLine : styles.cardValueLine}>
+            {copy.subheading}
+          </Text>
         </View>
         <TouchableOpacity
           activeOpacity={0.8}
@@ -239,9 +173,10 @@ export function AccessEndedView({
           contentContainerStyle={styles.fullScreenScrollContent}
           showsVerticalScrollIndicator={false}
           bounces={false}
+          keyboardShouldPersistTaps="handled"
         >
           <Animated.View
-            entering={reduceMotion ? undefined : FadeIn.duration(280)}
+            entering={FadeIn.duration(280)}
             style={styles.fullScreenCard}
           >
             {content}
@@ -261,25 +196,22 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    width: WINDOW_WIDTH,
-    height: WINDOW_HEIGHT,
     backgroundColor: colors.background,
   },
   fullScreenScrollContent: {
     flexGrow: 1,
     paddingHorizontal: spacing.xl,
+    paddingTop: spacing.xl,
     paddingBottom: spacing['2xl'],
-    minHeight: WINDOW_HEIGHT,
   },
   fullScreenCard: {
     alignItems: 'center',
     width: '100%',
-    minHeight: WINDOW_HEIGHT,
   },
   heroImageWrap: {
     width: WINDOW_WIDTH,
-    height: Math.min(WINDOW_HEIGHT * 0.42, 320),
     marginHorizontal: -spacing.xl,
+    height: 280,
     backgroundColor: 'transparent',
     justifyContent: 'center',
     alignItems: 'center',
@@ -456,8 +388,5 @@ const styles = StyleSheet.create({
   cardButtonText: {
     ...typography.presets.buttonSmall,
     color: colors.background,
-  },
-  revealBlock: {
-    width: '100%',
   },
 });

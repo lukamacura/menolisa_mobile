@@ -33,6 +33,9 @@ export function NotificationPromptModal({ visible, onEnable, onNotNow }: Props) 
           <Text style={styles.message}>
             Get weekly insights from Lisa and gentle reminders to log symptoms.
             You can change this anytime in Settings.
+            {Platform.OS === 'android'
+              ? '\n\nAfter you tap Enable, Android will show its own confirmation — that step is required to turn notifications on.'
+              : ''}
           </Text>
           <TouchableOpacity
             activeOpacity={0.85}

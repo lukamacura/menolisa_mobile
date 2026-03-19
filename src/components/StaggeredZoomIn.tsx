@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, type ViewStyle } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -14,7 +14,7 @@ export const STAGGER_DELAY_MS = 72;
 export const ZOOM_INITIAL_SCALE = 0.96;
 
 export function useReduceMotion(): boolean {
-  const [reduceMotion, setReduceMotion] = useState(true);
+  const [reduceMotion, setReduceMotion] = useState(false);
 
   useEffect(() => {
     const subscription = AccessibilityInfo.addEventListener(
@@ -43,9 +43,13 @@ export function StaggeredZoomIn({
 }: StaggeredZoomInProps) {
   const opacity = useSharedValue(reduceMotion ? 1 : 0);
   const scale = useSharedValue(reduceMotion ? 1 : ZOOM_INITIAL_SCALE);
+  const hasAnimated = useRef(false);
 
   useEffect(() => {
-    if (reduceMotion) return;
+    // Only trigger the entrance animation once. If content is already visible
+    // (reduceMotion was true at mount) or already animated, skip.
+    if (hasAnimated.current || reduceMotion) return;
+    hasAnimated.current = true;
     const easing = Easing.out(Easing.quad);
     const delay = delayIndex * STAGGER_DELAY_MS;
     opacity.value = withDelay(

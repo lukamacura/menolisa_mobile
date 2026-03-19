@@ -5,9 +5,8 @@ import {
   StyleSheet,
   TouchableOpacity,
   Share,
+  Image,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -21,7 +20,8 @@ import { apiFetchWithAuth, API_CONFIG } from '../lib/api';
 import { colors, spacing, radii, typography, minTouchTarget } from '../theme/tokens';
 import { WhatLisaNoticedCardSkeleton } from './skeleton';
 
-type HomeStackParams = { HealthSummaryReport: undefined };
+const bannerSource = require('../../assets/lisa-noticed-banner.png');
+
 type ActionSteps = { easy: string; medium: string; advanced: string };
 
 type Insight = {
@@ -32,26 +32,32 @@ type Insight = {
   doctorNote: string;
   trend: 'improving' | 'worsening' | 'stable';
   whyThisMatters?: string;
+  generatedAt?: string;
+  dataPoints?: {
+    symptomLogs: number;
+    chatSessions: number;
+    daysWindow: number;
+  };
 };
 
 function getTrendStyle(trend: string): { bg: string; text: string } {
   switch (trend) {
     case 'improving':
-      return { bg: 'rgba(16, 185, 129, 0.15)', text: '#047857' };
+      return { bg: '#E1F7F1', text: '#047857' };
     case 'worsening':
-      return { bg: 'rgba(245, 158, 11, 0.2)', text: '#B45309' };
+      return { bg: '#FEF3C7', text: '#B45309' };
     default:
-      return { bg: 'rgba(107, 114, 128, 0.15)', text: '#4B5563' };
+      return { bg: '#F0F0F2', text: '#4B5563' };
   }
 }
 
 export function WhatLisaNoticedCard() {
-  const navigation = useNavigation<NativeStackNavigationProp<HomeStackParams, 'HealthSummaryReport'>>();
   const [insight, setInsight] = useState<Insight | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [whyExpanded, setWhyExpanded] = useState(false);
+  const [whyMattersExpanded, setWhyMattersExpanded] = useState(false);
   const refreshRotation = useSharedValue(0);
 
   useEffect(() => {
@@ -85,7 +91,7 @@ export function WhatLisaNoticedCard() {
       if (typeof raw === 'string') {
         setInsight({
           patternHeadline: raw.split('\n')[0] || "Lisa didn't have enough data yet to notice something specific.",
-          why: raw.substring(0, 200) || "Keep logging your symptoms and mood so Lisa can share what she notices.",
+          why: raw.substring(0, 200) || 'Keep logging your symptoms and mood so Lisa can share what she notices.',
           whatsWorking: null,
           actionSteps: {
             easy: 'Keep tracking so Lisa can spot what helps.',
@@ -94,7 +100,7 @@ export function WhatLisaNoticedCard() {
           },
           doctorNote: 'Symptom and mood tracking in progress. Can review with healthcare provider when ready.',
           trend: 'stable',
-          whyThisMatters: "When Lisa has a bit more data, she can point out things that might be useful to you and your healthcare team.",
+          whyThisMatters: 'When Lisa has a bit more data, she can point out things that might be useful to you and your healthcare team.',
         });
       } else if (raw && typeof raw === 'object' && raw.patternHeadline) {
         setInsight(raw as Insight);
@@ -114,15 +120,50 @@ export function WhatLisaNoticedCard() {
     fetchInsight();
   }, [fetchInsight]);
 
-  const onShareDoctorNote = useCallback(async () => {
-    if (!insight?.doctorNote) return;
+  const onGetFullReport = useCallback(async () => {
+    if (!insight) return;
+    const trendLabel = insight.trend === 'improving' ? 'Improving' : insight.trend === 'worsening' ? 'Needs attention' : 'Stable';
+    const date = insight.generatedAt ? new Date(insight.generatedAt).toLocaleDateString() : new Date().toLocaleDateString();
+    const lines: string[] = [
+      '═══════════════════════════════════',
+      '  MENOLISA — YOUR HEALTH REPORT',
+      `  Generated: ${date}`,
+      '═══════════════════════════════════',
+      '',
+      `TREND: ${trendLabel.toUpperCase()}`,
+      '',
+      '─── WHAT LISA NOTICED ─────────────',
+      insight.patternHeadline,
+      '',
+      insight.why,
+    ];
+    if (insight.whatsWorking) {
+      lines.push('', '─── WHAT\'S WORKING ────────────────', insight.whatsWorking);
+    }
+    lines.push(
+      '',
+      '─── WHAT YOU CAN TRY ──────────────',
+      `Start here:         ${insight.actionSteps.easy}`,
+      `A bit more energy:  ${insight.actionSteps.medium}`,
+      `Go deeper:          ${insight.actionSteps.advanced}`,
+    );
+    lines.push(
+      '',
+      '─── FOR YOUR NEXT APPOINTMENT ─────',
+      insight.doctorNote,
+    );
+    if (insight.whyThisMatters) {
+      lines.push('', '─── WHY THIS MATTERS ──────────────', insight.whyThisMatters);
+    }
+    if (insight.dataPoints) {
+      const { daysWindow, symptomLogs, chatSessions } = insight.dataPoints;
+      lines.push('', '─── DATA SOURCES ──────────────────', `Based on ${daysWindow} days · ${symptomLogs} symptom logs · ${chatSessions} chats`);
+    }
+    lines.push('', '═══════════════════════════════════', '  menolisa.com', '═══════════════════════════════════');
     try {
-      await Share.share({
-        message: `For your healthcare provider:\n\n${insight.doctorNote}`,
-        title: 'Symptom summary',
-      });
+      await Share.share({ message: lines.join('\n'), title: 'Menolisa Health Report' });
     } catch (_) {}
-  }, [insight?.doctorNote]);
+  }, [insight]);
 
   if (loading && !refreshing) {
     return <WhatLisaNoticedCardSkeleton />;
@@ -147,9 +188,21 @@ export function WhatLisaNoticedCard() {
   }
 
   const trendStyle = getTrendStyle(insight.trend);
+  const { dataPoints } = insight;
 
   return (
     <View style={styles.card}>
+      {/* ── Banner illustration (full-width, no padding) ── */}
+      <Image
+        source={bannerSource}
+        style={styles.bannerImage}
+        resizeMode="cover"
+        accessibilityElementsHidden
+        importantForAccessibility="no"
+      />
+
+      <View style={styles.cardInner}>
+      {/* ── Header row: title + trend badge + refresh ── */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Text style={styles.cardTitle}>What Lisa noticed</Text>
@@ -177,74 +230,115 @@ export function WhatLisaNoticedCard() {
       </View>
 
       <View style={styles.content}>
+        {/* ── 1. Headline ── */}
         <Text style={styles.headline}>{insight.patternHeadline}</Text>
-        <Text style={styles.why}>{insight.why}</Text>
 
+        {/* ── 2. Why ── */}
+        <View style={styles.whyContainer}>
+          <Text
+            style={styles.why}
+            numberOfLines={whyExpanded ? undefined : 2}
+          >
+            {insight.why}
+          </Text>
+          <TouchableOpacity
+            onPress={() => setWhyExpanded(!whyExpanded)}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={whyExpanded ? 'Show less of why' : 'Read more of why'}
+            style={styles.whyReadMoreBtn}
+          >
+            <Text style={styles.whyReadMoreText}>
+              {whyExpanded ? 'Show less' : 'Read more'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* ── 3. What's working ── */}
         {insight.whatsWorking ? (
           <View style={styles.whatsWorkingBox}>
             <Text style={styles.whatsWorkingText}>✨ {insight.whatsWorking}</Text>
           </View>
         ) : null}
 
+        {/* ── 4. Freshness bar ── */}
+        {dataPoints ? (
+          <View style={styles.freshnessContainer}>
+            <Text style={styles.freshnessText}>
+              {'Based on '}
+              <Text style={styles.freshnessEmphasis}>{dataPoints.daysWindow} days</Text>
+              {'  ·  '}
+              <Text style={styles.freshnessEmphasis}>{dataPoints.symptomLogs} logs</Text>
+              {'  ·  '}
+              <Text style={styles.freshnessEmphasis}>{dataPoints.chatSessions} chats</Text>
+            </Text>
+            <View style={styles.freshnessDivider} />
+          </View>
+        ) : null}
+
+        {/* ── 5. Action steps ── */}
         <Text style={styles.sectionLabel}>What you can try</Text>
+
         <View style={styles.stepRow}>
-          <View style={[styles.stepBadge, { backgroundColor: 'rgba(16, 185, 129, 0.2)' }]}>
-            <Text style={styles.stepBadgeText}>Easy</Text>
+          <View style={[styles.stepBadge, styles.stepBadgeEasy]}>
+            <Text style={[styles.stepBadgeText, styles.stepBadgeTextEasy]}>Start here</Text>
           </View>
           <Text style={styles.stepText}>{insight.actionSteps.easy}</Text>
         </View>
+
         <View style={styles.stepRow}>
-          <View style={[styles.stepBadge, { backgroundColor: 'rgba(245, 158, 11, 0.2)' }]}>
-            <Text style={[styles.stepBadgeText, { color: '#B45309' }]}>Medium</Text>
+          <View style={[styles.stepBadge, styles.stepBadgeMedium]}>
+            <Text style={[styles.stepBadgeText, styles.stepBadgeTextMedium]}>A bit more energy</Text>
           </View>
           <Text style={styles.stepText}>{insight.actionSteps.medium}</Text>
         </View>
+
         <View style={styles.stepRow}>
-          <View style={[styles.stepBadge, { backgroundColor: 'rgba(255, 141, 161, 0.2)' }]}>
-            <Text style={[styles.stepBadgeText, { color: colors.primaryDark }]}>Advanced</Text>
+          <View style={[styles.stepBadge, styles.stepBadgeAdvanced]}>
+            <Text style={[styles.stepBadgeText, styles.stepBadgeTextAdvanced]}>Go deeper</Text>
           </View>
           <Text style={styles.stepText}>{insight.actionSteps.advanced}</Text>
         </View>
 
+        {/* ── 6. For your next appointment ── */}
         <View style={styles.doctorBox}>
-          <Text style={styles.doctorLabel}>For your healthcare provider</Text>
+          <Text style={styles.doctorLabel}>For your next appointment</Text>
           <Text style={styles.doctorNote}>{insight.doctorNote}</Text>
-          <TouchableOpacity
-            onPress={onShareDoctorNote}
-            style={styles.shareBtn}
-            accessibilityLabel="Share doctor note"
-          >
-            <Ionicons name="share-outline" size={20} color={colors.primary} />
-            <Text style={styles.shareBtnText}>Share</Text>
-          </TouchableOpacity>
         </View>
 
+        {/* ── 7. Get full report ── */}
         <TouchableOpacity
-          onPress={() => navigation.navigate('HealthSummaryReport')}
+          onPress={onGetFullReport}
           style={styles.getFullReportBtn}
           accessibilityLabel="Get full report"
+          activeOpacity={0.7}
         >
           <Ionicons name="document-text-outline" size={20} color={colors.primary} />
           <Text style={styles.getFullReportBtnText}>Get full report</Text>
         </TouchableOpacity>
 
+        {/* ── 8. Why this matters (expandable) ── */}
         {insight.whyThisMatters ? (
           <TouchableOpacity
-            onPress={() => setWhyExpanded(!whyExpanded)}
+            onPress={() => setWhyMattersExpanded(!whyMattersExpanded)}
             style={styles.whyMattersToggle}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={whyMattersExpanded ? 'Collapse why this matters' : 'Expand why this matters'}
+            accessibilityState={{ expanded: whyMattersExpanded }}
           >
             <Ionicons
-              name={whyExpanded ? 'chevron-up' : 'chevron-down'}
+              name={whyMattersExpanded ? 'chevron-up' : 'chevron-down'}
               size={20}
               color={colors.text}
             />
             <Text style={styles.whyMattersLabel}>Why this matters</Text>
           </TouchableOpacity>
         ) : null}
-        {insight.whyThisMatters && whyExpanded ? (
+        {insight.whyThisMatters && whyMattersExpanded ? (
           <Text style={styles.whyMattersText}>{insight.whyThisMatters}</Text>
         ) : null}
+      </View>
       </View>
     </View>
   );
@@ -256,9 +350,20 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: spacing.lg,
     marginBottom: spacing.xl,
+    overflow: 'hidden',
   },
+  cardInner: {
+    padding: spacing.lg,
+  },
+
+  // Banner illustration
+  bannerImage: {
+    width: '100%',
+    height: 110,
+  },
+
+  // Header
   header: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -293,9 +398,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+
+  // Content wrapper
   content: {
     flexGrow: 0,
   },
+
+  // 1. Headline
   headline: {
     fontSize: 17,
     fontFamily: typography.family.bold,
@@ -303,15 +412,29 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     lineHeight: 24,
   },
+
+  // 2. Why
+  whyContainer: {
+    marginBottom: spacing.md,
+  },
   why: {
     fontSize: 15,
     fontFamily: typography.family.regular,
     color: colors.textMuted,
     lineHeight: 22,
-    marginBottom: spacing.md,
   },
+  whyReadMoreBtn: {
+    paddingVertical: spacing.xs,
+    alignSelf: 'flex-start',
+  },
+  whyReadMoreText: {
+    ...typography.presets.caption,
+    color: colors.primary,
+  },
+
+  // 3. What's working — opaque equivalent of rgba(16,185,129,0.08)
   whatsWorkingBox: {
-    backgroundColor: 'rgba(16, 185, 129, 0.08)',
+    backgroundColor: '#EDF9F4',
     borderWidth: 1,
     borderColor: 'rgba(16, 185, 129, 0.3)',
     borderRadius: radii.md,
@@ -323,6 +446,26 @@ const styles = StyleSheet.create({
     fontFamily: typography.family.medium,
     color: '#047857',
   },
+
+  // 4. Freshness bar
+  freshnessContainer: {
+    marginBottom: spacing.md,
+  },
+  freshnessText: {
+    ...typography.presets.caption,
+    color: colors.textMuted,
+  },
+  freshnessEmphasis: {
+    fontFamily: typography.family.medium,
+    color: colors.textMuted,
+  },
+  freshnessDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginTop: spacing.sm,
+  },
+
+  // 5. Action steps
   sectionLabel: {
     fontSize: 13,
     fontFamily: typography.family.semibold,
@@ -330,34 +473,53 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   stepRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.sm,
-    marginBottom: spacing.sm,
+    flexDirection: 'column',
+    gap: 4,
+    marginBottom: spacing.md,
   },
   stepBadge: {
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: radii.sm,
-    minWidth: 52,
-    alignItems: 'center',
+    alignSelf: 'flex-start',
   },
   stepBadgeText: {
     fontSize: 11,
     fontFamily: typography.family.semibold,
+  },
+  // Easy — "Start here"
+  stepBadgeEasy: {
+    backgroundColor: '#E1F7F1',
+  },
+  stepBadgeTextEasy: {
     color: '#047857',
   },
+  // Medium — "A bit more energy"
+  stepBadgeMedium: {
+    backgroundColor: '#FEF3C7',
+  },
+  stepBadgeTextMedium: {
+    color: '#B45309',
+  },
+  // Advanced — "Go deeper"
+  stepBadgeAdvanced: {
+    backgroundColor: '#FDEAEE',
+  },
+  stepBadgeTextAdvanced: {
+    color: colors.primaryDark,
+  },
   stepText: {
-    flex: 1,
     fontSize: 14,
     fontFamily: typography.family.regular,
     color: colors.textMuted,
     lineHeight: 20,
   },
+
+  // 6. For your next appointment — opaque equivalents of rgba blues
   doctorBox: {
-    backgroundColor: 'rgba(59, 130, 246, 0.08)',
+    backgroundColor: '#EEF4FD',
     borderWidth: 1,
-    borderColor: 'rgba(59, 130, 246, 0.25)',
+    borderColor: '#BDD1F5',
     borderRadius: radii.md,
     padding: spacing.md,
     marginTop: spacing.sm,
@@ -366,7 +528,7 @@ const styles = StyleSheet.create({
   doctorLabel: {
     fontSize: 12,
     fontFamily: typography.family.semibold,
-    color: '#1D4ED8',
+    color: colors.navy,
     marginBottom: 4,
   },
   doctorNote: {
@@ -375,36 +537,24 @@ const styles = StyleSheet.create({
     color: '#1E3A8A',
     lineHeight: 20,
   },
-  shareBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: spacing.sm,
-    paddingVertical: 6,
-  },
-  shareBtnText: {
-    fontSize: 14,
-    fontFamily: typography.family.medium,
-    color: colors.primary,
-  },
+  // 7. Get full report
   getFullReportBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: spacing.sm,
     marginTop: spacing.md,
-    minHeight: minTouchTarget,
     paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
   },
   getFullReportBtnText: {
     fontSize: 14,
     fontFamily: typography.family.medium,
     color: colors.primary,
   },
+
+  // 8. Why this matters
   whyMattersToggle: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -412,6 +562,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     borderTopWidth: 1,
     borderTopColor: colors.border,
+    marginTop: spacing.sm,
   },
   whyMattersLabel: {
     fontSize: 14,
@@ -426,6 +577,8 @@ const styles = StyleSheet.create({
     marginTop: 4,
     paddingLeft: 26,
   },
+
+  // States
   errorText: {
     fontSize: 14,
     fontFamily: typography.family.regular,

@@ -16,7 +16,6 @@ const SYMPTOM_NAME_TO_ICON: Record<string, string> = {
   'Weight gain': 'trending-up',
   'Low libido': 'heart-dislike',
   'Good Day': 'sunny',
-  'Period': 'ellipse-outline',
 };
 
 /** Get Ionicons icon name for a symptom (by name or API icon string). */

@@ -10,6 +10,7 @@
 See `decisions/` folder for detailed specs.
 
 - `decisions/dashboard-palette-video.md` — Video hero rejected; violet palette exploration approved with constraints; color weighting audit recommended before full rebrand.
+- `decisions/symptom-list-period-removal.md` — "Period" removed from default symptom list. Rationale: demographic mismatch (postmenopausal users), trust/credibility risk, insight noise. Destructive log deletion confirmed. No user notification required. Greenlit 2026-03-18.
 
 ## Core Tone Rules
 - Acknowledge before informing. Validate before advising.

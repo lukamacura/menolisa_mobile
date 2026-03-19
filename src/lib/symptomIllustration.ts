@@ -19,7 +19,6 @@ const SYMPTOM_IMAGES: Record<string, ImageSourcePropType> = {
   low_libido: require('../../assets/symptoms/low_libido.png'),
   mood_swings: require('../../assets/symptoms/mood_swings.png'),
   night_sweats: require('../../assets/symptoms/night_sweats.png'),
-  period: require('../../assets/symptoms/period.png'),
   weight_gain: require('../../assets/symptoms/weight_gain.png'),
   /** Fallback when no specific symptom asset exists (e.g. chat auto-log). Replace with dedicated neutral.png if desired. */
   neutral: require('../../assets/symptoms/fatigue.png'),

@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StaggeredZoomIn, useReduceMotion } from '../../components/StaggeredZoomIn';
+import { GratitudeSuccessPanel } from '../../components/GratitudeSuccessPanel';
 import { SymptomLogsSkeleton, ContentTransition } from '../../components/skeleton';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -26,6 +27,8 @@ import { AccessEndedView } from '../../components/AccessEndedView';
 import { getSymptomIllustration } from '../../lib/symptomIllustration';
 import { TRIGGER_OPTIONS, type TimeSelection } from '../../lib/symptomTrackerConstants';
 import { colors, spacing, radii, typography, minTouchTarget, shadows } from '../../theme/tokens';
+
+const GRATITUDE_DISMISS_MS = 1800;
 
 const SEVERITY_OPTIONS = [
   { value: 1, label: 'Mild', emoji: '😊', description: 'Noticeable but manageable' },
@@ -117,6 +120,11 @@ export function SymptomLogsScreen() {
   const [editNotes, setEditNotes] = useState('');
   const [editCustomTrigger, setEditCustomTrigger] = useState('');
   const [editSubmitting, setEditSubmitting] = useState(false);
+  const [showEditSuccess, setShowEditSuccess] = useState(false);
+  const [editSuccessSnapshot, setEditSuccessSnapshot] = useState<{
+    symptomName: string;
+    severityLabel: string;
+  } | null>(null);
 
   const loadLogs = useCallback(async () => {
     try {
@@ -151,13 +159,26 @@ export function SymptomLogsScreen() {
     setEditNotes(log.notes?.trim() ?? '');
     setEditCustomTrigger('');
     setEditStep(1);
+    setShowEditSuccess(false);
+    setEditSuccessSnapshot(null);
     setEditModalVisible(true);
   }, []);
 
   const closeEditModal = useCallback(() => {
     setEditModalVisible(false);
     setLogToEdit(null);
+    setShowEditSuccess(false);
+    setEditSuccessSnapshot(null);
   }, []);
+
+  useEffect(() => {
+    if (!showEditSuccess) return;
+    const timer = setTimeout(() => {
+      closeEditModal();
+      loadLogs();
+    }, GRATITUDE_DISMISS_MS);
+    return () => clearTimeout(timer);
+  }, [showEditSuccess, closeEditModal, loadLogs]);
 
   const getEditLoggedAtTimestamp = useCallback((): string => {
     const now = new Date();
@@ -198,14 +219,18 @@ export function SymptomLogsScreen() {
           loggedAt: getEditLoggedAtTimestamp(),
         }),
       });
-      closeEditModal();
-      loadLogs();
+      const name = logToEdit.symptoms?.name ?? 'Symptom';
+      setEditSuccessSnapshot({
+        symptomName: name,
+        severityLabel: SEVERITY_LABELS[editSeverity] ?? 'Logged',
+      });
+      setShowEditSuccess(true);
     } catch (e) {
       Alert.alert('Error', e instanceof Error ? e.message : 'Failed to update log');
     } finally {
       setEditSubmitting(false);
     }
-  }, [logToEdit, editSeverity, editTriggers, editNotes, getEditLoggedAtTimestamp, closeEditModal, loadLogs]);
+  }, [logToEdit, editSeverity, editTriggers, editNotes, getEditLoggedAtTimestamp]);
 
   const [deleteConfirmLog, setDeleteConfirmLog] = useState<SymptomLog | null>(null);
 
@@ -442,6 +467,19 @@ export function SymptomLogsScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
+            {showEditSuccess && editSuccessSnapshot ? (
+              <GratitudeSuccessPanel
+                title="Updated beautifully"
+                subtitle={`You updated your ${editSuccessSnapshot.symptomName} log to ${editSuccessSnapshot.severityLabel.toLowerCase()}.\nThis keeps Lisa's picture of your day accurate.`}
+                metaChips={[
+                  { icon: 'create-outline', label: 'Saved' },
+                  { icon: 'medal-outline', label: editSuccessSnapshot.severityLabel },
+                ]}
+                encouragement="Every log is a step toward feeling more understood."
+                reduceMotion={reduceMotion}
+              />
+            ) : (
+              <>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>
                 Edit {logToEdit?.symptoms?.name ?? 'symptom'} log
@@ -596,6 +634,8 @@ export function SymptomLogsScreen() {
                 </TouchableOpacity>
               )}
             </View>
+              </>
+            )}
           </View>
         </View>
       </Modal>

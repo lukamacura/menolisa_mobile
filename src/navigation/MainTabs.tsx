@@ -19,6 +19,7 @@ import { NotificationsScreen } from '../screens/notifications/NotificationsScree
 import { SettingsScreen } from '../screens/settings/SettingsScreen';
 import { NotificationPrefsScreen } from '../screens/settings/NotificationPrefsScreen';
 import { InviteFriendsScreen } from '../screens/settings/InviteFriendsScreen';
+import { innerStackScreenOptions } from './stackScreenOptions';
 
 const Tab = createBottomTabNavigator();
 const HomeStack = createNativeStackNavigator();
@@ -27,7 +28,7 @@ const SettingsStack = createNativeStackNavigator();
 
 function HomeStackScreen() {
   return (
-    <HomeStack.Navigator screenOptions={{ headerShown: false }}>
+    <HomeStack.Navigator screenOptions={innerStackScreenOptions}>
       <HomeStack.Screen name="Dashboard" component={DashboardScreen} />
       <HomeStack.Screen
         name="Symptoms"
@@ -80,7 +81,7 @@ function PlaceholderTabScreen({ title }: { title: string }) {
 
 function ChatStackScreen() {
   return (
-    <ChatStack.Navigator screenOptions={{ headerShown: false }}>
+    <ChatStack.Navigator screenOptions={innerStackScreenOptions}>
       <ChatStack.Screen name="ChatList" component={ChatListScreen} />
       <ChatStack.Screen
         name="ChatThread"
@@ -99,7 +100,7 @@ function ChatStackScreen() {
 }
 function SettingsStackScreen() {
   return (
-    <SettingsStack.Navigator screenOptions={{ headerShown: false }}>
+    <SettingsStack.Navigator screenOptions={innerStackScreenOptions}>
       <SettingsStack.Screen name="Settings" component={SettingsScreen} />
       <SettingsStack.Screen
         name="InviteFriends"

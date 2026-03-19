@@ -1,7 +1,8 @@
-import React, { useCallback, useContext, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useState } from 'react';
 import {
   View,
   Text,
+  Image,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
@@ -9,7 +10,9 @@ import {
   Dimensions,
   Alert,
   Platform,
+  Modal,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Path } from 'react-native-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -25,21 +28,59 @@ import { supabase } from '../../lib/supabase';
 import { RefetchTrialContext } from '../../context/RefetchTrialContext';
 import { useTrialStatus } from '../../hooks/useTrialStatus';
 import { colors, spacing, radii, typography, minTouchTarget, shadows } from '../../theme/tokens';
+import { motion } from '../../theme/motion';
 import { WhatLisaNoticedCard } from '../../components/WhatLisaNoticedCard';
+import { DailyMoodHistoryCard } from '../../components/DailyMoodHistoryCard';
 import { AccessEndedView } from '../../components/AccessEndedView';
+import { DailyMoodModal } from '../../components/DailyMoodModal';
+import { GratitudeSuccessPanel } from '../../components/GratitudeSuccessPanel';
+import { useDailyMood } from '../../hooks/useDailyMood';
 import { StaggeredZoomIn, useReduceMotion } from '../../components/StaggeredZoomIn';
+import { AnimatedPressable } from '../../components/AnimatedPressable';
 import { DashboardSkeleton, ContentTransition } from '../../components/skeleton';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
+  useAnimatedScrollHandler,
   withTiming,
   withRepeat,
   withSequence,
   withDelay,
+  withSpring,
+  interpolate,
+  Extrapolate,
+  FadeInDown,
+  FadeOutUp,
+  FadeIn,
+  FadeOut,
+  LinearTransition,
   Easing,
 } from 'react-native-reanimated';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+const GRATITUDE_DISMISS_MS = 1800;
+
+const STREAK_MILESTONE_COPY: Record<
+  7 | 14 | 30,
+  { title: string; subtitle: string }
+> = {
+  7: {
+    title: 'One week of showing up',
+    subtitle:
+      'Seven days in a row of check-ins. That steadiness helps Lisa notice patterns and support you better.',
+  },
+  14: {
+    title: 'Two weeks strong',
+    subtitle:
+      'Fourteen days of keeping up with yourself. Consistency like this makes insights much more meaningful.',
+  },
+  30: {
+    title: 'A full month of care',
+    subtitle:
+      'Thirty days of showing up for your wellbeing. That commitment is something to be proud of.',
+  },
+};
 const WAVE_HEIGHT = 60;
 const VIDEO_HEIGHT = SCREEN_HEIGHT * 0.60;
 
@@ -59,19 +100,19 @@ function WavyDivider() {
         {/* Deep shadow - darkest pink */}
         <Path
           d="M0,0 L100,0 Q50,120 0,0 Z"
-          fill="#ffd2da"
+          fill={colors.primaryLight}
           fillOpacity={0.6}
         />
         {/* Mid shadow - medium pink */}
         <Path
           d="M0,0 L100,0 Q50,90 0,0 Z"
-          fill="#ffe9ec"
+          fill={colors.surfaceElevated}
           fillOpacity={0.5}
         />
         {/* Main white curve */}
         <Path
           d="M0,0 L100,0 Q50,60 0,0 Z"
-          fill="#FFFFFF"
+          fill={colors.card}
         />
       </Svg>
     </View>
@@ -107,36 +148,17 @@ function AmbientVideoHero({ reduceMotion }: AmbientVideoHeroProps) {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const player = useVideoPlayer(require('../../../assets/dashboard_lisa.mp4'), (p) => {
     p.muted = true;
-    // loop disabled - we replay manually after a 1.5–3 s pause (fits ~2–3 s clip)
+    p.loop = true;
   });
 
-  const mountedRef = useRef(true);
-
   useEffect(() => {
-    mountedRef.current = true;
-    return () => { mountedRef.current = false; };
-  }, []);
-
-  useEffect(() => {
-    if (reduceMotion) return;
+    if (reduceMotion) {
+      player.pause();
+      return;
+    }
 
     player.play();
-
-    let replayTimeout: ReturnType<typeof setTimeout>;
-
-    const subscription = player.addListener('playingChange', ({ isPlaying }) => {
-      // video finished - schedule a replay after a random 1.5–3 s pause
-      if (!isPlaying && mountedRef.current) {
-        const delay = 1500 + Math.random() * 1500;
-        replayTimeout = setTimeout(() => {
-          if (mountedRef.current) player.replay();
-        }, delay);
-      }
-    });
-
     return () => {
-      subscription.remove();
-      clearTimeout(replayTimeout);
       player.pause();
     };
   }, [player, reduceMotion]);
@@ -347,6 +369,51 @@ export function DashboardScreen() {
   const [endingSoonPaywallDismissed, setEndingSoonPaywallDismissed] = useState(false);
   const reduceMotion = useReduceMotion();
 
+  // Daily mood check-in
+  const { hasMoodToday, loading: moodLoading, submitMood } = useDailyMood();
+  const [moodModalVisible, setMoodModalVisible] = useState(false);
+  const [streakGratitudeDays, setStreakGratitudeDays] = useState<7 | 14 | 30 | null>(null);
+
+  // Show the modal once the mood check resolves and no entry exists for today
+  useEffect(() => {
+    if (!moodLoading && !hasMoodToday) {
+      const timer = setTimeout(() => setMoodModalVisible(true), 600);
+      return () => clearTimeout(timer);
+    }
+  }, [moodLoading, hasMoodToday]);
+
+  const handleMoodSubmit = useCallback(
+    async (mood: 1 | 2 | 3 | 4) => submitMood(mood),
+    [submitMood]
+  );
+
+  useEffect(() => {
+    if (streak == null || loading) return;
+    if (streak !== 7 && streak !== 14 && streak !== 30) return;
+    let cancelled = false;
+    (async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user?.id || cancelled) return;
+      const m: 7 | 14 | 30 = streak;
+      const key = `@menolisa:streak_gratitude_${user.id}_${m}`;
+      const done = await AsyncStorage.getItem(key);
+      if (done === 'true' || cancelled) return;
+      await AsyncStorage.setItem(key, 'true');
+      if (!cancelled) setStreakGratitudeDays(m);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [streak, loading]);
+
+  useEffect(() => {
+    if (streakGratitudeDays == null) return;
+    const timer = setTimeout(() => setStreakGratitudeDays(null), GRATITUDE_DISMISS_MS);
+    return () => clearTimeout(timer);
+  }, [streakGratitudeDays]);
+
   // Register refetch so trial status refreshes when user returns from web dashboard
   useEffect(() => {
     if (refetchTrialRef) refetchTrialRef.current = trialStatus.refetch;
@@ -356,11 +423,59 @@ export function DashboardScreen() {
   }, [refetchTrialRef, trialStatus.refetch]);
 
   // Refetch trial when screen gains focus (e.g. return from browser)
+  // Fade-in + rise on every focus visit — screen + individual CTA images
+  const screenOpacity = useSharedValue(reduceMotion ? 1 : 0);
+  const scrollY = useSharedValue(0);
+  const endingSoonPulse = useSharedValue(1);
+  const cardLayoutTransition = LinearTransition.duration(motion.duration.base).easing(Easing.out(Easing.quad));
+
   useFocusEffect(
     useCallback(() => {
       trialStatus.refetch().catch(() => {});
-    }, [trialStatus.refetch])
+      if (reduceMotion) return;
+      screenOpacity.value = 0;
+      screenOpacity.value = withTiming(1, {
+        duration: motion.duration.entrance,
+        easing: Easing.out(Easing.quad),
+      });
+    }, [trialStatus.refetch, screenOpacity, reduceMotion])
   );
+
+  const screenFadeStyle = useAnimatedStyle(() => ({ opacity: screenOpacity.value }));
+  const onScroll = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      if (reduceMotion) return;
+      scrollY.value = event.contentOffset.y;
+    },
+  });
+
+  const heroMediaStyle = useAnimatedStyle(() => {
+    if (reduceMotion) return {};
+
+    const scale = interpolate(scrollY.value, [0, VIDEO_HEIGHT], [1, 0.96], Extrapolate.CLAMP);
+    const translateY = interpolate(scrollY.value, [0, VIDEO_HEIGHT], [0, -26], Extrapolate.CLAMP);
+    return {
+      transform: [{ translateY }, { scale }],
+    };
+  });
+
+  const heroOverlayStyle = useAnimatedStyle(() => {
+    if (reduceMotion) return {};
+
+    const translateY = interpolate(scrollY.value, [0, VIDEO_HEIGHT * 0.75], [0, -16], Extrapolate.CLAMP);
+    const opacity = interpolate(scrollY.value, [0, VIDEO_HEIGHT * 0.85], [1, 0.84], Extrapolate.CLAMP);
+    return {
+      opacity,
+      transform: [{ translateY }],
+    };
+  });
+
+  const heroGradientStyle = useAnimatedStyle(() => {
+    if (reduceMotion) return {};
+
+    const opacity = interpolate(scrollY.value, [0, VIDEO_HEIGHT * 0.8], [1, 0.9], Extrapolate.CLAMP);
+    return { opacity };
+  });
 
   const handleOpenDashboard = useCallback(async () => {
     try {
@@ -407,6 +522,14 @@ export function DashboardScreen() {
     }
   }, []);
 
+  const dismissMoodModal = useCallback(() => {
+    setMoodModalVisible(false);
+  }, []);
+
+  const onMoodGratitudeComplete = useCallback(() => {
+    void loadData();
+  }, [loadData]);
+
   useEffect(() => {
     loadData();
   }, [loadData]);
@@ -415,6 +538,29 @@ export function DashboardScreen() {
     setRefreshing(true);
     loadData();
   }, [loadData]);
+
+  const showEndingSoonPaywall =
+    !trialStatus.expired &&
+    !trialStatus.loading &&
+    trialStatus.daysLeft <= 2 &&
+    trialStatus.daysLeft >= 0 &&
+    !endingSoonPaywallDismissed;
+
+  useEffect(() => {
+    if (reduceMotion || !showEndingSoonPaywall) {
+      endingSoonPulse.value = 1;
+      return;
+    }
+
+    endingSoonPulse.value = withSequence(
+      withSpring(1.02, { damping: 16, stiffness: 220 }),
+      withSpring(1, { damping: 18, stiffness: 260 })
+    );
+  }, [reduceMotion, showEndingSoonPaywall, endingSoonPulse]);
+
+  const endingSoonOverlayStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: endingSoonPulse.value }],
+  }));
 
   if (loading && !refreshing) {
     return (
@@ -429,17 +575,12 @@ export function DashboardScreen() {
     );
   }
 
-  const showEndingSoonPaywall =
-    !trialStatus.expired &&
-    !trialStatus.loading &&
-    trialStatus.daysLeft <= 2 &&
-    trialStatus.daysLeft >= 0 &&
-    !endingSoonPaywallDismissed;
-
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       {trialStatus.expired && (
-        <View
+        <Animated.View
+          entering={reduceMotion ? undefined : FadeInDown.duration(motion.duration.base)}
+          exiting={reduceMotion ? undefined : FadeOutUp.duration(motion.duration.base)}
           style={[StyleSheet.absoluteFillObject, styles.paywallOverlay]}
           pointerEvents="box-none"
         >
@@ -449,11 +590,13 @@ export function DashboardScreen() {
             onPress={handleOpenDashboard}
             reduceMotion={reduceMotion}
           />
-        </View>
+        </Animated.View>
       )}
       {showEndingSoonPaywall && (
-        <View
-          style={[StyleSheet.absoluteFillObject, styles.paywallOverlay]}
+        <Animated.View
+          entering={reduceMotion ? undefined : FadeInDown.duration(motion.duration.base)}
+          exiting={reduceMotion ? undefined : FadeOutUp.duration(motion.duration.base)}
+          style={[StyleSheet.absoluteFillObject, styles.paywallOverlay, endingSoonOverlayStyle]}
           pointerEvents="box-none"
         >
           <AccessEndedView
@@ -464,11 +607,14 @@ export function DashboardScreen() {
             onSkip={() => setEndingSoonPaywallDismissed(true)}
             reduceMotion={reduceMotion}
           />
-        </View>
+        </Animated.View>
       )}
+      <Animated.View style={[{ flex: 1 }, screenFadeStyle]}>
       <ContentTransition>
-        <ScrollView
+        <Animated.ScrollView
           contentContainerStyle={styles.scrollContent}
+          onScroll={onScroll}
+          scrollEventThrottle={16}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
           }
@@ -477,83 +623,111 @@ export function DashboardScreen() {
               Video hero - 60% screen height; video fills area (cover), no overlay
           ---------------------------------------------------------------- */}
           <View style={styles.videoHero}>
-            <AmbientVideoHero reduceMotion={reduceMotion} />
+            <View style={styles.videoHeroParallaxBackdrop} />
+            <Animated.View style={[styles.videoHeroMediaWrap, heroMediaStyle]}>
+              <AmbientVideoHero reduceMotion={reduceMotion} />
+            </Animated.View>
 
             {/* Linear gradient top → bottom (transparent to darker) so overlay text is readable */}
-            <LinearGradient
-              colors={['transparent', 'rgba(0, 0, 0, 0.45)']}
-              style={[styles.videoHeroGradient, { pointerEvents: 'none' }]}
-            />
+            <Animated.View style={[styles.videoHeroGradientWrap, heroGradientStyle]}>
+              <LinearGradient
+                colors={['transparent', 'rgba(0, 0, 0, 0.45)']}
+                style={[styles.videoHeroGradient, { pointerEvents: 'none' }]}
+              />
+            </Animated.View>
 
-            {/* Content pinned to the bottom of the hero */}
-            <View style={styles.videoOverlayContent}>
+            {/* Content pinned to the bottom of the hero — greeting + Lisa CTA card */}
+            <Animated.View style={[styles.videoOverlayContent, heroOverlayStyle]}>
               <StaggeredZoomIn delayIndex={0} reduceMotion={reduceMotion}>
                 <Text style={styles.greeting}>
                   {userName ? `Hi there, ${userName}` : 'Hi there'}
                 </Text>
               </StaggeredZoomIn>
 
-              {streak != null && streak > 0 && (
-                <StaggeredZoomIn delayIndex={1} reduceMotion={reduceMotion}>
-                  <View style={styles.streakPill}>
-                    <Ionicons name="flame" size={14} color={colors.background} />
-                    <Text style={styles.streakPillText}>{streak} day streak</Text>
-                  </View>
-                </StaggeredZoomIn>
-              )}
-
               {error && (
-                <StaggeredZoomIn delayIndex={4} reduceMotion={reduceMotion}>
-                  <View style={styles.errorBanner}>
+                <StaggeredZoomIn delayIndex={1} reduceMotion={reduceMotion}>
+                  <Animated.View
+                    entering={reduceMotion ? undefined : FadeInDown.duration(motion.duration.base)}
+                    exiting={reduceMotion ? undefined : FadeOutUp.duration(motion.duration.fast)}
+                    style={styles.errorBanner}
+                  >
                     <Text style={styles.errorText}>{error}</Text>
-                  </View>
+                  </Animated.View>
                 </StaggeredZoomIn>
               )}
 
               {!trialStatus.expired && (
-                <StaggeredZoomIn delayIndex={5} reduceMotion={reduceMotion}>
-                  <LisaHeroCard message={getDailyLisaMessage()} onPress={handleTalkToLisa} />
+                <StaggeredZoomIn delayIndex={2} reduceMotion={reduceMotion}>
+                  <View style={styles.talkToLisaHeroCard}>
+                    {/* i18n: dashboard.lisaDailyMessage */}
+                    <Text style={styles.talkToLisaHeroSubheading}>{getDailyLisaMessage()}</Text>
+                    <AnimatedPressable
+                      containerStyle={styles.pressableContainer}
+                      style={styles.talkToLisaHeroButton}
+                      onPress={handleTalkToLisa}
+                      accessibilityRole="button"
+                      accessibilityLabel="Talk to Lisa"
+                    >
+                      <Ionicons name="chatbubble-ellipses" size={20} color={colors.navy} />
+                      <Text style={styles.talkToLisaHeroButtonText}>Talk to Lisa</Text>
+                    </AnimatedPressable>
+                  </View>
                 </StaggeredZoomIn>
               )}
-            </View>
+            </Animated.View>
           </View>
 
           {/* ----------------------------------------------------------------
-              Below video - white background: symptom box
+              Below video — message, then CTAs
           ---------------------------------------------------------------- */}
           {!trialStatus.expired && (
-            <View style={styles.belowVideoSection}>
-              <StaggeredZoomIn delayIndex={6} reduceMotion={reduceMotion}>
-                <View style={styles.symptomCategoryBox}>
-                  <TouchableOpacity
-                    activeOpacity={0.8}
+            <Animated.View
+              layout={reduceMotion ? undefined : cardLayoutTransition}
+              entering={reduceMotion ? undefined : FadeInDown.duration(motion.duration.slow)}
+              exiting={reduceMotion ? undefined : FadeOutUp.duration(motion.duration.base)}
+              style={styles.belowVideoSection}
+            >
+              {/* Symptom box */}
+              <StaggeredZoomIn delayIndex={3} reduceMotion={reduceMotion}>
+                <Animated.View
+                  layout={reduceMotion ? undefined : cardLayoutTransition}
+                  style={styles.symptomCategoryBox}
+                >
+                  <AnimatedPressable
+                    containerStyle={styles.pressableContainer}
                     style={styles.symptomCategoryItem}
                     onPress={() => navigation.navigate('SymptomLogs')}
                     accessibilityRole="button"
                     accessibilityLabel="View symptom history"
                   >
-                    {/* Icon updated to coral to retire gold */}
                     <Ionicons name="time" size={24} color={colors.primary} />
                     <View style={styles.recentActivityTextWrap}>
                       <Text style={styles.recentActivityTitle}>Symptom history</Text>
                       <Text style={styles.recentActivitySubtitle}>See all your symptom logs</Text>
                     </View>
                     <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    activeOpacity={0.8}
-                    style={styles.symptomCategoryButtonSecondary}
+                  </AnimatedPressable>
+                  <AnimatedPressable
+                    containerStyle={styles.pressableContainer}
+                    style={styles.logSymptomCtaPressable}
                     onPress={() => navigation.navigate('Symptoms')}
                     accessibilityRole="button"
-                    accessibilityLabel="Log how you feel"
+                    accessibilityLabel="Log symptom"
                   >
-                    <Ionicons name="add-circle-outline" size={24} color={colors.primary} />
-                    {/* i18n: dashboard.cta.logHowYouFeel */}
-                    <Text style={styles.symptomCategoryButtonSecondaryText}>Log how you feel</Text>
-                  </TouchableOpacity>
-                </View>
+                    <Image
+                      source={require('../../../assets/symptoms.png')}
+                      style={styles.logSymptomImage}
+                      resizeMode="contain"
+                      accessibilityIgnoresInvertColors
+                    />
+                    <View style={styles.logSymptomLabelWrap}>
+                      {/* i18n: dashboard.cta.logSymptom */}
+                      <Text style={styles.logSymptomLabel}>Log Symptom</Text>
+                    </View>
+                  </AnimatedPressable>
+                </Animated.View>
               </StaggeredZoomIn>
-            </View>
+            </Animated.View>
           )}
 
           {/* ----------------------------------------------------------------
@@ -566,24 +740,65 @@ export function DashboardScreen() {
               </StaggeredZoomIn>
 
               {/* Bottom section - pink (theme) */}
-              <View style={styles.contentSection}>
+              <Animated.View
+                layout={reduceMotion ? undefined : cardLayoutTransition}
+                entering={reduceMotion ? undefined : FadeInDown.duration(motion.duration.slow)}
+                exiting={reduceMotion ? undefined : FadeOutUp.duration(motion.duration.base)}
+                style={styles.contentSection}
+              >
                 <StaggeredZoomIn delayIndex={9} reduceMotion={reduceMotion}>
-                  <View style={styles.disclaimerCard}>
-                    <Ionicons name="information-circle-outline" size={20} color={colors.textMuted} />
-                    <Text style={styles.disclaimerText}>
-                      MenoLisa is for tracking and information only. It is not medical advice. Always consult a
-                      healthcare provider for medical decisions.
-                    </Text>
-                  </View>
+                  <Animated.View layout={reduceMotion ? undefined : cardLayoutTransition}>
+                    <WhatLisaNoticedCard />
+                  </Animated.View>
                 </StaggeredZoomIn>
                 <StaggeredZoomIn delayIndex={10} reduceMotion={reduceMotion}>
-                  <WhatLisaNoticedCard />
+                  <Animated.View layout={reduceMotion ? undefined : cardLayoutTransition}>
+                    <DailyMoodHistoryCard />
+                  </Animated.View>
                 </StaggeredZoomIn>
-              </View>
+                <StaggeredZoomIn delayIndex={11} reduceMotion={reduceMotion}>
+                  <Animated.View layout={reduceMotion ? undefined : cardLayoutTransition}>
+                    <View style={styles.disclaimerCard}>
+                      <Ionicons name="information-circle-outline" size={20} color={colors.textMuted} />
+                      <Text style={styles.disclaimerText}>
+                        MenoLisa is for tracking and information only. It is not medical advice. Always consult a
+                        healthcare provider for medical decisions.
+                      </Text>
+                    </View>
+                  </Animated.View>
+                </StaggeredZoomIn>
+              </Animated.View>
             </>
           )}
-        </ScrollView>
+        </Animated.ScrollView>
       </ContentTransition>
+      </Animated.View>
+
+      <DailyMoodModal
+        visible={moodModalVisible}
+        onSubmit={handleMoodSubmit}
+        onDismiss={dismissMoodModal}
+        onGratitudeComplete={onMoodGratitudeComplete}
+      />
+
+      <Modal
+        visible={streakGratitudeDays != null}
+        animationType="fade"
+        transparent={false}
+        onRequestClose={() => setStreakGratitudeDays(null)}
+      >
+        <View style={styles.streakGratitudeRoot}>
+          {streakGratitudeDays != null ? (
+            <GratitudeSuccessPanel
+              title={STREAK_MILESTONE_COPY[streakGratitudeDays].title}
+              subtitle={STREAK_MILESTONE_COPY[streakGratitudeDays].subtitle}
+              metaChips={[{ icon: 'flame', label: `${streakGratitudeDays} day streak` }]}
+              encouragement="Keep going — you're building something meaningful."
+              reduceMotion={reduceMotion}
+            />
+          ) : null}
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -601,8 +816,15 @@ const styles = StyleSheet.create({
     zIndex: 9999,
     elevation: 9999,
   },
+  streakGratitudeRoot: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
   scrollContent: {
     paddingBottom: 0,
+  },
+  pressableContainer: {
+    width: '100%',
   },
 
   // --- Video hero (replaces heroSection) ---
@@ -611,6 +833,17 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
     backgroundColor: colors.primaryLight,
+  },
+  videoHeroParallaxBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: colors.primaryLight,
+  },
+  videoHeroMediaWrap: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: colors.primaryLight,
+  },
+  videoHeroGradientWrap: {
+    ...StyleSheet.absoluteFillObject,
   },
   videoHeroGradient: {
     ...StyleSheet.absoluteFillObject,
@@ -622,12 +855,107 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.lg,
   },
 
+  talkToLisaHeroCard: {
+    marginTop: spacing.md,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radii.lg,
+    backgroundColor: 'rgba(0, 0, 0, 0.28)',
+    borderWidth: 1,
+    ...Platform.select({
+      // Translucent views + elevation on Android composites as gray, muddy fills and harsh drop shadows.
+      android: {
+        elevation: 0,
+        borderColor: 'rgba(255, 255, 255, 0.26)',
+      },
+      ios: {
+        ...shadows.card,
+        borderColor: 'rgba(255, 255, 255, 0.14)',
+      },
+      web: {
+        borderColor: 'rgba(255, 255, 255, 0.14)',
+        boxShadow:
+          '0 10px 28px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.12)',
+      },
+      default: {
+        borderColor: 'rgba(255, 255, 255, 0.14)',
+      },
+    }),
+  },
+  talkToLisaHeroSubheading: {
+    ...typography.presets.body,
+    fontFamily: typography.family.bold,
+    color: colors.background,
+    marginBottom: spacing.md,
+    ...(Platform.OS === 'web'
+      ? { textShadow: '0 1px 3px rgba(0, 0, 0, 0.45)' }
+      : {
+          textShadowColor: 'rgba(0, 0, 0, 0.45)',
+          textShadowOffset: { width: 0, height: 1 },
+          textShadowRadius: 4,
+        }),
+  },
+  talkToLisaHeroButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+    paddingVertical: Math.max(spacing.md, (minTouchTarget - 24) / 2),
+    paddingHorizontal: spacing.xl,
+    borderRadius: radii.lg,
+    gap: spacing.sm,
+    minHeight: minTouchTarget + 8,
+    ...shadows.buttonPrimary,
+  },
+  talkToLisaHeroButtonText: {
+    fontSize: 17,
+    fontFamily: typography.display.semibold,
+    color: colors.navy,
+    letterSpacing: 0.5,
+  },
+
   // --- Below video, white bg ---
   belowVideoSection: {
     backgroundColor: colors.background,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
     paddingBottom: spacing.lg,
+  },
+
+  // --- Bare image CTAs ---
+  actionCardsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-evenly',
+    marginBottom: spacing.md,
+  },
+  actionBubbleWrap: {
+    alignItems: 'center',
+  },
+  actionBubbleImage: {
+    width: (SCREEN_WIDTH - spacing.lg * 2 - spacing.xl) / 2,
+    height: (SCREEN_WIDTH - spacing.lg * 2 - spacing.xl) / 2,
+  },
+  actionBubbleLabel: {
+    ...typography.presets.label,
+    color: colors.text,
+    textAlign: 'center',
+    marginTop: spacing.sm,
+  },
+
+  // --- Tertiary history link (de-emphasised, below the two cards) ---
+  historyLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: spacing.sm,
+    minHeight: minTouchTarget,
+    marginTop: spacing.lg,
+    marginBottom: spacing.xs,
+  },
+  historyLinkText: {
+    ...typography.presets.caption,
+    color: colors.textMuted,
   },
 
   // --- Existing sections (unchanged) ---
@@ -642,13 +970,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.sm,
-    backgroundColor: 'rgba(255, 255, 255, 0.7)',
+    backgroundColor: colors.card + 'B3',
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.md,
     borderRadius: radii.md,
     marginBottom: spacing.lg,
     borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.06)',
+    borderColor: colors.border,
   },
   disclaimerText: {
     flex: 1,
@@ -720,7 +1048,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexWrap: 'wrap',
     gap: spacing.sm,
-    backgroundColor: 'rgba(255, 141, 161, 0.20)',
+    backgroundColor: colors.primaryLight + '40',
     padding: spacing.md,
     borderRadius: radii.md,
     marginBottom: spacing.md,
@@ -771,7 +1099,7 @@ const styles = StyleSheet.create({
 
   // --- Symptom category box - white with coral accent (gold retired) ---
   symptomCategoryBox: {
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    backgroundColor: colors.card + 'F2',
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radii.lg,
@@ -809,22 +1137,31 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 4,
   },
-  symptomCategoryButtonSecondary: {
-    flexDirection: 'row',
+  logSymptomCtaPressable: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'transparent',
-    borderWidth: 2,
-    borderColor: colors.primary,
-    paddingVertical: Math.max(spacing.md, (minTouchTarget - 24) / 2),
-    paddingHorizontal: spacing.xl,
-    borderRadius: radii.lg,
-    gap: spacing.sm,
-    minHeight: minTouchTarget + 8,
+    paddingTop: spacing.lg,
+    marginTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    minHeight: minTouchTarget,
   },
-  symptomCategoryButtonSecondaryText: {
-    ...typography.presets.button,
-    color: colors.primary,
+  logSymptomImage: {
+    width: Math.min(168, (SCREEN_WIDTH - spacing.lg * 4) * 0.42),
+    height: Math.min(168, (SCREEN_WIDTH - spacing.lg * 4) * 0.42),
+    marginBottom: 0,
+  },
+  logSymptomLabelWrap: {
+    marginTop: spacing.xs / 2,
+    paddingVertical: spacing.xs / 2,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.md,
+    backgroundColor: 'rgba(255, 214, 102, 0.36)',
+  },
+  logSymptomLabel: {
+    ...typography.presets.label,
+    color: '#CA8A04',
+    textAlign: 'center',
   },
   recentActivityCard: {
     flexDirection: 'row',

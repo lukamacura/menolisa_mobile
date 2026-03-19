@@ -12,14 +12,6 @@ import {
   Alert,
   Image,
 } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-  withDelay,
-  withSequence,
-  withTiming,
-} from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -38,6 +30,7 @@ type HomeStackParamList = {
 type NavProp = NativeStackNavigationProp<HomeStackParamList, 'Symptoms'>;
 import { colors, spacing, radii, typography, minTouchTarget, shadows } from '../../theme/tokens';
 import { StaggeredZoomIn, useReduceMotion } from '../../components/StaggeredZoomIn';
+import { GratitudeSuccessPanel } from '../../components/GratitudeSuccessPanel';
 import { SymptomsSkeleton, ContentTransition } from '../../components/skeleton';
 
 type Symptom = {
@@ -47,6 +40,12 @@ type Symptom = {
   user_id?: string;
   is_default?: boolean;
   created_at?: string;
+};
+
+type SuccessSnapshot = {
+  symptomName: string;
+  severityLabel: string;
+  totalToday: number | null;
 };
 
 const SEVERITY_OPTIONS = [
@@ -75,12 +74,8 @@ export function SymptomsScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [todayCount, setTodayCount] = useState<number | null>(null);
   const [showLogSuccess, setShowLogSuccess] = useState(false);
+  const [successSnapshot, setSuccessSnapshot] = useState<SuccessSnapshot | null>(null);
 
-  const successScale = useSharedValue(0);
-  const successOpacity = useSharedValue(0);
-  const successTextOpacity = useSharedValue(0);
-  const successRingScale = useSharedValue(0.6);
-  const successRingOpacity = useSharedValue(0.4);
   const hasRunSuccessAnimation = useRef(false);
 
   const loadSymptoms = useCallback(async () => {
@@ -125,6 +120,7 @@ export function SymptomsScreen() {
     setModalVisible(false);
     setSelectedSymptom(null);
     setShowLogSuccess(false);
+    setSuccessSnapshot(null);
     hasRunSuccessAnimation.current = false;
     loadSymptoms();
     loadTodayCount();
@@ -134,37 +130,12 @@ export function SymptomsScreen() {
     if (!showLogSuccess || hasRunSuccessAnimation.current) return;
     hasRunSuccessAnimation.current = true;
 
-    const springConfig = { damping: 14, stiffness: 120 };
-    successOpacity.value = withTiming(1, { duration: 200 });
-    successScale.value = withSpring(1, springConfig);
-    successRingScale.value = withSequence(
-      withTiming(1.4, { duration: 600 }),
-      withTiming(1.5, { duration: 200 })
-    );
-    successRingOpacity.value = withSequence(
-      withTiming(0.25, { duration: 400 }),
-      withDelay(200, withTiming(0, { duration: 400 }))
-    );
-    successTextOpacity.value = withDelay(400, withTiming(1, { duration: 350 }));
-
     const timer = setTimeout(() => {
       closeModalAndRefresh();
-    }, 1600);
+    }, 1800);
 
     return () => clearTimeout(timer);
-  }, [showLogSuccess, closeModalAndRefresh, successScale, successOpacity, successTextOpacity, successRingScale, successRingOpacity]);
-
-  const successIconAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: successScale.value }],
-    opacity: successOpacity.value,
-  }));
-  const successRingAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: successRingScale.value }],
-    opacity: successRingOpacity.value,
-  }));
-  const successTextAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: successTextOpacity.value,
-  }));
+  }, [showLogSuccess, closeModalAndRefresh]);
 
   const openLogModal = (symptom: Symptom) => {
     setSelectedSymptom(symptom);
@@ -177,18 +148,15 @@ export function SymptomsScreen() {
     setModalStep(1);
     setModalVisible(true);
     setShowLogSuccess(false);
+    setSuccessSnapshot(null);
     hasRunSuccessAnimation.current = false;
-    successScale.value = 0;
-    successOpacity.value = 0;
-    successTextOpacity.value = 0;
-    successRingScale.value = 0.6;
-    successRingOpacity.value = 0.4;
   };
 
   const closeModal = () => {
     setModalVisible(false);
     setSelectedSymptom(null);
     setShowLogSuccess(false);
+    setSuccessSnapshot(null);
   };
 
   const handleDeleteSymptom = useCallback((symptom: Symptom) => {
@@ -279,6 +247,13 @@ export function SymptomsScreen() {
           loggedAt: getLoggedAtTimestamp(),
         }),
       });
+      const severityLabel =
+        SEVERITY_OPTIONS.find((option) => option.value === severity)?.label ?? 'Logged';
+      setSuccessSnapshot({
+        symptomName: selectedSymptom.name,
+        severityLabel,
+        totalToday: todayCount != null ? todayCount + 1 : null,
+      });
       setSubmitting(false);
       setShowLogSuccess(true);
     } catch (e) {
@@ -293,7 +268,7 @@ export function SymptomsScreen() {
   if (trialStatus.expired) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
-        <AccessEndedView variant="fullScreen" reduceMotion={reduceMotion} />
+        <AccessEndedView variant="fullScreen" />
       </SafeAreaView>
     );
   }
@@ -405,18 +380,18 @@ export function SymptomsScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             {showLogSuccess ? (
-              <View style={styles.successOverlay}>
-                <Animated.View style={[styles.successRing, successRingAnimatedStyle]} />
-                <Animated.View style={[styles.successIconWrap, successIconAnimatedStyle]}>
-                  <Ionicons name="checkmark-circle" size={80} color={colors.success} />
-                </Animated.View>
-                <Animated.Text style={[styles.successTitle, successTextAnimatedStyle]}>
-                  Logged
-                </Animated.Text>
-                <Animated.Text style={[styles.successSubtitle, successTextAnimatedStyle]}>
-                  You're tracking it | Lisa can spot patterns over time
-                </Animated.Text>
-              </View>
+              <GratitudeSuccessPanel
+                title="Beautiful check-in"
+                subtitle={`You logged ${successSnapshot?.symptomName ?? 'your symptom'} as ${(successSnapshot?.severityLabel ?? 'tracked').toLowerCase()}.\nThis gives Lisa better data to support you.`}
+                metaChips={[
+                  { icon: 'medal-outline', label: successSnapshot?.severityLabel ?? 'Logged' },
+                  ...(successSnapshot?.totalToday != null
+                    ? [{ icon: 'calendar-outline' as const, label: `Today: ${successSnapshot.totalToday}` }]
+                    : []),
+                ]}
+                encouragement="Every log is a step toward feeling more understood."
+                reduceMotion={reduceMotion}
+              />
             ) : (
               <>
             <View style={styles.modalHeader}>
@@ -628,7 +603,7 @@ export function SymptomsScreen() {
                   onPress={() => setModalStep((s) => (s + 1) as 1 | 2 | 3 | 4)}
                 >
                   <Text style={styles.footerBtnPrimaryText}>Next</Text>
-                  <Ionicons name="chevron-forward" size={20} color="#fff" />
+                  <Ionicons name="chevron-forward" size={20} color={colors.textInverse} />
                 </TouchableOpacity>
               ) : (
                 <TouchableOpacity
@@ -638,7 +613,7 @@ export function SymptomsScreen() {
                   disabled={submitting}
                 >
                   {submitting ? (
-                    <ActivityIndicator size="small" color="#fff" />
+                    <ActivityIndicator size="small" color={colors.textInverse} />
                   ) : (
                     <Text style={styles.submitBtnText}>Save</Text>
                   )}
@@ -979,37 +954,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexShrink: 0,
     backgroundColor: colors.background,
-  },
-  successOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: spacing.xl,
-  },
-  successRing: {
-    position: 'absolute',
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    borderWidth: 3,
-    borderColor: colors.success,
-    backgroundColor: 'transparent',
-  },
-  successIconWrap: {
-    marginBottom: spacing.lg,
-  },
-  successTitle: {
-    fontSize: 24,
-    fontFamily: typography.display.bold,
-    color: colors.text,
-    marginBottom: spacing.sm,
-  },
-  successSubtitle: {
-    fontSize: 15,
-    fontFamily: typography.family.regular,
-    color: colors.textMuted,
-    textAlign: 'center',
-    lineHeight: 22,
   },
   footerBtnSecondary: {
     flexDirection: 'row',

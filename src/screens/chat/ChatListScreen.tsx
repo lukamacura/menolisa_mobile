@@ -5,7 +5,7 @@ import {
   StyleSheet,
   FlatList,
   TouchableOpacity,
-  ScrollView,
+  Image,
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -144,21 +144,30 @@ export function ChatListScreen() {
           </TouchableOpacity>
         </View>
       </StaggeredZoomIn>
+      <StaggeredZoomIn delayIndex={1} reduceMotion={reduceMotion}>
+        <View style={styles.heroWrap} accessibilityRole="image" accessibilityLabel="Chat illustration">
+          <Image
+            source={require('../../../assets/chat.png')}
+            style={styles.heroImage}
+            resizeMode="contain"
+            accessibilityIgnoresInvertColors
+          />
+        </View>
+      </StaggeredZoomIn>
       {error && (
-        <StaggeredZoomIn delayIndex={1} reduceMotion={reduceMotion}>
+        <StaggeredZoomIn delayIndex={2} reduceMotion={reduceMotion}>
           <View style={styles.errorBanner}>
             <Text style={styles.errorText}>{error}</Text>
           </View>
         </StaggeredZoomIn>
       )}
-      <StaggeredZoomIn delayIndex={2} reduceMotion={reduceMotion} style={{ flex: 1 }}>
+      <StaggeredZoomIn delayIndex={3} reduceMotion={reduceMotion} style={{ flex: 1 }}>
       <FlatList
         data={sessions}
         keyExtractor={(item) => item.session_id}
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Ionicons name="chatbubbles-outline" size={48} color={colors.textMuted} />
             <Text style={styles.emptyText}>No conversations yet.</Text>
             <Text style={styles.emptySubtext}>Tap "New chat" to start.</Text>
           </View>
@@ -208,6 +217,19 @@ const styles = StyleSheet.create({
     fontFamily: typography.family.bold,
     color: colors.text,
   },
+  heroWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.xs,
+  },
+  /** Optical centering: bubble tail sits bottom-left, nudge right so the mark feels centered. */
+  heroImage: {
+    width: 156,
+    height: 156,
+    transform: [{ translateX: 10 }],
+  },
   newChatBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -242,13 +264,14 @@ const styles = StyleSheet.create({
   },
   empty: {
     alignItems: 'center',
-    marginTop: spacing['2xl'],
+    marginTop: spacing.lg,
+    paddingHorizontal: spacing.md,
   },
   emptyText: {
     fontSize: 16,
     fontFamily: typography.display.semibold,
     color: colors.textMuted,
-    marginTop: spacing.md,
+    textAlign: 'center',
   },
   emptySubtext: {
     fontSize: 14,
