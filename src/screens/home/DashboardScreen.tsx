@@ -21,7 +21,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { LinearGradient } from 'expo-linear-gradient';
-import { VideoView, useVideoPlayer } from 'expo-video';
+import { VideoView, useVideoPlayer, type VideoPlayer } from 'expo-video';
 import { HomeStackParamList, MainTabParamList } from '../../navigation/types';
 import { apiFetchWithAuth, API_CONFIG, openWebDashboard } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
@@ -144,6 +144,23 @@ interface AmbientVideoHeroProps {
   reduceMotion: boolean;
 }
 
+/** Avoid crashing when native `VideoPlayer` is already released (e.g. fast unmount / navigation). */
+function safeVideoPause(player: VideoPlayer) {
+  try {
+    player.pause();
+  } catch {
+    // Released shared object — safe to ignore.
+  }
+}
+
+function safeVideoPlay(player: VideoPlayer) {
+  try {
+    player.play();
+  } catch {
+    // Released shared object — safe to ignore.
+  }
+}
+
 function AmbientVideoHero({ reduceMotion }: AmbientVideoHeroProps) {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const player = useVideoPlayer(require('../../../assets/dashboard_lisa.mp4'), (p) => {
@@ -153,13 +170,13 @@ function AmbientVideoHero({ reduceMotion }: AmbientVideoHeroProps) {
 
   useEffect(() => {
     if (reduceMotion) {
-      player.pause();
+      safeVideoPause(player);
       return;
     }
 
-    player.play();
+    safeVideoPlay(player);
     return () => {
-      player.pause();
+      safeVideoPause(player);
     };
   }, [player, reduceMotion]);
 

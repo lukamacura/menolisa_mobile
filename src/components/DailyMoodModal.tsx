@@ -55,6 +55,28 @@ const MOOD_OPTIONS: MoodOption[] = (
   label: DAILY_MOOD_LABEL[value],
 }));
 
+/** Unselected tile tints: rough → great reads as red → amber → teal → green. */
+const MOOD_TINT_BG: Record<1 | 2 | 3 | 4, string> = {
+  1: colors.dangerBg,
+  2: colors.warningBg,
+  3: 'rgba(58, 191, 163, 0.16)',
+  4: colors.successBg,
+};
+
+const MOOD_SOLID_BG: Record<1 | 2 | 3 | 4, string> = {
+  1: colors.danger,
+  2: colors.warning,
+  3: colors.blue,
+  4: colors.success,
+};
+
+const MOOD_BORDER_ANDROID: Record<1 | 2 | 3 | 4, string> = {
+  1: 'rgba(200, 58, 84, 0.4)',
+  2: 'rgba(217, 138, 31, 0.45)',
+  3: 'rgba(58, 191, 163, 0.5)',
+  4: 'rgba(34, 160, 107, 0.45)',
+};
+
 
 export function DailyMoodModal({ visible, onSubmit, onDismiss, onGratitudeComplete }: DailyMoodModalProps) {
   const reduceMotion = useReduceMotion();
@@ -164,7 +186,16 @@ export function DailyMoodModal({ visible, onSubmit, onDismiss, onGratitudeComple
                     onPress={() => setSelected(option.value)}
                     style={[
                       styles.moodBtn,
-                      isSelected ? styles.moodBtnSelected : styles.moodBtnUnselected,
+                      {
+                        backgroundColor: isSelected
+                          ? MOOD_SOLID_BG[option.value]
+                          : MOOD_TINT_BG[option.value],
+                      },
+                      !isSelected &&
+                        Platform.OS === 'android' && {
+                          borderWidth: 1,
+                          borderColor: MOOD_BORDER_ANDROID[option.value],
+                        },
                     ]}
                     accessibilityRole="radio"
                     accessibilityLabel={option.label}
@@ -175,7 +206,7 @@ export function DailyMoodModal({ visible, onSubmit, onDismiss, onGratitudeComple
                     <Text
                       style={[
                         styles.moodLabel,
-                        { color: isSelected ? colors.background : colors.text },
+                        { color: isSelected ? colors.textInverse : colors.text },
                       ]}
                     >
                       {option.label}
@@ -191,6 +222,7 @@ export function DailyMoodModal({ visible, onSubmit, onDismiss, onGratitudeComple
               disabled={selected == null}
               style={[
                 styles.submitBtn,
+                selected != null && { backgroundColor: MOOD_SOLID_BG[selected] },
                 selected == null && styles.submitBtnDisabled,
               ]}
               accessibilityLabel="Save how I feel"
@@ -280,28 +312,28 @@ const styles = StyleSheet.create({
     borderRadius: radii.xl,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
-    ...shadows.card,
-    // Ensure padding so content never clips
-    paddingVertical: spacing.xs,
+    gap: 2,
+    // Android: elevation + translucent fill draws an ugly grey “card” behind the tile — use border instead (see moodBtnUnselected).
+    ...Platform.select({
+      web: shadows.card,
+      android: { elevation: 0 },
+      default: shadows.card,
+    }),
+    paddingVertical: 6,
     paddingHorizontal: 4,
   },
-  moodBtnSelected: {
-    backgroundColor: colors.primary,
-  },
-  moodBtnUnselected: {
-    backgroundColor: 'rgba(255,141,161,0.10)',
-  },
   moodEmoji: {
-    fontSize: 28,
-    lineHeight: Platform.OS === 'android' ? 36 : 32,
+    fontSize: 22,
+    lineHeight: Platform.OS === 'android' ? 28 : 26,
   },
   moodLabel: {
     ...typography.presets.caption,
+    fontSize: 11,
+    lineHeight: 14,
     // color set dynamically inline
   },
 
-  // Submit button
+  // Submit button (enabled fill follows selected mood; shadow stays neutral for any hue)
   submitBtn: {
     width: '100%',
     minHeight: minTouchTarget + 8,
@@ -310,7 +342,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.md,
-    ...shadows.glowPrimary,
+    ...shadows.card,
   },
   submitBtnDisabled: {
     backgroundColor: colors.primaryLight,
@@ -318,7 +350,7 @@ const styles = StyleSheet.create({
   },
   submitBtnText: {
     ...typography.presets.button,
-    color: colors.background,
+    color: colors.textInverse,
   },
   submitBtnTextDisabled: {
     color: 'rgba(255,255,255,0.60)',

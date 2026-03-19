@@ -1,9 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Platform } from 'react-native';
 import { apiFetchWithAuth, API_CONFIG } from '../lib/api';
-
-/** Only load on native; on web push tokens are not supported and the module logs a warning. */
-const Notifications = Platform.OS !== 'web' ? require('expo-notifications') : null;
+import { getNativeExpoNotifications } from '../lib/expoNotificationsGate';
 
 const NOTIFICATION_PROMPT_SHOWN_KEY = 'notification_prompt_shown';
 
@@ -29,6 +26,7 @@ export function useRegisterPushToken(userId: string | undefined): {
   const [permissionStatus, setPermissionStatus] = useState<NotificationPermissionStatus>('undetermined');
 
   const fetchAndRegisterToken = useCallback(async () => {
+    const Notifications = getNativeExpoNotifications();
     if (!Notifications) return;
     const tokenData = await Notifications.getExpoPushTokenAsync();
     const token = tokenData?.data;
@@ -39,7 +37,9 @@ export function useRegisterPushToken(userId: string | undefined): {
   }, []);
 
   const requestPermissionAndRegister = useCallback(async () => {
-    if (!userId || !Notifications) return;
+    if (!userId) return;
+    const Notifications = getNativeExpoNotifications();
+    if (!Notifications) return;
     try {
       const { status: requested } = await Notifications.requestPermissionsAsync();
       setPermissionStatus(requested === 'granted' ? 'granted' : requested === 'denied' ? 'denied' : 'undetermined');
@@ -52,8 +52,13 @@ export function useRegisterPushToken(userId: string | undefined): {
   }, [userId, fetchAndRegisterToken]);
 
   useEffect(() => {
-    if (!userId || !Notifications) {
-      if (!userId) setPermissionStatus('undetermined');
+    if (!userId) {
+      setPermissionStatus('undetermined');
+      return;
+    }
+
+    const Notifications = getNativeExpoNotifications();
+    if (!Notifications) {
       return;
     }
 
