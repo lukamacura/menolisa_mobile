@@ -129,7 +129,7 @@ export function LoginScreen() {
           <StaggeredZoomIn delayIndex={0} reduceMotion={reduceMotion}>
             <View style={styles.loginImageWrap}>
               <Image
-                source={require('../../assets/login.png')}
+                source={require('../../assets/welcome.png')}
                 style={styles.loginImage}
                 resizeMode="contain"
               />
@@ -426,15 +426,15 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     borderRadius: radii.lg,
     borderWidth: 1,
-    borderColor: colors.danger + '4D',
+    borderColor: 'rgba(200, 58, 84, 0.30)',
   },
   errorContainerInfo: {
     backgroundColor: colors.infoBg,
-    borderColor: colors.info + '4D',
+    borderColor: 'rgba(75, 141, 248, 0.30)',
   },
   errorContainerWarning: {
     backgroundColor: colors.warningBg,
-    borderColor: colors.warning + '4D',
+    borderColor: 'rgba(217, 138, 31, 0.30)',
   },
   errorHeader: {
     flexDirection: 'row',
@@ -469,7 +469,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     paddingTop: spacing.md,
     borderTopWidth: 1,
-    borderTopColor: colors.info + '33',
+    borderTopColor: 'rgba(75, 141, 248, 0.20)',
   },
   errorActionText: {
     fontSize: 12,

@@ -37,17 +37,17 @@ function getNotificationStyle(type: string | null): {
   const t = (type || '').toLowerCase();
   switch (t) {
     case 'reminder':
-      return { icon: 'alarm-outline', iconColor: colors.primary, bgColor: colors.primaryLight + '33' };
+      return { icon: 'alarm-outline', iconColor: colors.primary, bgColor: 'rgba(249, 184, 200, 0.2)' };
     case 'weekly_insights':
       return { icon: 'analytics-outline', iconColor: colors.navy, bgColor: colors.plumSoft };
     case 'lisa_message':
-      return { icon: 'chatbubble-ellipses-outline', iconColor: colors.primary, bgColor: colors.primaryLight + '33' };
+      return { icon: 'chatbubble-ellipses-outline', iconColor: colors.primary, bgColor: 'rgba(249, 184, 200, 0.2)' };
     case 'achievement':
-      return { icon: 'trophy-outline', iconColor: colors.gold, bgColor: colors.gold + '30' };
+      return { icon: 'trophy-outline', iconColor: colors.gold, bgColor: 'rgba(255, 179, 138, 0.19)' };
     case 'trial':
-      return { icon: 'time-outline', iconColor: colors.primary, bgColor: colors.primaryLight + '33' };
+      return { icon: 'time-outline', iconColor: colors.primary, bgColor: 'rgba(249, 184, 200, 0.2)' };
     case 'welcome':
-      return { icon: 'hand-left-outline', iconColor: colors.primary, bgColor: colors.primaryLight + '33' };
+      return { icon: 'hand-left-outline', iconColor: colors.primary, bgColor: 'rgba(249, 184, 200, 0.2)' };
     case 'success':
       return { icon: 'checkmark-circle-outline', iconColor: colors.success, bgColor: colors.successBg };
     case 'symptom_logged':
@@ -260,7 +260,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     borderRadius: radii.md,
     borderWidth: 1,
-    borderColor: colors.danger + '33',
+    borderColor: 'rgba(200, 58, 84, 0.2)',
   },
   errorIcon: {
     marginRight: spacing.sm,
@@ -284,7 +284,7 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: colors.navy + '12',
+    backgroundColor: 'rgba(46, 42, 77, 0.07)',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.lg,
@@ -315,7 +315,7 @@ const styles = StyleSheet.create({
   cardUnread: {
     borderLeftWidth: 4,
     borderLeftColor: colors.primary,
-    backgroundColor: colors.primaryLight + '14',
+    backgroundColor: 'rgba(249, 184, 200, 0.08)',
   },
   iconWrap: {
     width: 44,

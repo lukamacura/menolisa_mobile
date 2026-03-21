@@ -190,6 +190,13 @@ const getScoreColor = (score: number): string => {
   return colors.primary;
 };
 
+const getScoreColorFaded = (score: number): string => {
+  // 0x22 / 255 ≈ 0.13 alpha
+  if (score < 40) return 'rgba(200, 58, 84, 0.13)';
+  if (score < 50) return 'rgba(217, 138, 31, 0.13)';
+  return 'rgba(244, 124, 151, 0.13)';
+};
+
 const getScoreLabel = (score: number): string => {
   if (score < 40) return 'Needs attention - symptoms are controlling your daily life';
   if (score < 50) return 'Below average - symptoms are significantly impacting daily life';
@@ -990,7 +997,7 @@ export function RegisterScreen() {
         />
         <Text style={styles.welcomeHeading}>Hi there, I'm Lisa.</Text>
         <Text style={styles.welcomeSubtext}>
-          Just <Text style={styles.welcomeSubtextBold}>9 quick questions</Text> before your journey to feeling like yourself again.
+          Just <Text style={styles.welcomeSubtextBold}>9 quick questions</Text> before starting your journey to feeling like yourself again.
         </Text>
       </View>
       <View style={styles.welcomeFooter}>
@@ -1176,13 +1183,13 @@ export function RegisterScreen() {
             accessibilityLabel="Your menopause quality of life score"
           >
             <LinearGradient
-              colors={[colors.primaryLight + '40', colors.surface, colors.blueLight + '25'] as [string, string, string]}
+              colors={['rgba(249, 184, 200, 0.25)', colors.surface, 'rgba(189, 238, 228, 0.15)'] as [string, string, string]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.scoreCard}
             >
               <View style={styles.scoreHeader}>
-                <View style={[styles.scoreHeaderIconWrap, { backgroundColor: getScoreColor(score) + '22' }]}>
+                <View style={[styles.scoreHeaderIconWrap, { backgroundColor: getScoreColorFaded(score) }]}>
                   <Ionicons name="pulse" size={20} color={getScoreColor(score)} />
                 </View>
                 <Text style={styles.scoreTitle}>Your Menopause Score</Text>
@@ -1225,10 +1232,10 @@ export function RegisterScreen() {
           <View style={styles.symptomsContainer}>
             {topProblems.map((symptom, index) => {
               const pillColors = [
-                { bg: colors.rowNavyBg, border: colors.navy + '40', text: colors.navy },
-                { bg: 'rgba(255, 141, 161, 0.18)', border: colors.primary + '50', text: colors.primaryDark },
-                { bg: colors.rowBlueBg, border: colors.blue + '50', text: colors.navy },
-                { bg: colors.rowGoldBg, border: colors.gold + '99', text: colors.navy },
+                { bg: colors.rowNavyBg, border: 'rgba(46, 42, 77, 0.25)', text: colors.navy },
+                { bg: 'rgba(255, 141, 161, 0.18)', border: 'rgba(244, 124, 151, 0.31)', text: colors.primaryDark },
+                { bg: colors.rowBlueBg, border: 'rgba(58, 191, 163, 0.31)', text: colors.navy },
+                { bg: colors.rowGoldBg, border: 'rgba(255, 179, 138, 0.60)', text: colors.navy },
               ];
               const pill = pillColors[index % pillColors.length];
               return (
@@ -1736,7 +1743,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: radii.xl,
     borderWidth: 1,
-    borderColor: colors.card + 'B3',
+    borderColor: 'rgba(255, 255, 255, 0.70)',
     padding: spacing.lg,
     ...shadows.card,
   },
@@ -1806,7 +1813,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: 12,
-    backgroundColor: colors.card + 'CC',
+    backgroundColor: 'rgba(255, 255, 255, 0.80)',
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
@@ -1817,7 +1824,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: 10,
-    backgroundColor: colors.card + 'CC',
+    backgroundColor: 'rgba(255, 255, 255, 0.80)',
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
@@ -1830,16 +1837,16 @@ const styles = StyleSheet.create({
     opacity: 0.96,
   },
   optionCardSelected: {
-    backgroundColor: colors.primaryLight + '26',
-    borderColor: colors.primary + '59',
+    backgroundColor: 'rgba(249, 184, 200, 0.15)',
+    borderColor: 'rgba(244, 124, 151, 0.35)',
   },
   iconContainer: {
     padding: 7,
     borderRadius: 10,
-    backgroundColor: colors.navy + '0D',
+    backgroundColor: 'rgba(46, 42, 77, 0.05)',
   },
   iconContainerSelected: {
-    backgroundColor: colors.primaryLight + '40',
+    backgroundColor: 'rgba(249, 184, 200, 0.25)',
   },
   optionText: {
     fontSize: 14,
@@ -1870,7 +1877,7 @@ const styles = StyleSheet.create({
   nameInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.card + 'E6',
+    backgroundColor: 'rgba(255, 255, 255, 0.90)',
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
@@ -1896,8 +1903,8 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: spacing.md,
     borderTopWidth: 1,
-    borderTopColor: colors.card + 'A6',
-    backgroundColor: colors.card + 'B8',
+    borderTopColor: 'rgba(255, 255, 255, 0.65)',
+    backgroundColor: 'rgba(255, 255, 255, 0.72)',
   },
   footerButtonsRow: {
     flexDirection: 'row',
@@ -2039,7 +2046,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.xl,
     padding: spacing.lg,
     borderWidth: 1,
-    borderColor: colors.card + 'B3',
+    borderColor: 'rgba(255, 255, 255, 0.70)',
   },
   scoreHeader: {
     flexDirection: 'row',
@@ -2113,7 +2120,7 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: colors.success + '20',
+    backgroundColor: 'rgba(34, 160, 107, 0.13)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2151,7 +2158,7 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
-    backgroundColor: colors.primaryLight + '30',
+    backgroundColor: 'rgba(249, 184, 200, 0.19)',
     borderRadius: radii.lg,
     marginBottom: spacing.sm,
   },
@@ -2159,7 +2166,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: colors.primary + '25',
+    backgroundColor: 'rgba(244, 124, 151, 0.15)',
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
@@ -2187,9 +2194,9 @@ const styles = StyleSheet.create({
     right: 0,
     padding: 16,
     paddingBottom: 24,
-    backgroundColor: colors.card + 'D1',
+    backgroundColor: 'rgba(255, 255, 255, 0.82)',
     borderTopWidth: 1,
-    borderTopColor: colors.card + 'A6',
+    borderTopColor: 'rgba(255, 255, 255, 0.65)',
   },
   whatHappensNextTitle: {
     fontSize: 18,
@@ -2264,7 +2271,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   socialProofBadgeIconPrimary: {
-    backgroundColor: colors.primaryLight + '99',
+    backgroundColor: 'rgba(249, 184, 200, 0.60)',
   },
   socialProofBadgeIconGold: {
     backgroundColor: colors.rowGoldBg,
@@ -2306,9 +2313,9 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     padding: 12,
-    backgroundColor: colors.card + 'E0',
+    backgroundColor: 'rgba(255, 255, 255, 0.88)',
     borderTopWidth: 1,
-    borderTopColor: colors.card + 'B3',
+    borderTopColor: 'rgba(255, 255, 255, 0.70)',
   },
   // Primary CTA button (Landing style + bottom shadow)
   gradientButton: {
@@ -2359,7 +2366,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 20,
     padding: 20,
-    backgroundColor: colors.primaryLight + '26',
+    backgroundColor: 'rgba(249, 184, 200, 0.15)',
     borderRadius: 50,
     alignSelf: 'center',
   },
@@ -2408,7 +2415,7 @@ const styles = StyleSheet.create({
     borderColor: colors.danger,
   },
   emailInputReadOnly: {
-    backgroundColor: colors.navy + '0D',
+    backgroundColor: 'rgba(46, 42, 77, 0.05)',
     color: colors.textMuted,
   },
   inputGroup: {
@@ -2445,7 +2452,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: colors.danger + '4D',
+    borderColor: 'rgba(200, 58, 84, 0.30)',
   },
   errorText: {
     color: colors.danger,
@@ -2509,7 +2516,7 @@ const styles = StyleSheet.create({
   emailSentIcon: {
     marginBottom: 20,
     padding: 24,
-    backgroundColor: colors.primaryLight + '26',
+    backgroundColor: 'rgba(249, 184, 200, 0.15)',
     borderRadius: 50,
   },
   emailSentTitle: {

@@ -190,17 +190,42 @@ export function InviteFriendsSkeleton() {
   );
 }
 
-/** What Lisa Noticed card: header row + content lines. */
+/** What Lisa Noticed: bento row + hero tile + short copy (matches WhatLisaNoticedCard layout). */
 export function WhatLisaNoticedCardSkeleton() {
   return (
-    <View style={styles.whatLisaCard}>
-      <View style={styles.skeletonRow}>
-        <Skeleton width={120} height={20} borderRadius={radii.sm} />
-        <Skeleton width={70} height={18} borderRadius={radii.sm} />
+    <View style={styles.whatLisaRoot}>
+      <Skeleton width={148} height={26} borderRadius={radii.pill} style={{ marginBottom: spacing.sm }} />
+      <View style={styles.whatLisaBentoRow}>
+        <View style={styles.whatLisaBentoCell}>
+          <View style={styles.whatLisaBentoCellInner}>
+            <Skeleton width={36} height={36} borderRadius={radii.pill} />
+            <View style={styles.whatLisaBentoTextCol}>
+              <Skeleton width="72%" height={13} borderRadius={radii.sm} style={{ marginBottom: 3 }} />
+              <Skeleton width="55%" height={10} borderRadius={radii.sm} />
+            </View>
+          </View>
+        </View>
+        <View style={styles.whatLisaBentoCell}>
+          <View style={styles.whatLisaBentoCellInner}>
+            <Skeleton width={36} height={36} borderRadius={radii.md} />
+            <View style={styles.whatLisaBentoTextCol}>
+              <Skeleton width={32} height={17} borderRadius={radii.sm} style={{ marginBottom: 3 }} />
+              <Skeleton width="50%" height={10} borderRadius={radii.sm} />
+            </View>
+          </View>
+        </View>
       </View>
-      <Skeleton width="100%" height={24} style={{ marginTop: 12 }} />
-      <Skeleton width="90%" height={16} style={{ marginTop: 8 }} />
-      <Skeleton width="80%" height={16} style={{ marginTop: 6 }} />
+      <View style={styles.whatLisaHeroSkeleton}>
+        <View style={styles.skeletonRow}>
+          <Skeleton width={88} height={22} borderRadius={radii.pill} />
+          <Skeleton width={36} height={36} borderRadius={radii.md} />
+        </View>
+        <Skeleton width="40%" height={12} borderRadius={radii.sm} style={{ marginTop: spacing.sm }} />
+        <Skeleton width="100%" height={20} borderRadius={radii.sm} style={{ marginTop: 8 }} />
+        <Skeleton width="70%" height={20} borderRadius={radii.sm} style={{ marginTop: 6 }} />
+        <Skeleton width="55%" height={12} borderRadius={radii.sm} style={{ marginTop: spacing.sm }} />
+      </View>
+      <Skeleton width="100%" height={48} borderRadius={radii.lg} style={{ marginTop: spacing.sm }} />
     </View>
   );
 }
@@ -208,7 +233,7 @@ export function WhatLisaNoticedCardSkeleton() {
 const styles = StyleSheet.create({
   scrollContent: { paddingBottom: 0 },
   heroSection: {
-    backgroundColor: colors.background,
+    backgroundColor: colors.navy,
     paddingTop: spacing.lg,
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.lg,
@@ -249,6 +274,41 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
     borderWidth: 1,
     borderColor: 'rgba(0, 0, 0, 0.06)',
+  },
+  whatLisaRoot: {
+    marginBottom: spacing.xl,
+  },
+  whatLisaBentoRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  whatLisaBentoCell: {
+    flex: 1,
+    backgroundColor: colors.card,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    minHeight: 74,
+  },
+  whatLisaBentoCellInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    flex: 1,
+  },
+  whatLisaBentoTextCol: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
+  },
+  whatLisaHeroSkeleton: {
+    backgroundColor: colors.navy,
+    borderRadius: radii.lg,
+    padding: spacing.lg,
+    marginBottom: spacing.sm,
   },
   whatLisaCard: {
     backgroundColor: colors.card,
@@ -341,7 +401,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderRadius: radii.lg,
     borderWidth: 2,
-    borderColor: colors.orange + '90',
+    borderColor: 'rgba(255, 179, 138, 0.565)',
     padding: spacing.xl,
     alignItems: 'center',
   },

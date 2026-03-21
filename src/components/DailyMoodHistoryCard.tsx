@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
@@ -25,12 +25,18 @@ function buildDateSlots(): Omit<DaySlot, 'mood'>[] {
   return out;
 }
 
-export function DailyMoodHistoryCard() {
+export type DailyMoodHistoryCardProps = {
+  /** Increment after a mood is saved on the dashboard so the 7-day row updates without leaving the screen */
+  refreshKey?: number;
+};
+
+export function DailyMoodHistoryCard({ refreshKey = 0 }: DailyMoodHistoryCardProps) {
   const { user } = useAuth();
   const [slots, setSlots] = useState<DaySlot[]>(() =>
     buildDateSlots().map((s) => ({ ...s, mood: null }))
   );
   const [loading, setLoading] = useState(true);
+  const prevRefreshKey = useRef(refreshKey);
 
   const load = useCallback(async () => {
     if (!user?.id) {
@@ -81,6 +87,12 @@ export function DailyMoodHistoryCard() {
     }, [load])
   );
 
+  useEffect(() => {
+    if (prevRefreshKey.current === refreshKey) return;
+    prevRefreshKey.current = refreshKey;
+    void load();
+  }, [refreshKey, load]);
+
   const hasAny = slots.some((s) => s.mood != null);
 
   return (
@@ -120,12 +132,12 @@ export function DailyMoodHistoryCard() {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.card + 'E6',
-    borderRadius: radii.md,
+    backgroundColor: colors.moodSectionBackground,
+    borderRadius: radii.lg,
     padding: spacing.md,
     marginBottom: spacing.md,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.moodSectionWaveMid,
   },
   title: {
     ...typography.presets.heading3,

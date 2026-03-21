@@ -19,7 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { apiFetchWithAuth, API_CONFIG } from '../../lib/api';
 import { useTrialStatus } from '../../hooks/useTrialStatus';
 import { AccessEndedView } from '../../components/AccessEndedView';
-import { TRIGGER_OPTIONS, type TimeSelection } from '../../lib/symptomTrackerConstants';
+import { getTriggersForSymptom, type TimeSelection } from '../../lib/symptomTrackerConstants';
 import { getSymptomIllustration } from '../../lib/symptomIllustration';
 
 type HomeStackParamList = {
@@ -69,7 +69,7 @@ export function SymptomsScreen() {
   const [selectedTriggers, setSelectedTriggers] = useState<string[]>([]);
   const [timeSelection, setTimeSelection] = useState<TimeSelection>('now');
   const [customTime, setCustomTime] = useState('');
-  const [modalStep, setModalStep] = useState<1 | 2 | 3 | 4>(1);
+  const [modalStep, setModalStep] = useState(1);
   const [customTrigger, setCustomTrigger] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [todayCount, setTodayCount] = useState<number | null>(null);
@@ -265,6 +265,10 @@ export function SymptomsScreen() {
     }
   };
 
+  const symptomTriggers = getTriggersForSymptom(selectedSymptom?.name ?? '');
+  const hasTriggers = symptomTriggers.length > 0;
+  const totalSteps = hasTriggers ? 4 : 3;
+
   if (trialStatus.expired) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
@@ -403,7 +407,7 @@ export function SymptomsScreen() {
               </TouchableOpacity>
             </View>
             <View style={styles.stepIndicator}>
-              {([1, 2, 3, 4] as const).map((step) => (
+              {Array.from({ length: totalSteps }, (_, i) => i + 1).map((step) => (
                 <View key={step} style={styles.stepDotWrap}>
                   <View
                     style={[
@@ -421,7 +425,7 @@ export function SymptomsScreen() {
                       {modalStep > step ? '✓' : step}
                     </Text>
                   </View>
-                  {step < 4 && <View style={styles.stepLine} />}
+                  {step < totalSteps && <View style={styles.stepLine} />}
                 </View>
               ))}
             </View>
@@ -467,11 +471,11 @@ export function SymptomsScreen() {
                   </View>
                 </>
               )}
-              {modalStep === 2 && (
+              {modalStep === 2 && hasTriggers && (
                 <>
                   <Text style={styles.label}>Any idea what triggered it? (optional)</Text>
                   <View style={styles.triggerChips}>
-                    {TRIGGER_OPTIONS.map((trigger) => (
+                    {symptomTriggers.map((trigger) => (
                       <TouchableOpacity
                         key={trigger}
                         activeOpacity={1}
@@ -511,7 +515,7 @@ export function SymptomsScreen() {
                   </View>
                 </>
               )}
-              {modalStep === 3 && (
+              {((modalStep === 3 && hasTriggers) || (modalStep === 2 && !hasTriggers)) && (
                 <>
                   <Text style={styles.label}>When did this happen?</Text>
                   <TouchableOpacity
@@ -570,7 +574,7 @@ export function SymptomsScreen() {
                   )}
                 </>
               )}
-              {modalStep === 4 && (
+              {((modalStep === 4 && hasTriggers) || (modalStep === 3 && !hasTriggers)) && (
                 <>
                   <Text style={styles.label}>Quick note (optional)</Text>
                   <TextInput
@@ -589,18 +593,18 @@ export function SymptomsScreen() {
               <TouchableOpacity
                 activeOpacity={1}
                 style={styles.footerBtnSecondary}
-                onPress={() => (modalStep === 1 ? closeModal() : setModalStep((s) => (s - 1) as 1 | 2 | 3 | 4))}
+                onPress={() => (modalStep === 1 ? closeModal() : setModalStep((s) => s - 1))}
               >
                 <Ionicons name="chevron-back" size={20} color={colors.textMuted} />
                 <Text style={styles.footerBtnSecondaryText}>
                   {modalStep === 1 ? 'Cancel' : 'Back'}
                 </Text>
               </TouchableOpacity>
-              {modalStep < 4 ? (
+              {modalStep < totalSteps ? (
                 <TouchableOpacity
                   activeOpacity={1}
                   style={styles.footerBtnPrimary}
-                  onPress={() => setModalStep((s) => (s + 1) as 1 | 2 | 3 | 4)}
+                  onPress={() => setModalStep((s) => s + 1)}
                 >
                   <Text style={styles.footerBtnPrimaryText}>Next</Text>
                   <Ionicons name="chevron-forward" size={20} color={colors.textInverse} />

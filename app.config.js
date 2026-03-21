@@ -25,7 +25,6 @@ module.exports = {
         },
       ],
       './plugins/android-large-screen.js',
-      'expo-video',
     ],
   },
 };

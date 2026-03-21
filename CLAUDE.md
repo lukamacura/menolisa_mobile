@@ -76,6 +76,7 @@ Use specialized agents for domain-specific work:
 - Buttons: sentence case only (no uppercase)
 - Screen files named `[Name]Screen.tsx`; component files named `[Name].tsx`
 - No hardcoded strings — prepare for i18n
+- **Never use 8-digit hex colors** (e.g. `#RRGGBBAA` or `colors.primary + '33'`) — Android does not support them and renders them gray/transparent. Always use `rgba(r, g, b, a)` for semi-transparent colors.
 
 ## Running the App
 ```bash

@@ -25,7 +25,7 @@ import { apiFetchWithAuth, API_CONFIG, deleteSymptomLog } from '../../lib/api';
 import { useTrialStatus } from '../../hooks/useTrialStatus';
 import { AccessEndedView } from '../../components/AccessEndedView';
 import { getSymptomIllustration } from '../../lib/symptomIllustration';
-import { TRIGGER_OPTIONS, type TimeSelection } from '../../lib/symptomTrackerConstants';
+import { getTriggersForSymptom, type TimeSelection } from '../../lib/symptomTrackerConstants';
 import { colors, spacing, radii, typography, minTouchTarget, shadows } from '../../theme/tokens';
 
 const GRATITUDE_DISMISS_MS = 1800;
@@ -112,7 +112,7 @@ export function SymptomLogsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [logToEdit, setLogToEdit] = useState<SymptomLog | null>(null);
-  const [editStep, setEditStep] = useState<1 | 2 | 3 | 4>(1);
+  const [editStep, setEditStep] = useState(1);
   const [editSeverity, setEditSeverity] = useState(1);
   const [editTriggers, setEditTriggers] = useState<string[]>([]);
   const [editTimeSelection, setEditTimeSelection] = useState<TimeSelection>('now');
@@ -318,10 +318,14 @@ export function SymptomLogsScreen() {
       }));
   }, [logs]);
 
+  const editSymptomTriggers = getTriggersForSymptom(logToEdit?.symptoms?.name ?? '');
+  const editHasTriggers = editSymptomTriggers.length > 0;
+  const editTotalSteps = editHasTriggers ? 4 : 3;
+
   if (trialStatus.expired) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
-        <AccessEndedView variant="fullScreen" reduceMotion={reduceMotion} />
+        <AccessEndedView variant="fullScreen" />
       </SafeAreaView>
     );
   }
@@ -489,7 +493,7 @@ export function SymptomLogsScreen() {
               </TouchableOpacity>
             </View>
             <View style={styles.stepIndicator}>
-              {([1, 2, 3, 4] as const).map((step) => (
+              {Array.from({ length: editTotalSteps }, (_, i) => i + 1).map((step) => (
                 <View key={step} style={styles.stepDotWrap}>
                   <View
                     style={[
@@ -502,7 +506,7 @@ export function SymptomLogsScreen() {
                       {editStep > step ? '✓' : step}
                     </Text>
                   </View>
-                  {step < 4 && <View style={styles.stepLine} />}
+                  {step < editTotalSteps && <View style={styles.stepLine} />}
                 </View>
               ))}
             </View>
@@ -530,11 +534,11 @@ export function SymptomLogsScreen() {
                   </View>
                 </>
               )}
-              {editStep === 2 && (
+              {editStep === 2 && editHasTriggers && (
                 <>
                   <Text style={styles.label}>Any idea what triggered it? (optional)</Text>
                   <View style={styles.triggerChips}>
-                    {TRIGGER_OPTIONS.map((trigger) => (
+                    {editSymptomTriggers.map((trigger) => (
                       <TouchableOpacity
                         key={trigger}
                         activeOpacity={1}
@@ -562,7 +566,7 @@ export function SymptomLogsScreen() {
                   </View>
                 </>
               )}
-              {editStep === 3 && (
+              {((editStep === 3 && editHasTriggers) || (editStep === 2 && !editHasTriggers)) && (
                 <>
                   <Text style={styles.label}>When did this happen?</Text>
                   <TouchableOpacity
@@ -594,7 +598,7 @@ export function SymptomLogsScreen() {
                   )}
                 </>
               )}
-              {editStep === 4 && (
+              {((editStep === 4 && editHasTriggers) || (editStep === 3 && !editHasTriggers)) && (
                 <>
                   <Text style={styles.label}>Quick note (optional)</Text>
                   <TextInput
@@ -613,13 +617,13 @@ export function SymptomLogsScreen() {
               <TouchableOpacity
                 activeOpacity={1}
                 style={styles.footerBtnSecondary}
-                onPress={() => (editStep === 1 ? closeEditModal() : setEditStep((s) => (s - 1) as 1 | 2 | 3 | 4))}
+                onPress={() => (editStep === 1 ? closeEditModal() : setEditStep((s) => s - 1))}
               >
                 <Ionicons name="chevron-back" size={20} color={colors.textMuted} />
                 <Text style={styles.footerBtnSecondaryText}>{editStep === 1 ? 'Cancel' : 'Back'}</Text>
               </TouchableOpacity>
-              {editStep < 4 ? (
-                <TouchableOpacity activeOpacity={1} style={styles.footerBtnPrimary} onPress={() => setEditStep((s) => (s + 1) as 1 | 2 | 3 | 4)}>
+              {editStep < editTotalSteps ? (
+                <TouchableOpacity activeOpacity={1} style={styles.footerBtnPrimary} onPress={() => setEditStep((s) => s + 1)}>
                   <Text style={styles.footerBtnPrimaryText}>Next</Text>
                   <Ionicons name="chevron-forward" size={20} color="#fff" />
                 </TouchableOpacity>
@@ -788,7 +792,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: radii.md,
-    backgroundColor: colors.primaryLight + '40',
+    backgroundColor: 'rgba(249, 184, 200, 0.25)',
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',

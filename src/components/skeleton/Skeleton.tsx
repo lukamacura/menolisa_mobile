@@ -67,7 +67,7 @@ export function Skeleton({
       <Animated.View
         style={[
           StyleSheet.absoluteFill,
-          { borderRadius, backgroundColor: colors.primaryLight + '50' },
+          { borderRadius, backgroundColor: 'rgba(249, 184, 200, 0.31)' },
           animatedStyle,
         ]}
       />

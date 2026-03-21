@@ -169,7 +169,7 @@ export function MainTabs() {
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.textMuted,
+        tabBarInactiveTintColor: 'rgba(255, 255, 255, 0.55)',
         tabBarLabelStyle: {
           fontSize: 12,
           fontFamily: typography.display.semibold,
@@ -181,8 +181,8 @@ export function MainTabs() {
           paddingBottom: contentBottomPadding,
         },
         tabBarStyle: {
-          backgroundColor: colors.background,
-          borderTopColor: colors.border,
+          backgroundColor: colors.navy,
+          borderTopColor: 'rgba(255, 255, 255, 0.12)',
           borderTopWidth: 1,
           paddingTop: 8,
           paddingBottom: 0,

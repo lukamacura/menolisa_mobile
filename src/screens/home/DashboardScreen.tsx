@@ -4,10 +4,10 @@ import {
   Text,
   Image,
   StyleSheet,
-  TouchableOpacity,
   ScrollView,
   RefreshControl,
   Dimensions,
+  useWindowDimensions,
   Alert,
   Platform,
   Modal,
@@ -21,7 +21,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { LinearGradient } from 'expo-linear-gradient';
-import { VideoView, useVideoPlayer, type VideoPlayer } from 'expo-video';
+import LottieView from 'lottie-react-native';
 import { HomeStackParamList, MainTabParamList } from '../../navigation/types';
 import { apiFetchWithAuth, API_CONFIG, openWebDashboard } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
@@ -41,23 +41,19 @@ import { DashboardSkeleton, ContentTransition } from '../../components/skeleton'
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
-  useAnimatedScrollHandler,
   withTiming,
-  withRepeat,
   withSequence,
-  withDelay,
   withSpring,
-  interpolate,
-  Extrapolate,
   FadeInDown,
   FadeOutUp,
-  FadeIn,
-  FadeOut,
   LinearTransition,
   Easing,
 } from 'react-native-reanimated';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const MENOLISA_LOTTIE = require('../../../assets/menolisa.json');
 
 const GRATITUDE_DISMISS_MS = 1800;
 
@@ -82,7 +78,8 @@ const STREAK_MILESTONE_COPY: Record<
   },
 };
 const WAVE_HEIGHT = 60;
-const VIDEO_HEIGHT = SCREEN_HEIGHT * 0.60;
+
+const HERO_HEIGHT_RATIO = 0.58;
 
 // ---------------------------------------------------------------------------
 // WavyDivider
@@ -128,73 +125,6 @@ const wavyStyles = StyleSheet.create({
   },
 });
 
-const heroVideoStyles = StyleSheet.create({
-  video: {
-    position: 'absolute',
-    width: SCREEN_WIDTH,
-    height: VIDEO_HEIGHT,
-  },
-});
-
-// ---------------------------------------------------------------------------
-// AmbientVideoHero - looping background video with static image fallback
-// ---------------------------------------------------------------------------
-
-interface AmbientVideoHeroProps {
-  reduceMotion: boolean;
-}
-
-/** Avoid crashing when native `VideoPlayer` is already released (e.g. fast unmount / navigation). */
-function safeVideoPause(player: VideoPlayer) {
-  try {
-    player.pause();
-  } catch {
-    // Released shared object — safe to ignore.
-  }
-}
-
-function safeVideoPlay(player: VideoPlayer) {
-  try {
-    player.play();
-  } catch {
-    // Released shared object — safe to ignore.
-  }
-}
-
-function AmbientVideoHero({ reduceMotion }: AmbientVideoHeroProps) {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const player = useVideoPlayer(require('../../../assets/dashboard_lisa.mp4'), (p) => {
-    p.muted = true;
-    p.loop = true;
-  });
-
-  useEffect(() => {
-    if (reduceMotion) {
-      safeVideoPause(player);
-      return;
-    }
-
-    safeVideoPlay(player);
-    return () => {
-      safeVideoPause(player);
-    };
-  }, [player, reduceMotion]);
-
-  if (reduceMotion) {
-    return null;
-  }
-
-  return (
-    <VideoView
-      player={player}
-      contentFit="cover"
-      nativeControls={false}
-      style={heroVideoStyles.video}
-      accessibilityLabel="Ambient looping background video"
-    />
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Navigation type
 // ---------------------------------------------------------------------------
@@ -223,158 +153,13 @@ function getDailyLisaMessage(): string {
 }
 
 // ---------------------------------------------------------------------------
-// LisaHeroCard
-// ---------------------------------------------------------------------------
-
-function LisaHeroCard({ message, onPress }: { message: string; onPress: () => void }) {
-  const reduceMotion = useReduceMotion();
-  const [displayedText, setDisplayedText] = useState(reduceMotion ? message : '');
-  const [isTyping, setIsTyping] = useState(!reduceMotion);
-
-  // Card entrance: fade + slide up
-  const opacity = useSharedValue(reduceMotion ? 1 : 0);
-  const translateY = useSharedValue(reduceMotion ? 0 : 14);
-
-  // Blinking cursor
-  const cursorOpacity = useSharedValue(1);
-
-  useEffect(() => {
-    if (reduceMotion) return;
-
-    opacity.value = withTiming(1, { duration: 480, easing: Easing.out(Easing.quad) });
-    translateY.value = withTiming(0, { duration: 480, easing: Easing.out(Easing.quad) });
-
-    cursorOpacity.value = withRepeat(
-      withSequence(
-        withTiming(0, { duration: 520 }),
-        withTiming(1, { duration: 520 }),
-      ),
-      -1,
-      false,
-    );
-  }, [reduceMotion]);
-
-  // Typewriter
-  useEffect(() => {
-    if (reduceMotion) {
-      setDisplayedText(message);
-      setIsTyping(false);
-      return;
-    }
-    setDisplayedText('');
-    setIsTyping(true);
-    let intervalId: ReturnType<typeof setInterval>;
-    const timeoutId = setTimeout(() => {
-      let i = 0;
-      intervalId = setInterval(() => {
-        i++;
-        setDisplayedText(message.slice(0, i));
-        if (i >= message.length) {
-          clearInterval(intervalId);
-          setIsTyping(false);
-        }
-      }, 26);
-    }, 380);
-    return () => {
-      clearTimeout(timeoutId);
-      clearInterval(intervalId);
-    };
-  }, [message, reduceMotion]);
-
-  const entranceStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-    transform: [{ translateY: translateY.value }],
-  }));
-
-  const cursorStyle = useAnimatedStyle(() => ({
-    opacity: cursorOpacity.value,
-  }));
-
-  return (
-    <Animated.View style={[lisaCardStyles.wrapper, entranceStyle]}>
-      <View style={lisaCardStyles.bubble}>
-
-        <Text style={lisaCardStyles.bubbleText}>
-          {displayedText}
-          {isTyping && (
-            <Animated.Text style={[lisaCardStyles.cursor, cursorStyle]}>|</Animated.Text>
-          )}
-        </Text>
-        <TouchableOpacity
-          activeOpacity={0.8}
-          style={lisaCardStyles.talkButton}
-          onPress={onPress}
-          accessibilityRole="button"
-          accessibilityLabel="Talk to Lisa"
-        >
-          <Ionicons name="chatbubble-ellipses" size={20} color={colors.navy} />
-          <Text style={lisaCardStyles.talkButtonText}>Talk to Lisa</Text>
-        </TouchableOpacity>
-      </View>
-    </Animated.View>
-  );
-}
-
-// Lisa card styles - blue retired, replaced with white glass + coral
-const lisaCardStyles = StyleSheet.create({
-  wrapper: {
-    marginBottom: spacing.xl,
-  },
-  bubble: {
-    // White glass instead of blue tint
-    backgroundColor: 'rgba(255, 255, 255, 0.18)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.40)',
-    borderRadius: radii.lg,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    ...(Platform.OS === 'web' ? { boxShadow: `0 2px 8px ${colors.primary}1f` } : { shadowColor: colors.primary, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.12, shadowRadius: 8, elevation: 2 }),
-  },
-  bubbleText: {
-    fontSize: 14,
-    fontFamily: typography.family.regular,
-    color: colors.background,
-    lineHeight: 22,
-    marginBottom: spacing.md,
-    ...(Platform.OS === 'web' ? { textShadow: '0 1px 4px rgba(0,0,0,0.85)' } : { textShadowColor: 'rgba(0, 0, 0, 0.85)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 }),
-  },
-  cursor: {
-    fontSize: 14,
-    fontFamily: typography.family.regular,
-    color: colors.primary,
-    lineHeight: 22,
-    ...(Platform.OS === 'web' ? { textShadow: '0 1px 4px rgba(0,0,0,0.85)' } : { textShadowColor: 'rgba(0, 0, 0, 0.85)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 }),
-  },
-  talkButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    // Coral instead of blue
-    backgroundColor: colors.primary,
-    paddingVertical: Math.max(spacing.md, (minTouchTarget - 24) / 2),
-    paddingHorizontal: spacing.xl,
-    borderRadius: radii.lg,
-    gap: spacing.sm,
-    minHeight: minTouchTarget + 8,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.45,
-    shadowRadius: 2,
-    elevation: 4,
-  },
-  talkButtonText: {
-    fontSize: 17,
-    fontFamily: typography.display.semibold,
-    color: colors.navy,
-    letterSpacing: 0.5,
-  },
-});
-
-// ---------------------------------------------------------------------------
 // DashboardScreen
 // ---------------------------------------------------------------------------
 
 export function DashboardScreen() {
+  const { height: windowHeight } = useWindowDimensions();
+  const dashboardHeroHeight = Math.max(200, Math.round(windowHeight * HERO_HEIGHT_RATIO));
+
   const navigation = useNavigation<NavProp>();
   const refetchTrialRef = useContext(RefetchTrialContext);
   const trialStatus = useTrialStatus();
@@ -383,12 +168,14 @@ export function DashboardScreen() {
   const [error, setError] = useState<string | null>(null);
   const [streak, setStreak] = useState<number | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
+  const [ageBandId, setAgeBandId] = useState<string | null>(null);
   const [endingSoonPaywallDismissed, setEndingSoonPaywallDismissed] = useState(false);
   const reduceMotion = useReduceMotion();
 
   // Daily mood check-in
   const { hasMoodToday, loading: moodLoading, submitMood } = useDailyMood();
   const [moodModalVisible, setMoodModalVisible] = useState(false);
+  const [moodHistoryRefreshKey, setMoodHistoryRefreshKey] = useState(0);
   const [streakGratitudeDays, setStreakGratitudeDays] = useState<7 | 14 | 30 | null>(null);
 
   // Show the modal once the mood check resolves and no entry exists for today
@@ -398,11 +185,6 @@ export function DashboardScreen() {
       return () => clearTimeout(timer);
     }
   }, [moodLoading, hasMoodToday]);
-
-  const handleMoodSubmit = useCallback(
-    async (mood: 1 | 2 | 3 | 4) => submitMood(mood),
-    [submitMood]
-  );
 
   useEffect(() => {
     if (streak == null || loading) return;
@@ -442,7 +224,6 @@ export function DashboardScreen() {
   // Refetch trial when screen gains focus (e.g. return from browser)
   // Fade-in + rise on every focus visit — screen + individual CTA images
   const screenOpacity = useSharedValue(reduceMotion ? 1 : 0);
-  const scrollY = useSharedValue(0);
   const endingSoonPulse = useSharedValue(1);
   const cardLayoutTransition = LinearTransition.duration(motion.duration.base).easing(Easing.out(Easing.quad));
 
@@ -459,40 +240,6 @@ export function DashboardScreen() {
   );
 
   const screenFadeStyle = useAnimatedStyle(() => ({ opacity: screenOpacity.value }));
-  const onScroll = useAnimatedScrollHandler({
-    onScroll: (event) => {
-      if (reduceMotion) return;
-      scrollY.value = event.contentOffset.y;
-    },
-  });
-
-  const heroMediaStyle = useAnimatedStyle(() => {
-    if (reduceMotion) return {};
-
-    const scale = interpolate(scrollY.value, [0, VIDEO_HEIGHT], [1, 0.96], Extrapolate.CLAMP);
-    const translateY = interpolate(scrollY.value, [0, VIDEO_HEIGHT], [0, -26], Extrapolate.CLAMP);
-    return {
-      transform: [{ translateY }, { scale }],
-    };
-  });
-
-  const heroOverlayStyle = useAnimatedStyle(() => {
-    if (reduceMotion) return {};
-
-    const translateY = interpolate(scrollY.value, [0, VIDEO_HEIGHT * 0.75], [0, -16], Extrapolate.CLAMP);
-    const opacity = interpolate(scrollY.value, [0, VIDEO_HEIGHT * 0.85], [1, 0.84], Extrapolate.CLAMP);
-    return {
-      opacity,
-      transform: [{ translateY }],
-    };
-  });
-
-  const heroGradientStyle = useAnimatedStyle(() => {
-    if (reduceMotion) return {};
-
-    const opacity = interpolate(scrollY.value, [0, VIDEO_HEIGHT * 0.8], [1, 0.9], Extrapolate.CLAMP);
-    return { opacity };
-  });
 
   const handleOpenDashboard = useCallback(async () => {
     try {
@@ -516,20 +263,31 @@ export function DashboardScreen() {
       if (user?.id) {
         const { data: profile } = await supabase
           .from('user_profiles')
-          .select('name')
+          .select('name, age_band')
           .eq('user_id', user.id)
           .single();
         if (profile?.name) {
           const first = profile.name.trim().split(/\s+/)[0];
           setUserName(first || profile.name);
         }
+        setAgeBandId(
+          profile?.age_band != null && typeof profile.age_band === 'string'
+            ? profile.age_band
+            : null,
+        );
       }
       const today = new Date().toISOString().split('T')[0];
       const moodRes = await apiFetchWithAuth(
         `${API_CONFIG.endpoints.dailyMood}?date=${today}`
       ).catch(() => null);
-      if (moodRes?.data?.current_streak != null) {
-        setStreak(moodRes.data.current_streak);
+      const streakVal =
+        typeof moodRes?.current_streak === 'number'
+          ? moodRes.current_streak
+          : typeof moodRes?.data?.current_streak === 'number'
+            ? moodRes.data.current_streak
+            : null;
+      if (streakVal !== null) {
+        setStreak(streakVal);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Something went wrong');
@@ -546,6 +304,18 @@ export function DashboardScreen() {
   const onMoodGratitudeComplete = useCallback(() => {
     void loadData();
   }, [loadData]);
+
+  const handleMoodSubmit = useCallback(
+    async (mood: 1 | 2 | 3 | 4) => {
+      const ok = await submitMood(mood);
+      if (ok) {
+        setMoodHistoryRefreshKey((k) => k + 1);
+        void loadData();
+      }
+      return ok;
+    },
+    [submitMood, loadData],
+  );
 
   useEffect(() => {
     loadData();
@@ -628,74 +398,126 @@ export function DashboardScreen() {
       )}
       <Animated.View style={[{ flex: 1 }, screenFadeStyle]}>
       <ContentTransition>
-        <Animated.ScrollView
+        <ScrollView
           contentContainerStyle={styles.scrollContent}
-          onScroll={onScroll}
-          scrollEventThrottle={16}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
           }
         >
           {/* ----------------------------------------------------------------
-              Video hero - 60% screen height; video fills area (cover), no overlay
+              Navy hero (matches tab bar); Lottie + greeting + Talk to Lisa CTA
           ---------------------------------------------------------------- */}
-          <View style={styles.videoHero}>
-            <View style={styles.videoHeroParallaxBackdrop} />
-            <Animated.View style={[styles.videoHeroMediaWrap, heroMediaStyle]}>
-              <AmbientVideoHero reduceMotion={reduceMotion} />
-            </Animated.View>
+          <View style={[styles.dashboardHero, { height: dashboardHeroHeight }]}>
+            <View style={styles.dashboardHeroBg} />
+            <LinearGradient
+              colors={['rgba(255, 255, 255, 0.1)', 'transparent']}
+              locations={[0, 0.55]}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+              style={styles.dashboardHeroSheen}
+              pointerEvents="none"
+            />
 
-            {/* Linear gradient top → bottom (transparent to darker) so overlay text is readable */}
-            <Animated.View style={[styles.videoHeroGradientWrap, heroGradientStyle]}>
-              <LinearGradient
-                colors={['transparent', 'rgba(0, 0, 0, 0.45)']}
-                style={[styles.videoHeroGradient, { pointerEvents: 'none' }]}
-              />
-            </Animated.View>
+            {/* Brand pink blobs — layout like reference: large top-right, mid-left edge, smaller mid-right */}
+            <View
+              style={styles.heroDecorBlobTopRight}
+              pointerEvents="none"
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+            />
+            <View
+              style={[
+                styles.heroDecorBlobMidLeft,
+                { top: Math.round(dashboardHeroHeight * 0.28) },
+              ]}
+              pointerEvents="none"
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+            />
+            <View
+              style={[
+                styles.heroDecorBlobMidRight,
+                { top: Math.round(dashboardHeroHeight * 0.46) },
+              ]}
+              pointerEvents="none"
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+            />
 
-            {/* Content pinned to the bottom of the hero — greeting + Lisa CTA card */}
-            <Animated.View style={[styles.videoOverlayContent, heroOverlayStyle]}>
-              <StaggeredZoomIn delayIndex={0} reduceMotion={reduceMotion}>
-                <Text style={styles.greeting}>
-                  {userName ? `Hi there, ${userName}` : 'Hi there'}
-                </Text>
-              </StaggeredZoomIn>
+            <View style={styles.videoOverlayContent}>
+              {!reduceMotion ? (
+                <View style={styles.heroMenolisaLottieWrap} accessibilityLabel="Menolisa" accessible>
+                  <LottieView
+                    source={MENOLISA_LOTTIE}
+                    autoPlay
+                    loop
+                    style={styles.heroMenolisaLottie}
+                    resizeMode="contain"
+                    renderMode={Platform.OS === 'android' ? 'SOFTWARE' : 'AUTOMATIC'}
+                    enableSafeModeAndroid
+                  />
+                </View>
+              ) : null}
 
-              {error && (
-                <StaggeredZoomIn delayIndex={1} reduceMotion={reduceMotion}>
-                  <Animated.View
-                    entering={reduceMotion ? undefined : FadeInDown.duration(motion.duration.base)}
-                    exiting={reduceMotion ? undefined : FadeOutUp.duration(motion.duration.fast)}
-                    style={styles.errorBanner}
-                  >
-                    <Text style={styles.errorText}>{error}</Text>
-                  </Animated.View>
+              <View style={styles.videoOverlayBottom}>
+                <StaggeredZoomIn delayIndex={0} reduceMotion={reduceMotion}>
+                  <Text style={styles.greeting}>
+                    {userName ? `Hi there, ${userName}` : 'Hi there'}
+                  </Text>
                 </StaggeredZoomIn>
-              )}
 
-              {!trialStatus.expired && (
-                <StaggeredZoomIn delayIndex={2} reduceMotion={reduceMotion}>
-                  <View style={styles.talkToLisaHeroCard}>
-                    {/* i18n: dashboard.lisaDailyMessage */}
-                    <Text style={styles.talkToLisaHeroSubheading}>{getDailyLisaMessage()}</Text>
-                    <AnimatedPressable
-                      containerStyle={styles.pressableContainer}
-                      style={styles.talkToLisaHeroButton}
-                      onPress={handleTalkToLisa}
-                      accessibilityRole="button"
-                      accessibilityLabel="Talk to Lisa"
+                {error && (
+                  <StaggeredZoomIn delayIndex={1} reduceMotion={reduceMotion}>
+                    <Animated.View
+                      entering={reduceMotion ? undefined : FadeInDown.duration(motion.duration.base)}
+                      exiting={reduceMotion ? undefined : FadeOutUp.duration(motion.duration.fast)}
+                      style={styles.errorBanner}
                     >
-                      <Ionicons name="chatbubble-ellipses" size={20} color={colors.navy} />
-                      <Text style={styles.talkToLisaHeroButtonText}>Talk to Lisa</Text>
-                    </AnimatedPressable>
-                  </View>
-                </StaggeredZoomIn>
-              )}
-            </Animated.View>
+                      <Text style={styles.errorText}>{error}</Text>
+                    </Animated.View>
+                  </StaggeredZoomIn>
+                )}
+
+                {!trialStatus.expired && (
+                  <StaggeredZoomIn delayIndex={2} reduceMotion={reduceMotion}>
+                    <View style={styles.talkToLisaHeroCard}>
+                      {/* i18n: dashboard.lisaDailyMessage */}
+                      <Text style={styles.talkToLisaHeroSubheading}>{getDailyLisaMessage()}</Text>
+                      <AnimatedPressable
+                        containerStyle={styles.pressableContainer}
+                        style={styles.talkToLisaHeroButton}
+                        onPress={handleTalkToLisa}
+                        accessibilityRole="button"
+                        accessibilityLabel="Talk to Lisa"
+                      >
+                        <LinearGradient
+                          colors={[colors.primary, colors.primaryDark]}
+                          locations={[0, 1]}
+                          start={{ x: 0.5, y: 0 }}
+                          end={{ x: 0.5, y: 1 }}
+                          style={StyleSheet.absoluteFillObject}
+                          pointerEvents="none"
+                        />
+                        <View style={styles.talkToLisaHeroButtonContent}>
+                          <Ionicons
+                            name="chatbubble-ellipses"
+                            size={22}
+                            color={colors.navy}
+                            accessibilityElementsHidden
+                            importantForAccessibility="no-hide-descendants"
+                          />
+                          <Text style={styles.talkToLisaHeroButtonText}>Talk to Lisa</Text>
+                        </View>
+                      </AnimatedPressable>
+                    </View>
+                  </StaggeredZoomIn>
+                )}
+              </View>
+            </View>
           </View>
 
           {/* ----------------------------------------------------------------
-              Below video — message, then CTAs
+              Below hero — CTAs and content
           ---------------------------------------------------------------- */}
           {!trialStatus.expired && (
             <Animated.View
@@ -765,12 +587,17 @@ export function DashboardScreen() {
               >
                 <StaggeredZoomIn delayIndex={9} reduceMotion={reduceMotion}>
                   <Animated.View layout={reduceMotion ? undefined : cardLayoutTransition}>
-                    <WhatLisaNoticedCard />
+                    <WhatLisaNoticedCard
+                      displayName={userName}
+                      ageBandId={ageBandId}
+                      streakDays={streak}
+                      reduceMotion={reduceMotion}
+                    />
                   </Animated.View>
                 </StaggeredZoomIn>
                 <StaggeredZoomIn delayIndex={10} reduceMotion={reduceMotion}>
                   <Animated.View layout={reduceMotion ? undefined : cardLayoutTransition}>
-                    <DailyMoodHistoryCard />
+                    <DailyMoodHistoryCard refreshKey={moodHistoryRefreshKey} />
                   </Animated.View>
                 </StaggeredZoomIn>
                 <StaggeredZoomIn delayIndex={11} reduceMotion={reduceMotion}>
@@ -787,7 +614,7 @@ export function DashboardScreen() {
               </Animated.View>
             </>
           )}
-        </Animated.ScrollView>
+        </ScrollView>
       </ContentTransition>
       </Animated.View>
 
@@ -844,94 +671,135 @@ const styles = StyleSheet.create({
     width: '100%',
   },
 
-  // --- Video hero (replaces heroSection) ---
-  videoHero: {
-    height: VIDEO_HEIGHT,
+  dashboardHero: {
     overflow: 'hidden',
     position: 'relative',
-    backgroundColor: colors.primaryLight,
+    backgroundColor: colors.navy,
   },
-  videoHeroParallaxBackdrop: {
+  dashboardHeroBg: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: colors.primaryLight,
+    backgroundColor: colors.navy,
   },
-  videoHeroMediaWrap: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: colors.primaryLight,
-  },
-  videoHeroGradientWrap: {
+  dashboardHeroSheen: {
     ...StyleSheet.absoluteFillObject,
   },
-  videoHeroGradient: {
-    ...StyleSheet.absoluteFillObject,
+  /**
+   * Hero pink blobs — colors.primary / primaryLight (same family as CTAs & pink sections).
+   * Clipped by dashboardHero overflow; z-order under content.
+   */
+  heroDecorBlobTopRight: {
+    position: 'absolute',
+    width: 228,
+    height: 228,
+    borderRadius: 114,
+    top: -72,
+    right: -64,
+    backgroundColor: 'rgba(244, 124, 151, 0.34)',
+  },
+  heroDecorBlobMidLeft: {
+    position: 'absolute',
+    width: 156,
+    height: 156,
+    borderRadius: 78,
+    left: -56,
+    backgroundColor: 'rgba(249, 184, 200, 0.4)',
+  },
+  heroDecorBlobMidRight: {
+    position: 'absolute',
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    right: 10,
+    backgroundColor: 'rgba(244, 124, 151, 0.28)',
   },
   videoOverlayContent: {
     flex: 1,
-    justifyContent: 'flex-end',
+    width: '100%',
     paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
     paddingBottom: spacing.lg,
+  },
+  heroMenolisaLottieWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    paddingTop: spacing.sm,
+  },
+  heroMenolisaLottie: {
+    width: 112,
+    height: 112,
+  },
+  videoOverlayBottom: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    width: '100%',
   },
 
   talkToLisaHeroCard: {
     marginTop: spacing.md,
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radii.lg,
-    backgroundColor: 'rgba(0, 0, 0, 0.28)',
+    paddingVertical: spacing.xl,
+    paddingHorizontal: spacing.xl,
+    borderRadius: radii.xl,
+    backgroundColor: 'rgba(255, 255, 255, 0.14)',
     borderWidth: 1,
     ...Platform.select({
-      // Translucent views + elevation on Android composites as gray, muddy fills and harsh drop shadows.
       android: {
         elevation: 0,
-        borderColor: 'rgba(255, 255, 255, 0.26)',
+        borderColor: 'rgba(255, 255, 255, 0.28)',
       },
       ios: {
         ...shadows.card,
-        borderColor: 'rgba(255, 255, 255, 0.14)',
+        borderColor: 'rgba(255, 255, 255, 0.22)',
       },
       web: {
-        borderColor: 'rgba(255, 255, 255, 0.14)',
+        borderColor: 'rgba(255, 255, 255, 0.22)',
         boxShadow:
-          '0 10px 28px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.12)',
+          '0 10px 28px rgba(0, 0, 0, 0.2), inset 0 0 0 1px rgba(255, 255, 255, 0.18)',
       },
       default: {
-        borderColor: 'rgba(255, 255, 255, 0.14)',
+        borderColor: 'rgba(255, 255, 255, 0.22)',
       },
     }),
   },
   talkToLisaHeroSubheading: {
-    ...typography.presets.body,
-    fontFamily: typography.family.bold,
+    ...typography.presets.bodyMedium,
     color: colors.background,
-    marginBottom: spacing.md,
+    marginBottom: spacing.lg,
     ...(Platform.OS === 'web'
-      ? { textShadow: '0 1px 3px rgba(0, 0, 0, 0.45)' }
+      ? { textShadow: '0 1px 2px rgba(0, 0, 0, 0.25)' }
       : {
-          textShadowColor: 'rgba(0, 0, 0, 0.45)',
+          textShadowColor: 'rgba(0, 0, 0, 0.25)',
           textShadowOffset: { width: 0, height: 1 },
-          textShadowRadius: 4,
+          textShadowRadius: 3,
         }),
   },
   talkToLisaHeroButton: {
+    position: 'relative',
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: minTouchTarget + spacing.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing['2xl'],
+    borderRadius: radii.xl,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.28)',
+    ...shadows.buttonPrimary,
+  },
+  talkToLisaHeroButtonContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.primary,
-    paddingVertical: Math.max(spacing.md, (minTouchTarget - 24) / 2),
-    paddingHorizontal: spacing.xl,
-    borderRadius: radii.lg,
     gap: spacing.sm,
-    minHeight: minTouchTarget + 8,
-    ...shadows.buttonPrimary,
+    zIndex: 1,
   },
   talkToLisaHeroButtonText: {
-    fontSize: 17,
-    fontFamily: typography.display.semibold,
+    ...typography.presets.button,
     color: colors.navy,
-    letterSpacing: 0.5,
+    letterSpacing: 0.25,
+    fontFamily: typography.display.bold,
   },
 
-  // --- Below video, white bg ---
   belowVideoSection: {
     backgroundColor: colors.background,
     paddingHorizontal: spacing.lg,
@@ -987,7 +855,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.sm,
-    backgroundColor: colors.card + 'B3',
+    backgroundColor: 'rgba(255, 255, 255, 0.70)',
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.md,
     borderRadius: radii.md,
@@ -1003,13 +871,18 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 
-  // --- Greeting - white for readability over video overlay ---
   greeting: {
     fontSize: 24,
     fontFamily: typography.display.bold,
     color: colors.background,
     marginBottom: spacing.lg,
-    ...(Platform.OS === 'web' ? { textShadow: '0 2px 6px rgba(0,0,0,0.85)' } : { textShadowColor: 'rgba(0, 0, 0, 0.85)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 6 }),
+    ...(Platform.OS === 'web'
+      ? { textShadow: '0 1px 3px rgba(0,0,0,0.35)' }
+      : {
+          textShadowColor: 'rgba(0, 0, 0, 0.35)',
+          textShadowOffset: { width: 0, height: 1 },
+          textShadowRadius: 4,
+        }),
   },
 
   // --- Error banner ---
@@ -1065,12 +938,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexWrap: 'wrap',
     gap: spacing.sm,
-    backgroundColor: colors.primaryLight + '40',
+    backgroundColor: 'rgba(249, 184, 200, 0.25)',
     padding: spacing.md,
     borderRadius: radii.md,
     marginBottom: spacing.md,
     borderWidth: 1,
-    borderColor: colors.primary + '60',
+    borderColor: 'rgba(244, 124, 151, 0.38)',
   },
   trialNearText: {
     flex: 1,
@@ -1116,7 +989,7 @@ const styles = StyleSheet.create({
 
   // --- Symptom category box - white with coral accent (gold retired) ---
   symptomCategoryBox: {
-    backgroundColor: colors.card + 'F2',
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radii.lg,

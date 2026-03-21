@@ -37,7 +37,7 @@ export function GratitudeSuccessPanel({
         </View>
         {!reduceMotion ? (
           <LottieView
-            source={require('../../assets/animations/trophy-success.json')}
+            source={require('../../assets/Trophy.json')}
             autoPlay
             loop={false}
             style={styles.successLottie}
@@ -89,7 +89,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    backgroundColor: colors.primaryLight + '2E',
+    backgroundColor: 'rgba(249, 184, 200, 0.18)',
     borderRadius: radii.pill,
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.md,

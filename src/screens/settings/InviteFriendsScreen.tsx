@@ -345,7 +345,7 @@ const styles = StyleSheet.create({
   buttonSecondary: {
     backgroundColor: colors.orangeLight,
     borderWidth: 1.5,
-    borderColor: colors.orange + '99',
+    borderColor: 'rgba(255, 179, 138, 0.60)',
   },
   buttonSecondaryText: {
     fontSize: 16,

@@ -93,6 +93,35 @@ function normalizeMarkdown(src: string): string {
     .trim();
 }
 
+/** Matches `/api/langchain-rag` non-streaming `tool_notifications` and SSE `tool_result` for in-chat toasts */
+type ChatToolNotification = {
+  tool_name: string;
+  tool_args?: Record<string, unknown>;
+  success?: boolean;
+};
+
+function applyChatToolNotifications(
+  items: ChatToolNotification[] | undefined,
+  showToolToast: (title: string, message: string) => void,
+) {
+  if (!items?.length) return;
+  for (const item of items) {
+    if (item.tool_name !== 'log_symptom' || item.success === false) continue;
+    const toolArgs = item.tool_args ?? {};
+    const sevRaw = toolArgs.severity;
+    const sev = sevRaw
+      ? String(sevRaw).charAt(0).toUpperCase() + String(sevRaw).slice(1)
+      : 'Unknown';
+    const name = typeof toolArgs.name === 'string' ? toolArgs.name : '';
+    let message = [name, `Severity: ${sev}`].filter(Boolean).join(' | ');
+    const triggers = toolArgs.triggers;
+    if (Array.isArray(triggers) && triggers.length > 0) {
+      message += ` | Triggers: ${triggers.map(String).join(', ')}`;
+    }
+    if (message) showToolToast('Symptom Logged', message);
+  }
+}
+
 const easeOut = Easing.bezier(0.33, 1, 0.68, 1);
 
 function ConversationLoader() {
@@ -379,6 +408,7 @@ export function ChatThreadScreen() {
                 stream: false,
               }),
             });
+            applyChatToolNotifications(fallbackRes?.tool_notifications as ChatToolNotification[] | undefined, showToolToast);
             const content = fallbackRes?.content ?? fallbackRes?.message ?? fallbackRes?.reply ?? fallbackRes?.outputs?.output_0 ?? '';
             const fallbackLinks = fallbackRes?.follow_up_links as FollowUpLink[] | undefined;
             applyAssistantReply(typeof content === 'string' ? content : JSON.stringify(content), fallbackLinks);
@@ -425,17 +455,16 @@ export function ChatThreadScreen() {
                   } else if (data.type === 'follow_up_links' && data.links) {
                     lastFollowUpLinks = data.links;
                   } else if (data.type === 'tool_result' && data.success) {
-                    const toolName = data.tool_name;
-                    const toolArgs = data.tool_args || {};
-                    let title = '';
-                    let message = '';
-                    if (toolName === 'log_symptom') {
-                      title = 'Symptom Logged';
-                      const sev = toolArgs.severity ? String(toolArgs.severity).charAt(0).toUpperCase() + String(toolArgs.severity).slice(1) : 'Unknown';
-                      message = [toolArgs.name, `Severity: ${sev}`].filter(Boolean).join(' | ');
-                      if (toolArgs.triggers?.length) message += ` | Triggers: ${toolArgs.triggers.join(', ')}`;
-                    }
-                    if (title && message) showToolToast(title, message);
+                    applyChatToolNotifications(
+                      [
+                        {
+                          tool_name: String(data.tool_name ?? ''),
+                          tool_args: (data.tool_args as Record<string, unknown>) ?? {},
+                          success: true,
+                        },
+                      ],
+                      showToolToast,
+                    );
                   } else if (data.type === 'done') {
                     const reply = normalizeMarkdown(fullResponse);
                     setMessages((prev) => {
@@ -485,22 +514,44 @@ export function ChatThreadScreen() {
           }
         } else {
           const raw = await res.text();
-          let data: { content?: string; message?: string; reply?: string } = {};
+          let data: {
+            content?: string;
+            message?: string;
+            reply?: string;
+            outputs?: { output_0?: string };
+            tool_notifications?: ChatToolNotification[];
+            follow_up_links?: FollowUpLink[];
+          } = {};
           try {
             data = JSON.parse(raw);
           } catch {}
-          const content = data?.content ?? data?.message ?? data?.reply ?? '';
+          applyChatToolNotifications(data.tool_notifications, showToolToast);
+          const content =
+            data?.content ??
+            data?.message ??
+            data?.reply ??
+            (typeof data?.outputs?.output_0 === 'string' ? data.outputs.output_0 : '') ??
+            '';
+          const followUpLinks =
+            Array.isArray(data.follow_up_links) && data.follow_up_links.length > 0
+              ? data.follow_up_links
+              : undefined;
           setMessages((prev) => {
             const next = [...prev];
             const last = next[next.length - 1];
             if (last?.role === 'assistant' && !last.content) {
-              next[next.length - 1] = { ...last, content: normalizeMarkdown(content) };
+              next[next.length - 1] = {
+                ...last,
+                content: normalizeMarkdown(content),
+                follow_up_links: followUpLinks,
+              };
             } else {
               next.push({
                 id: `assistant-${Date.now()}`,
                 role: 'assistant',
                 content: normalizeMarkdown(content),
                 created_at: new Date().toISOString(),
+                follow_up_links: followUpLinks,
               });
             }
             return next;
@@ -744,19 +795,19 @@ const CHAT = {
   userBubble: colors.primary,
   userBubbleText: colors.textInverse,
   lisaBubble: colors.card,
-  lisaBubbleBorder: colors.primaryLight + '45',
+  lisaBubbleBorder: 'rgba(249, 184, 200, 0.27)',
   lisaBubbleShadow: 'rgba(0,0,0,0.04)',
   lisaLabel: colors.textMuted,
   bodyFontSize: 17,
   lineHeight: 24,
   composerBg: colors.card,
-  composerBorder: colors.primaryLight + '4D',
-  chipBg: colors.primaryLight + '26',
-  chipBorder: colors.primary + '59',
+  composerBorder: 'rgba(249, 184, 200, 0.3)',
+  chipBg: 'rgba(249, 184, 200, 0.15)',
+  chipBorder: 'rgba(244, 124, 151, 0.35)',
   chipText: colors.primaryDark,
   emptyIcon: colors.primaryLight,
   errorBg: colors.dangerBg,
-  errorBorder: colors.danger + '26',
+  errorBorder: 'rgba(200, 58, 84, 0.15)',
 };
 
 const styles = StyleSheet.create({

@@ -128,7 +128,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     marginBottom: spacing.sm,
     borderWidth: 1,
-    borderColor: colors.blue + '99',
+    borderColor: 'rgba(58, 191, 163, 0.60)',
   },
   rowLabel: {
     fontSize: 16,

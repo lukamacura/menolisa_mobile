@@ -300,7 +300,7 @@ const styles = StyleSheet.create({
   },
   navyRow: {
     backgroundColor: colors.rowNavyBg,
-    borderColor: colors.navy + '99',
+    borderColor: 'rgba(46, 42, 77, 0.60)',
   },
   navyRowLabel: {
     fontSize: 16,
@@ -314,7 +314,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   referralRow: {
-    borderColor: colors.orange + '80',
+    borderColor: 'rgba(255, 179, 138, 0.50)',
     backgroundColor: colors.orangeLight,
   },
   referralRowLabel: {
@@ -330,7 +330,7 @@ const styles = StyleSheet.create({
   },
   blueRow: {
     backgroundColor: colors.rowBlueBg,
-    borderColor: colors.blue + '99',
+    borderColor: 'rgba(58, 191, 163, 0.60)',
   },
   blueRowLabel: {
     flex: 1,
@@ -340,7 +340,7 @@ const styles = StyleSheet.create({
   },
   goldRow: {
     backgroundColor: colors.rowGoldBg,
-    borderColor: colors.gold + 'cc',
+    borderColor: 'rgba(255, 179, 138, 0.80)',
   },
   goldRowLabel: {
     flex: 1,
@@ -351,7 +351,7 @@ const styles = StyleSheet.create({
   logoutRow: {
     marginTop: spacing.sm,
     backgroundColor: colors.rowRedBg,
-    borderColor: colors.danger + '80',
+    borderColor: 'rgba(200, 58, 84, 0.50)',
   },
   logoutLabel: {
     flex: 1,
@@ -362,7 +362,7 @@ const styles = StyleSheet.create({
   deleteAccountRow: {
     marginTop: spacing.sm,
     backgroundColor: colors.rowRedBg,
-    borderColor: colors.danger + '80',
+    borderColor: 'rgba(200, 58, 84, 0.50)',
   },
   deleteAccountLabel: {
     fontSize: 16,

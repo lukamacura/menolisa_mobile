@@ -9,12 +9,14 @@ const SYMPTOM_NAME_TO_ICON: Record<string, string> = {
   'Brain fog': 'bulb',
   'Mood swings': 'heart',
   'Anxiety': 'alert-circle',
-  'Headaches': 'warning',
   'Joint pain': 'barbell',
-  'Bloating': 'ellipse',
-  'Insomnia': 'moon',
+  'Sleep problems': 'moon',
   'Weight gain': 'trending-up',
   'Low libido': 'heart-dislike',
+  'Palpitations': 'pulse',
+  'Irritability': 'flash-outline',
+  'Vaginal discomfort': 'shield-checkmark-outline',
+  'Bladder problems': 'water-outline',
   'Good Day': 'sunny',
 };
 
