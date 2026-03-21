@@ -5,6 +5,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   Share,
+  Platform,
 } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -22,6 +23,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { apiFetchWithAuth, API_CONFIG } from '../lib/api';
 import { colors, spacing, radii, typography, minTouchTarget, shadows } from '../theme/tokens';
 import { WhatLisaNoticedCardSkeleton } from './skeleton';
+
+/** Shared outer slot: user icon disc + streak Lottie wrapper (same dimensions). */
+const BENTO_LOTTIE_SLOT = minTouchTarget + spacing.xl;
+/** Fire/Trophy Lottie slightly inset inside the slot vs the full disc. */
+const BENTO_STREAK_LOTTIE_SIZE = Math.round(BENTO_LOTTIE_SLOT * 0.82);
+/** Primary label row: streak number is 24px line height — match so name and number sit on one baseline band. */
+const BENTO_PRIMARY_LINE_MIN_HEIGHT = 24;
 
 type ActionSteps = { easy: string; medium: string; advanced: string };
 
@@ -352,19 +360,21 @@ export function WhatLisaNoticedCard({
         <Text style={styles.sectionEyebrowText}>What Lisa noticed</Text>
       </View>
 
-      {/* Bento row: profile + streak (icon left, primary + secondary text — aligned column, vertically centered) */}
+      {/* Bento row: profile + streak (animation on top, text below) */}
       <View style={styles.bentoRow}>
         <View style={styles.bentoTile} accessibilityRole="summary">
           <View style={styles.bentoTileContent}>
-            <View style={styles.bentoIconWrap}>
-              <View style={styles.bentoIconDisc}>
-                <Ionicons name="person" size={18} color={colors.primary} />
+            <View style={styles.bentoIconSlot}>
+              <View style={styles.bentoIconDisc} accessibilityLabel="You">
+                <Ionicons name="person" size={24} color={colors.primary} />
               </View>
             </View>
             <View style={styles.bentoBody}>
-              <Text style={styles.profileName} numberOfLines={1}>
-                {profileName}
-              </Text>
+              <View style={styles.bentoPrimaryLine}>
+                <Text style={styles.profileName} numberOfLines={1}>
+                  {profileName}
+                </Text>
+              </View>
               <Text style={styles.profileMeta} numberOfLines={1}>
                 {ageLine ?? 'Your space'}
               </Text>
@@ -382,31 +392,43 @@ export function WhatLisaNoticedCard({
           }
         >
           <View style={styles.bentoTileContent}>
-            <View style={styles.bentoIconWrap}>
-              {hasMoodStreak ? (
-                reduceMotion ? (
-                  <View style={styles.bentoIconDisc}>
-                    <Ionicons name="flame" size={18} color={colors.primary} />
-                  </View>
-                ) : (
-                  <LottieView
-                    source={require('../../assets/Fire.json')}
-                    autoPlay
-                    loop
-                    style={styles.bentoLottie}
-                    resizeMode="contain"
-                  />
-                )
-              ) : (
+            <View style={styles.bentoIconSlot}>
+              {reduceMotion ? (
                 <View style={styles.bentoIconDisc}>
-                  <Ionicons name="calendar-outline" size={18} color={colors.textMuted} />
+                  <Ionicons
+                    name={hasMoodStreak ? 'flame' : 'calendar-outline'}
+                    size={22}
+                    color={hasMoodStreak ? colors.primary : colors.textMuted}
+                  />
                 </View>
+              ) : hasMoodStreak ? (
+                <LottieView
+                  source={require('../../assets/Fire.json')}
+                  autoPlay
+                  loop
+                  style={styles.bentoStreakLottie}
+                  resizeMode="cover"
+                  renderMode={Platform.OS === 'android' ? 'SOFTWARE' : 'AUTOMATIC'}
+                  enableSafeModeAndroid
+                />
+              ) : (
+                <LottieView
+                  source={require('../../assets/Trophy.json')}
+                  autoPlay
+                  loop
+                  style={styles.bentoStreakLottie}
+                  resizeMode="cover"
+                  renderMode={Platform.OS === 'android' ? 'SOFTWARE' : 'AUTOMATIC'}
+                  enableSafeModeAndroid
+                />
               )}
             </View>
             <View style={styles.bentoBody}>
-              <Text style={[styles.streakNumber, !hasMoodStreak && styles.streakNumberMuted]}>
-                {streakValue}
-              </Text>
+              <View style={styles.bentoPrimaryLine}>
+                <Text style={[styles.streakNumber, !hasMoodStreak && styles.streakNumberMuted]}>
+                  {streakValue}
+                </Text>
+              </View>
               <Text style={styles.streakCaption}>
                 {hasMoodStreak ? 'Day streak' : 'Log mood daily'}
               </Text>
@@ -542,44 +564,59 @@ const styles = StyleSheet.create({
   },
   bentoTile: {
     flex: 1,
-    minHeight: 74,
+    minHeight:
+      BENTO_LOTTIE_SLOT +
+      spacing.sm +
+      spacing['2xl'] +
+      spacing.lg +
+      spacing.md,
     backgroundColor: colors.card,
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    paddingVertical: spacing.sm,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.sm,
     paddingHorizontal: spacing.sm,
+    justifyContent: 'flex-start',
     ...shadows.card,
   },
   bentoTileContent: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     alignItems: 'center',
-    gap: spacing.xs,
-    flex: 1,
+    gap: spacing.sm,
+    width: '100%',
   },
-  /** Fixed square so both tiles share the same icon column width and optical alignment */
-  bentoIconWrap: {
-    width: 28,
-    height: 28,
+  /** Outer frame: user disc and streak Lottie share exact width/height. */
+  bentoIconSlot: {
+    width: BENTO_LOTTIE_SLOT,
+    height: BENTO_LOTTIE_SLOT,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  bentoLottie: {
-    width: 28,
-    height: 28,
+    alignSelf: 'center',
   },
   bentoIconDisc: {
-    width: 28,
-    height: 28,
+    width: BENTO_LOTTIE_SLOT,
+    height: BENTO_LOTTIE_SLOT,
     borderRadius: radii.pill,
     backgroundColor: colors.surfaceElevated,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  /** Sized down inside bentoIconSlot so Fire/Trophy don’t overpower the user tile. */
+  bentoStreakLottie: {
+    width: BENTO_STREAK_LOTTIE_SIZE,
+    height: BENTO_STREAK_LOTTIE_SIZE,
+  },
   bentoBody: {
-    flex: 1,
-    minWidth: 0,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+  },
+  bentoPrimaryLine: {
+    minHeight: BENTO_PRIMARY_LINE_MIN_HEIGHT,
+    width: '100%',
     justifyContent: 'center',
+    alignItems: 'center',
   },
   profileName: {
     ...typography.presets.bodyMedium,
@@ -587,6 +624,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 20,
     color: colors.text,
+    textAlign: 'center',
   },
   profileMeta: {
     ...typography.presets.caption,
@@ -594,12 +632,14 @@ const styles = StyleSheet.create({
     lineHeight: 15,
     color: colors.textMuted,
     marginTop: 1,
+    textAlign: 'center',
   },
   streakNumber: {
     fontFamily: typography.display.bold,
     fontSize: 19,
     lineHeight: 24,
     color: colors.text,
+    textAlign: 'center',
   },
   streakNumberMuted: {
     color: colors.textMuted,
@@ -610,6 +650,7 @@ const styles = StyleSheet.create({
     lineHeight: 15,
     color: colors.textMuted,
     marginTop: 1,
+    textAlign: 'center',
   },
 
   heroTile: {

@@ -30,11 +30,22 @@ export const colors = {
   rowGoldBg: 'rgba(255, 179, 138, 0.30)',
   rowRedBg: 'rgba(220, 38, 38, 0.10)',
 
-  // UI surfaces + text
-  background: '#FFFDFB',
-  surface: 'rgba(255, 255, 255, 0.94)',
+  // UI surfaces + text (off-whites: warm blush + cool lavender — not pure #fff)
+  /** App canvas; pairs with navy/plum/blue and coral primary */
+  background: '#F9F7FB',
+  /** Frosted panels on top of background */
+  surface: 'rgba(255, 252, 254, 0.94)',
+  /** Slightly warmer lift (chips, avatar wells) */
   surfaceElevated: '#FFF6F8',
-  card: '#FFFFFF',
+  /** Cards / bubbles: soft warm white vs canvas */
+  card: '#FFFBFD',
+  /**
+   * Notification list (in-app): use opaque fills. Android often composites
+   * translucent rgba() View backgrounds as flat gray.
+   */
+  notificationUnreadBg: '#FDF5F8',
+  notificationIconPrimarySoft: '#FCE8EF',
+  notificationIconGoldSoft: '#FFF1E8',
   text: '#1F1B2D',
   textMuted: '#6B647C',
   textInverse: '#FFFFFF',
@@ -53,7 +64,7 @@ export const colors = {
 };
 
 /** Soft gradient used on Landing (and auth/quiz screens for consistency) */
-export const landingGradient = ['#FFF6F8', '#F9F1F7', '#F3ECFA'] as const;
+export const landingGradient = ['#FAF8FB', '#F9F1F7', '#F3ECFA'] as const;
 
 export const radii = {
   sm: 10,

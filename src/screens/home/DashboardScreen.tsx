@@ -21,7 +21,6 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { LinearGradient } from 'expo-linear-gradient';
-import LottieView from 'lottie-react-native';
 import { HomeStackParamList, MainTabParamList } from '../../navigation/types';
 import { apiFetchWithAuth, API_CONFIG, openWebDashboard } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
@@ -53,7 +52,7 @@ import Animated, {
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const MENOLISA_LOTTIE = require('../../../assets/menolisa.json');
+const WELCOME_IMAGE = require('../../../assets/welcome.png');
 
 const GRATITUDE_DISMISS_MS = 1800;
 
@@ -106,10 +105,10 @@ function WavyDivider() {
           fill={colors.surfaceElevated}
           fillOpacity={0.5}
         />
-        {/* Main white curve */}
+        {/* Top curve: same as app canvas (not card) so hero meets background seamlessly */}
         <Path
           d="M0,0 L100,0 Q50,60 0,0 Z"
-          fill={colors.card}
+          fill={colors.background}
         />
       </Svg>
     </View>
@@ -405,7 +404,7 @@ export function DashboardScreen() {
           }
         >
           {/* ----------------------------------------------------------------
-              Navy hero (matches tab bar); Lottie + greeting + Talk to Lisa CTA
+              Navy hero (matches tab bar); welcome image + greeting + Talk to Lisa CTA
           ---------------------------------------------------------------- */}
           <View style={[styles.dashboardHero, { height: dashboardHeroHeight }]}>
             <View style={styles.dashboardHeroBg} />
@@ -445,19 +444,14 @@ export function DashboardScreen() {
             />
 
             <View style={styles.videoOverlayContent}>
-              {!reduceMotion ? (
-                <View style={styles.heroMenolisaLottieWrap} accessibilityLabel="Menolisa" accessible>
-                  <LottieView
-                    source={MENOLISA_LOTTIE}
-                    autoPlay
-                    loop
-                    style={styles.heroMenolisaLottie}
-                    resizeMode="contain"
-                    renderMode={Platform.OS === 'android' ? 'SOFTWARE' : 'AUTOMATIC'}
-                    enableSafeModeAndroid
-                  />
-                </View>
-              ) : null}
+              <View style={styles.heroWelcomeWrap} accessibilityLabel="Welcome" accessible>
+                <Image
+                  source={WELCOME_IMAGE}
+                  style={styles.heroWelcomeImage}
+                  resizeMode="contain"
+                  accessibilityIgnoresInvertColors
+                />
+              </View>
 
               <View style={styles.videoOverlayBottom}>
                 <StaggeredZoomIn delayIndex={0} reduceMotion={reduceMotion}>
@@ -719,15 +713,16 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: spacing.lg,
   },
-  heroMenolisaLottieWrap: {
+  heroWelcomeWrap: {
     alignItems: 'center',
     justifyContent: 'center',
     width: '100%',
     paddingTop: spacing.sm,
   },
-  heroMenolisaLottie: {
-    width: 112,
-    height: 112,
+  /** Portrait welcome art; box sized for contain */
+  heroWelcomeImage: {
+    width: 128,
+    height: 152,
   },
   videoOverlayBottom: {
     flex: 1,
@@ -736,7 +731,7 @@ const styles = StyleSheet.create({
   },
 
   talkToLisaHeroCard: {
-    marginTop: spacing.md,
+    marginTop: spacing.xs,
     paddingVertical: spacing.xl,
     paddingHorizontal: spacing.xl,
     borderRadius: radii.xl,
@@ -875,7 +870,7 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontFamily: typography.display.bold,
     color: colors.background,
-    marginBottom: spacing.lg,
+    marginBottom: spacing.xs,
     ...(Platform.OS === 'web'
       ? { textShadow: '0 1px 3px rgba(0,0,0,0.35)' }
       : {

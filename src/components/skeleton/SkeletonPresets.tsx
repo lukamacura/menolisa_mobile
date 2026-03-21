@@ -198,19 +198,37 @@ export function WhatLisaNoticedCardSkeleton() {
       <View style={styles.whatLisaBentoRow}>
         <View style={styles.whatLisaBentoCell}>
           <View style={styles.whatLisaBentoCellInner}>
-            <Skeleton width={36} height={36} borderRadius={radii.pill} />
+            <Skeleton
+              width={minTouchTarget + spacing.xl}
+              height={minTouchTarget + spacing.xl}
+              borderRadius={radii.pill}
+            />
             <View style={styles.whatLisaBentoTextCol}>
-              <Skeleton width="72%" height={13} borderRadius={radii.sm} style={{ marginBottom: 3 }} />
-              <Skeleton width="55%" height={10} borderRadius={radii.sm} />
+              <Skeleton
+                width="72%"
+                height={13}
+                borderRadius={radii.sm}
+                style={{ marginBottom: 3, alignSelf: 'center' }}
+              />
+              <Skeleton width="55%" height={10} borderRadius={radii.sm} style={{ alignSelf: 'center' }} />
             </View>
           </View>
         </View>
         <View style={styles.whatLisaBentoCell}>
           <View style={styles.whatLisaBentoCellInner}>
-            <Skeleton width={36} height={36} borderRadius={radii.md} />
+            <Skeleton
+              width={minTouchTarget + spacing.xl}
+              height={minTouchTarget + spacing.xl}
+              borderRadius={radii.pill}
+            />
             <View style={styles.whatLisaBentoTextCol}>
-              <Skeleton width={32} height={17} borderRadius={radii.sm} style={{ marginBottom: 3 }} />
-              <Skeleton width="50%" height={10} borderRadius={radii.sm} />
+              <Skeleton
+                width={28}
+                height={16}
+                borderRadius={radii.sm}
+                style={{ marginBottom: 3, alignSelf: 'center' }}
+              />
+              <Skeleton width="50%" height={10} borderRadius={radii.sm} style={{ alignSelf: 'center' }} />
             </View>
           </View>
         </View>
@@ -267,7 +285,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.sm,
-    backgroundColor: 'rgba(255, 255, 255, 0.7)',
+    backgroundColor: 'rgba(255, 251, 253, 0.72)',
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.md,
     borderRadius: radii.md,
@@ -289,20 +307,27 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    paddingVertical: spacing.sm,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.sm,
     paddingHorizontal: spacing.sm,
-    minHeight: 74,
+    minHeight:
+      minTouchTarget +
+      spacing.xl +
+      spacing.sm +
+      spacing['2xl'] +
+      spacing.lg +
+      spacing.md,
   },
   whatLisaBentoCellInner: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     alignItems: 'center',
-    gap: spacing.xs,
-    flex: 1,
+    gap: spacing.sm,
+    width: '100%',
   },
   whatLisaBentoTextCol: {
-    flex: 1,
-    minWidth: 0,
-    justifyContent: 'center',
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
   },
   whatLisaHeroSkeleton: {
     backgroundColor: colors.navy,

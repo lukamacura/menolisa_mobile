@@ -18,6 +18,7 @@ import { RegisterScreen } from '../screens/RegisterScreen';
 import { LoginScreen } from '../screens/LoginScreen';
 import { MainTabs } from './MainTabs';
 import { MedicalDisclaimerModal } from '../components/MedicalDisclaimerModal';
+import { colors } from '../theme/tokens';
 
 const Stack = createNativeStackNavigator();
 const navigationRef = createNavigationContainerRef();
@@ -26,7 +27,7 @@ const navigationRef = createNavigationContainerRef();
 function LoadingScreen() {
   return (
     <View style={styles.container}>
-      <ActivityIndicator size="large" color="#ff8da1" />
+      <ActivityIndicator size="large" color={colors.primary} />
       <Text style={styles.subtext}>Loading...</Text>
     </View>
   );
@@ -245,14 +246,14 @@ export function AppNavigator() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: colors.background,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 20,
   },
   subtext: {
     fontSize: 16,
-    color: '#6B7280',
+    color: colors.textMuted,
     marginTop: 12,
   },
 });
