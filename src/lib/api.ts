@@ -121,12 +121,60 @@ export async function openWebDashboard(): Promise<void> {
   await Linking.openURL(url);
 }
 
-/** Open the web Account page (plan, trial, subscription, billing). */
-export async function openWebAccount(): Promise<void> {
-  const url = getWebAppUrl('/dashboard/account');
-  const canOpen = await Linking.canOpenURL(url);
-  if (!canOpen) throw new Error('Cannot open account URL');
-  await Linking.openURL(url);
+/**
+ * Open the web Account page (plan, trial, subscription, billing).
+ * When the user is signed in on the device, requests a short-lived handoff from the production
+ * web API so the browser gets a Supabase cookie session without typing email again.
+ */
+export async function openWebAccount(webPath: string = '/dashboard/account'): Promise<void> {
+  const fallbackUrl = getWebAppUrl(webPath);
+  const {
+    data: { session },
+    error: sessionError,
+  } = await supabase.auth.getSession();
+
+  if (sessionError || !session?.access_token || !session.refresh_token) {
+    const canOpen = await Linking.canOpenURL(fallbackUrl);
+    if (!canOpen) throw new Error('Cannot open account URL');
+    await Linking.openURL(fallbackUrl);
+    return;
+  }
+
+  const handoffRequestUrl = `${WEB_APP_BASE_URL}/api/auth/mobile-web-handoff`;
+  try {
+    const res = await fetch(handoffRequestUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ refresh_token: session.refresh_token }),
+    });
+
+    if (!res.ok) {
+      const canOpen = await Linking.canOpenURL(fallbackUrl);
+      if (!canOpen) throw new Error('Cannot open account URL');
+      await Linking.openURL(fallbackUrl);
+      return;
+    }
+
+    const data = (await res.json()) as { token?: string };
+    if (typeof data.token !== 'string' || !data.token) {
+      const canOpen = await Linking.canOpenURL(fallbackUrl);
+      if (!canOpen) throw new Error('Cannot open account URL');
+      await Linking.openURL(fallbackUrl);
+      return;
+    }
+
+    const bridgeUrl = `${WEB_APP_BASE_URL}/auth/mobile-bridge#${encodeURIComponent(data.token)}`;
+    const canOpenBridge = await Linking.canOpenURL(bridgeUrl);
+    if (!canOpenBridge) throw new Error('Cannot open account URL');
+    await Linking.openURL(bridgeUrl);
+  } catch {
+    const canOpen = await Linking.canOpenURL(fallbackUrl);
+    if (!canOpen) throw new Error('Cannot open account URL');
+    await Linking.openURL(fallbackUrl);
+  }
 }
 
 /**

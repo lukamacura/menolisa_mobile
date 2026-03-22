@@ -1,4 +1,4 @@
-import React, { useCallback, useContext, useEffect, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -11,16 +11,20 @@ import {
   Alert,
   Platform,
   Modal,
+  AppState,
+  type AppStateStatus,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Path } from 'react-native-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useEventListener } from 'expo';
+import { VideoView, useVideoPlayer } from 'expo-video';
 import { HomeStackParamList, MainTabParamList } from '../../navigation/types';
 import { apiFetchWithAuth, API_CONFIG, openWebAccount } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
@@ -52,7 +56,7 @@ import Animated, {
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const WELCOME_IMAGE = require('../../../assets/welcome.png');
+const DASHBOARD_LISA_VIDEO = require('../../../assets/dashboard_lisa.mp4');
 
 const GRATITUDE_DISMISS_MS = 1800;
 
@@ -152,11 +156,71 @@ function getDailyLisaMessage(): string {
 }
 
 // ---------------------------------------------------------------------------
+// Hero ambient video (native only; pause when unfocused / background for stability)
+// ---------------------------------------------------------------------------
+
+type DashboardHeroAmbientVideoProps = {
+  shouldPlay: boolean;
+  layoutWidth: number;
+  layoutHeight: number;
+};
+
+function DashboardHeroAmbientVideo({
+  shouldPlay,
+  layoutWidth,
+  layoutHeight,
+}: DashboardHeroAmbientVideoProps) {
+  const shouldPlayRef = useRef(shouldPlay);
+  shouldPlayRef.current = shouldPlay;
+
+  const player = useVideoPlayer(DASHBOARD_LISA_VIDEO, (p) => {
+    p.loop = true;
+    p.muted = true;
+    p.volume = 0;
+    p.showNowPlayingNotification = false;
+    p.staysActiveInBackground = false;
+    p.keepScreenOnWhilePlaying = false;
+  });
+
+  // play() before readyToPlay is a no-op; resume when the native player is ready
+  useEventListener(player, 'statusChange', ({ status }) => {
+    if (status === 'readyToPlay' && shouldPlayRef.current) {
+      player.play();
+    }
+  });
+
+  useEffect(() => {
+    if (shouldPlay) {
+      if (player.status === 'readyToPlay') {
+        player.play();
+      }
+    } else {
+      player.pause();
+    }
+  }, [shouldPlay, player]);
+
+  return (
+    <VideoView
+      player={player}
+      style={[styles.heroAmbientVideo, { width: layoutWidth, height: layoutHeight }]}
+      contentFit="cover"
+      nativeControls={false}
+      fullscreenOptions={{ enable: false }}
+      allowsPictureInPicture={false}
+      pointerEvents="none"
+      collapsable={false}
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
 // DashboardScreen
 // ---------------------------------------------------------------------------
 
 export function DashboardScreen() {
-  const { height: windowHeight } = useWindowDimensions();
+  const isScreenFocused = useIsFocused();
+  const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const dashboardHeroHeight = Math.max(200, Math.round(windowHeight * HERO_HEIGHT_RATIO));
 
   const navigation = useNavigation<NavProp>();
@@ -320,6 +384,15 @@ export function DashboardScreen() {
     loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', setAppState);
+    return () => sub.remove();
+  }, []);
+
+  const heroVideoShouldPlay = isScreenFocused && appState === 'active';
+  const heroVideoPlayback =
+    heroVideoShouldPlay && !reduceMotion;
+
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     loadData();
@@ -404,20 +477,49 @@ export function DashboardScreen() {
           }
         >
           {/* ----------------------------------------------------------------
-              Navy hero (matches tab bar); welcome image + greeting + Talk to Lisa CTA
+              Hero: ambient video (native) / navy (web) + greeting + Talk to Lisa CTA
           ---------------------------------------------------------------- */}
-          <View style={[styles.dashboardHero, { height: dashboardHeroHeight }]}>
-            <View style={styles.dashboardHeroBg} />
+          <View
+            style={[
+              styles.dashboardHero,
+              { height: dashboardHeroHeight },
+              Platform.OS !== 'web' && styles.dashboardHeroVideoCanvas,
+            ]}
+          >
+            <View
+              style={styles.heroAmbientMediaWrap}
+              pointerEvents="none"
+              collapsable={false}
+            >
+              {Platform.OS === 'web' ? (
+                <View style={styles.dashboardHeroBg} />
+              ) : (
+                <DashboardHeroAmbientVideo
+                  shouldPlay={heroVideoPlayback}
+                  layoutWidth={windowWidth}
+                  layoutHeight={dashboardHeroHeight}
+                />
+              )}
+              {/* Readability only at bottom — full-hero navy was hiding the video */}
+              <LinearGradient
+                colors={['transparent', 'rgba(0, 0, 0, 0.35)']}
+                locations={[0.35, 1]}
+                start={{ x: 0.5, y: 0 }}
+                end={{ x: 0.5, y: 1 }}
+                style={styles.heroVideoBottomReadability}
+                pointerEvents="none"
+              />
+            </View>
             <LinearGradient
-              colors={['rgba(255, 255, 255, 0.1)', 'transparent']}
-              locations={[0, 0.55]}
+              colors={['rgba(255, 255, 255, 0.12)', 'transparent']}
+              locations={[0, 0.4]}
               start={{ x: 0.5, y: 0 }}
               end={{ x: 0.5, y: 1 }}
               style={styles.dashboardHeroSheen}
               pointerEvents="none"
             />
 
-            {/* Brand pink blobs — layout like reference: large top-right, mid-left edge, smaller mid-right */}
+            {/* Light accents so the hero stays on-brand without washing out the clip */}
             <View
               style={styles.heroDecorBlobTopRight}
               pointerEvents="none"
@@ -443,17 +545,12 @@ export function DashboardScreen() {
               importantForAccessibility="no-hide-descendants"
             />
 
-            <View style={styles.videoOverlayContent}>
-              <View style={styles.heroWelcomeWrap} accessibilityLabel="Welcome" accessible>
-                <Image
-                  source={WELCOME_IMAGE}
-                  style={styles.heroWelcomeImage}
-                  resizeMode="contain"
-                  accessibilityIgnoresInvertColors
-                />
-              </View>
-
-              <View style={styles.videoOverlayBottom}>
+            <View
+              style={styles.videoOverlayContent}
+              accessibilityLabel="Welcome"
+              accessible
+            >
+              <View style={styles.heroOverlayTop}>
                 <StaggeredZoomIn delayIndex={0} reduceMotion={reduceMotion}>
                   <Text style={styles.greeting}>
                     {userName ? `Hi there, ${userName}` : 'Hi there'}
@@ -471,42 +568,44 @@ export function DashboardScreen() {
                     </Animated.View>
                   </StaggeredZoomIn>
                 )}
-
-                {!trialStatus.expired && (
-                  <StaggeredZoomIn delayIndex={2} reduceMotion={reduceMotion}>
-                    <View style={styles.talkToLisaHeroCard}>
-                      {/* i18n: dashboard.lisaDailyMessage */}
-                      <Text style={styles.talkToLisaHeroSubheading}>{getDailyLisaMessage()}</Text>
-                      <AnimatedPressable
-                        containerStyle={styles.pressableContainer}
-                        style={styles.talkToLisaHeroButton}
-                        onPress={handleTalkToLisa}
-                        accessibilityRole="button"
-                        accessibilityLabel="Talk to Lisa"
-                      >
-                        <LinearGradient
-                          colors={[colors.primary, colors.primaryDark]}
-                          locations={[0, 1]}
-                          start={{ x: 0.5, y: 0 }}
-                          end={{ x: 0.5, y: 1 }}
-                          style={StyleSheet.absoluteFillObject}
-                          pointerEvents="none"
-                        />
-                        <View style={styles.talkToLisaHeroButtonContent}>
-                          <Ionicons
-                            name="chatbubble-ellipses"
-                            size={22}
-                            color={colors.navy}
-                            accessibilityElementsHidden
-                            importantForAccessibility="no-hide-descendants"
-                          />
-                          <Text style={styles.talkToLisaHeroButtonText}>Talk to Lisa</Text>
-                        </View>
-                      </AnimatedPressable>
-                    </View>
-                  </StaggeredZoomIn>
-                )}
               </View>
+
+              <View style={styles.heroOverlaySpacer} />
+
+              {!trialStatus.expired && (
+                <StaggeredZoomIn delayIndex={2} reduceMotion={reduceMotion}>
+                  <View style={styles.talkToLisaHeroCard}>
+                    {/* i18n: dashboard.lisaDailyMessage */}
+                    <Text style={styles.talkToLisaHeroSubheading}>{getDailyLisaMessage()}</Text>
+                    <AnimatedPressable
+                      containerStyle={styles.pressableContainer}
+                      style={styles.talkToLisaHeroButton}
+                      onPress={handleTalkToLisa}
+                      accessibilityRole="button"
+                      accessibilityLabel="Talk to Lisa"
+                    >
+                      <LinearGradient
+                        colors={[colors.primary, colors.primaryDark]}
+                        locations={[0, 1]}
+                        start={{ x: 0.5, y: 0 }}
+                        end={{ x: 0.5, y: 1 }}
+                        style={StyleSheet.absoluteFillObject}
+                        pointerEvents="none"
+                      />
+                      <View style={styles.talkToLisaHeroButtonContent}>
+                        <Ionicons
+                          name="chatbubble-ellipses"
+                          size={22}
+                          color={colors.navy}
+                          accessibilityElementsHidden
+                          importantForAccessibility="no-hide-descendants"
+                        />
+                        <Text style={styles.talkToLisaHeroButtonText}>Talk to Lisa</Text>
+                      </View>
+                    </AnimatedPressable>
+                  </View>
+                </StaggeredZoomIn>
+              )}
             </View>
           </View>
 
@@ -528,20 +627,6 @@ export function DashboardScreen() {
                 >
                   <AnimatedPressable
                     containerStyle={styles.pressableContainer}
-                    style={styles.symptomCategoryItem}
-                    onPress={() => navigation.navigate('SymptomLogs')}
-                    accessibilityRole="button"
-                    accessibilityLabel="View symptom history"
-                  >
-                    <Ionicons name="time" size={24} color={colors.primary} />
-                    <View style={styles.recentActivityTextWrap}>
-                      <Text style={styles.recentActivityTitle}>Symptom history</Text>
-                      <Text style={styles.recentActivitySubtitle}>See all your symptom logs</Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
-                  </AnimatedPressable>
-                  <AnimatedPressable
-                    containerStyle={styles.pressableContainer}
                     style={styles.logSymptomCtaPressable}
                     onPress={() => navigation.navigate('Symptoms')}
                     accessibilityRole="button"
@@ -557,6 +642,20 @@ export function DashboardScreen() {
                       {/* i18n: dashboard.cta.logSymptom */}
                       <Text style={styles.logSymptomLabel}>Log Symptom</Text>
                     </View>
+                  </AnimatedPressable>
+                  <AnimatedPressable
+                    containerStyle={styles.pressableContainer}
+                    style={[styles.symptomCategoryItem, styles.symptomHistoryRowAfterLog]}
+                    onPress={() => navigation.navigate('SymptomLogs')}
+                    accessibilityRole="button"
+                    accessibilityLabel="View symptom history"
+                  >
+                    <Ionicons name="time" size={24} color={colors.primary} />
+                    <View style={styles.recentActivityTextWrap}>
+                      <Text style={styles.recentActivityTitle}>Symptom history</Text>
+                      <Text style={styles.recentActivitySubtitle}>See all your symptom logs</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
                   </AnimatedPressable>
                 </Animated.View>
               </StaggeredZoomIn>
@@ -670,6 +769,25 @@ const styles = StyleSheet.create({
     position: 'relative',
     backgroundColor: colors.navy,
   },
+  /** When video is the hero, letterboxing uses black — not navy — so the clip reads clearly */
+  dashboardHeroVideoCanvas: {
+    backgroundColor: '#000000',
+  },
+  heroAmbientMediaWrap: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#000000',
+  },
+  heroVideoBottomReadability: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: '52%',
+  },
+  heroAmbientVideo: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#000000',
+  },
   dashboardHeroBg: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: colors.navy,
@@ -688,7 +806,7 @@ const styles = StyleSheet.create({
     borderRadius: 114,
     top: -72,
     right: -64,
-    backgroundColor: 'rgba(244, 124, 151, 0.34)',
+    backgroundColor: 'rgba(244, 124, 151, 0.1)',
   },
   heroDecorBlobMidLeft: {
     position: 'absolute',
@@ -696,7 +814,7 @@ const styles = StyleSheet.create({
     height: 156,
     borderRadius: 78,
     left: -56,
-    backgroundColor: 'rgba(249, 184, 200, 0.4)',
+    backgroundColor: 'rgba(249, 184, 200, 0.1)',
   },
   heroDecorBlobMidRight: {
     position: 'absolute',
@@ -704,7 +822,7 @@ const styles = StyleSheet.create({
     height: 84,
     borderRadius: 42,
     right: 10,
-    backgroundColor: 'rgba(244, 124, 151, 0.28)',
+    backgroundColor: 'rgba(244, 124, 151, 0.08)',
   },
   videoOverlayContent: {
     flex: 1,
@@ -712,47 +830,40 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     paddingBottom: spacing.lg,
+    flexDirection: 'column',
   },
-  heroWelcomeWrap: {
-    alignItems: 'center',
-    justifyContent: 'center',
+  heroOverlayTop: {
     width: '100%',
-    paddingTop: spacing.sm,
   },
-  /** Portrait welcome art; box sized for contain */
-  heroWelcomeImage: {
-    width: 128,
-    height: 152,
-  },
-  videoOverlayBottom: {
+  /** Fills space between top greeting and bottom Lisa card */
+  heroOverlaySpacer: {
     flex: 1,
-    justifyContent: 'flex-end',
-    width: '100%',
+    minHeight: 0,
   },
 
   talkToLisaHeroCard: {
-    marginTop: spacing.xs,
+    marginTop: 0,
     paddingVertical: spacing.xl,
     paddingHorizontal: spacing.xl,
     borderRadius: radii.xl,
-    backgroundColor: 'rgba(255, 255, 255, 0.14)',
+    backgroundColor: 'rgba(46, 42, 77, 0.55)',
     borderWidth: 1,
     ...Platform.select({
       android: {
         elevation: 0,
-        borderColor: 'rgba(255, 255, 255, 0.28)',
+        borderColor: 'rgba(255, 255, 255, 0.22)',
       },
       ios: {
         ...shadows.card,
-        borderColor: 'rgba(255, 255, 255, 0.22)',
+        borderColor: 'rgba(255, 255, 255, 0.2)',
       },
       web: {
-        borderColor: 'rgba(255, 255, 255, 0.22)',
+        borderColor: 'rgba(255, 255, 255, 0.2)',
         boxShadow:
-          '0 10px 28px rgba(0, 0, 0, 0.2), inset 0 0 0 1px rgba(255, 255, 255, 0.18)',
+          '0 10px 28px rgba(46, 42, 77, 0.3), inset 0 0 0 1px rgba(255, 255, 255, 0.14)',
       },
       default: {
-        borderColor: 'rgba(255, 255, 255, 0.22)',
+        borderColor: 'rgba(255, 255, 255, 0.2)',
       },
     }),
   },
@@ -761,9 +872,9 @@ const styles = StyleSheet.create({
     color: colors.background,
     marginBottom: spacing.lg,
     ...(Platform.OS === 'web'
-      ? { textShadow: '0 1px 2px rgba(0, 0, 0, 0.25)' }
+      ? { textShadow: '0 1px 2px rgba(46, 42, 77, 0.35)' }
       : {
-          textShadowColor: 'rgba(0, 0, 0, 0.25)',
+          textShadowColor: 'rgba(46, 42, 77, 0.35)',
           textShadowOffset: { width: 0, height: 1 },
           textShadowRadius: 3,
         }),
@@ -869,14 +980,17 @@ const styles = StyleSheet.create({
   greeting: {
     fontSize: 24,
     fontFamily: typography.display.bold,
-    color: colors.background,
+    color: colors.navy,
     marginBottom: spacing.xs,
     ...(Platform.OS === 'web'
-      ? { textShadow: '0 1px 3px rgba(0,0,0,0.35)' }
+      ? {
+          textShadow:
+            '0 0 2px rgba(249, 184, 200, 0.95), 0 1px 6px rgba(244, 124, 151, 0.7), 0 2px 16px rgba(244, 124, 151, 0.5), 0 4px 28px rgba(249, 184, 200, 0.4)',
+        }
       : {
-          textShadowColor: 'rgba(0, 0, 0, 0.35)',
-          textShadowOffset: { width: 0, height: 1 },
-          textShadowRadius: 4,
+          textShadowColor: 'rgba(244, 124, 151, 0.8)',
+          textShadowOffset: { width: 0, height: 2 },
+          textShadowRadius: 14,
         }),
   },
 
@@ -1025,11 +1139,15 @@ const styles = StyleSheet.create({
   logSymptomCtaPressable: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: spacing.lg,
+    paddingVertical: spacing.md,
+    minHeight: minTouchTarget,
+  },
+  /** Divider above symptom history when it sits below Log Symptom */
+  symptomHistoryRowAfterLog: {
     marginTop: spacing.sm,
+    paddingTop: spacing.lg,
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    minHeight: minTouchTarget,
   },
   logSymptomImage: {
     width: Math.min(168, (SCREEN_WIDTH - spacing.lg * 4) * 0.42),
