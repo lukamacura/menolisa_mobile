@@ -16,7 +16,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAuth } from '../../context/AuthContext';
 import { RefetchTrialContext } from '../../context/RefetchTrialContext';
-import { deleteAccount, getWebAppUrl, openWebDashboard } from '../../lib/api';
+import { deleteAccount, getWebAppUrl, openWebAccount } from '../../lib/api';
 import { useTrialStatus } from '../../hooks/useTrialStatus';
 import { colors, spacing, radii, typography } from '../../theme/tokens';
 import { StaggeredZoomIn, useReduceMotion } from '../../components/StaggeredZoomIn';
@@ -90,13 +90,13 @@ export function SettingsScreen() {
     ]);
   }, [runDeleteAccount]);
 
-  const handleOpenDashboard = useCallback(async () => {
+  const handleOpenAccountWeb = useCallback(async () => {
     try {
-      await openWebDashboard();
+      await openWebAccount();
     } catch (e) {
       Alert.alert(
-        'Open dashboard',
-        e instanceof Error ? e.message : 'Could not open the web dashboard. Please try again.'
+        'Open account',
+        e instanceof Error ? e.message : 'Could not open your account on the web. Please try again.'
       );
     }
   }, []);
@@ -143,12 +143,12 @@ export function SettingsScreen() {
             <TouchableOpacity
               activeOpacity={1}
               style={[styles.row, styles.navyRow]}
-              onPress={handleOpenDashboard}
+              onPress={handleOpenAccountWeb}
             >
               <Ionicons name="globe-outline" size={22} color={colors.navy} />
               <View style={styles.rowTextWrap}>
-                <Text style={styles.navyRowLabel}>Manage subscription</Text>
-                <Text style={styles.navyRowSubtext}>Manage your plan and billing at www.menolisa.com</Text>
+                <Text style={styles.navyRowLabel}>Manage account</Text>
+                <Text style={styles.navyRowSubtext}>Plan, billing, and subscription at www.menolisa.com</Text>
               </View>
               <Ionicons name="open-outline" size={18} color={colors.navy} />
             </TouchableOpacity>

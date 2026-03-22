@@ -23,7 +23,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../lib/supabase';
-import { apiFetchWithAuth, API_CONFIG, getApiUrl, openWebDashboard } from '../../lib/api';
+import { apiFetchWithAuth, API_CONFIG, getApiUrl, openWebAccount } from '../../lib/api';
 import { useTrialStatus } from '../../hooks/useTrialStatus';
 import { AccessEndedView } from '../../components/AccessEndedView';
 import { MarkdownText } from '../../components/MarkdownText';
@@ -322,7 +322,7 @@ export function ChatThreadScreen() {
           "I'm just getting to know your patterns. Continue with Lisa at www.menolisa.com to keep the insights coming.",
           [
             { text: 'OK', style: 'cancel' },
-            { text: 'Continue with Lisa', onPress: () => openWebDashboard().catch(() => {}) },
+            { text: 'Continue with Lisa', onPress: () => openWebAccount().catch(() => {}) },
           ]
         );
         return;

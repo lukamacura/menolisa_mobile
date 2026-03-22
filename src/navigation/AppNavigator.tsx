@@ -11,7 +11,7 @@ import { getNativeExpoNotifications } from '../lib/expoNotificationsGate';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { RefetchTrialContext } from '../context/RefetchTrialContext';
-import { openWebDashboard } from '../lib/api';
+import { openWebAccount } from '../lib/api';
 import { logger } from '../lib/logger';
 import { LandingScreenWithButton } from '../screens/LandingScreen';
 import { RegisterScreen } from '../screens/RegisterScreen';
@@ -197,7 +197,7 @@ export function AppNavigator() {
       const data = response.notification.request.content.data as Record<string, string> | undefined;
       if (!data) return;
       if (data.action === 'upgrade') {
-        openWebDashboard().catch((e) => logger.warn('Open dashboard failed', e));
+        openWebAccount().catch((e) => logger.warn('Open account page failed', e));
         return;
       }
       if (data.screen === 'Notifications' && navigationRef.isReady()) {

@@ -113,11 +113,19 @@ export function getWebAppUrl(path: string): string {
   return `${WEB_APP_BASE_URL}${normalized}`;
 }
 
-/** Open the MenoLisa web dashboard where users can manage subscription and billing. */
+/** Open the MenoLisa web dashboard home (overview). */
 export async function openWebDashboard(): Promise<void> {
   const url = getWebAppUrl('/dashboard');
   const canOpen = await Linking.canOpenURL(url);
   if (!canOpen) throw new Error('Cannot open dashboard URL');
+  await Linking.openURL(url);
+}
+
+/** Open the web Account page (plan, trial, subscription, billing). */
+export async function openWebAccount(): Promise<void> {
+  const url = getWebAppUrl('/dashboard/account');
+  const canOpen = await Linking.canOpenURL(url);
+  if (!canOpen) throw new Error('Cannot open account URL');
   await Linking.openURL(url);
 }
 

@@ -22,7 +22,7 @@ import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { LinearGradient } from 'expo-linear-gradient';
 import { HomeStackParamList, MainTabParamList } from '../../navigation/types';
-import { apiFetchWithAuth, API_CONFIG, openWebDashboard } from '../../lib/api';
+import { apiFetchWithAuth, API_CONFIG, openWebAccount } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
 import { RefetchTrialContext } from '../../context/RefetchTrialContext';
 import { useTrialStatus } from '../../hooks/useTrialStatus';
@@ -240,13 +240,13 @@ export function DashboardScreen() {
 
   const screenFadeStyle = useAnimatedStyle(() => ({ opacity: screenOpacity.value }));
 
-  const handleOpenDashboard = useCallback(async () => {
+  const handleOpenAccountWeb = useCallback(async () => {
     try {
-      await openWebDashboard();
+      await openWebAccount();
     } catch (e) {
       Alert.alert(
-        'Open dashboard',
-        e instanceof Error ? e.message : 'Could not open the web dashboard. Please try again.'
+        'Open account',
+        e instanceof Error ? e.message : 'Could not open your account on the web. Please try again.'
       );
     }
   }, []);
@@ -373,7 +373,7 @@ export function DashboardScreen() {
           <AccessEndedView
             variant="fullScreen"
             trialState="expired"
-            onPress={handleOpenDashboard}
+            onPress={handleOpenAccountWeb}
             reduceMotion={reduceMotion}
           />
         </Animated.View>
@@ -389,7 +389,7 @@ export function DashboardScreen() {
             variant="fullScreen"
             trialState="ending_soon"
             daysLeft={trialStatus.daysLeft}
-            onPress={handleOpenDashboard}
+            onPress={handleOpenAccountWeb}
             onSkip={() => setEndingSoonPaywallDismissed(true)}
             reduceMotion={reduceMotion}
           />

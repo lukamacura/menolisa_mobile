@@ -11,7 +11,7 @@ import {
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radii, typography, minTouchTarget, shadows } from '../theme/tokens';
-import { openWebDashboard } from '../lib/api';
+import { openWebAccount } from '../lib/api';
 
 const { width: WINDOW_WIDTH } = Dimensions.get('window');
 
@@ -36,7 +36,7 @@ function getUrgencyEndingSoon(daysLeft: number): string {
 }
 
 const BUTTON_LABEL_CONTINUE = 'Continue with Lisa';
-const BUTTON_LABEL_MANAGE = 'Manage subscription';
+const BUTTON_LABEL_MANAGE = 'Manage account';
 const REMIND_LATER_LABEL = 'Remind me later';
 const SKIP_LABEL = 'Skip';
 
@@ -76,7 +76,7 @@ export function AccessEndedView({
     if (onPress) {
       onPress();
     } else {
-      openWebDashboard().catch(() => {});
+      openWebAccount().catch(() => {});
     }
   };
 
