@@ -129,9 +129,10 @@ export function LoginScreen() {
           <StaggeredZoomIn delayIndex={0} reduceMotion={reduceMotion}>
             <View style={styles.loginImageWrap}>
               <Image
-                source={require('../../assets/welcome.png')}
+                source={require('../../assets/quiz/illustration_email.png')}
                 style={styles.loginImage}
                 resizeMode="contain"
+                accessibilityLabel="Illustration of an envelope and welcome note"
               />
             </View>
           </StaggeredZoomIn>

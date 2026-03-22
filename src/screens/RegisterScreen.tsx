@@ -55,7 +55,8 @@ const STEPS: Step[] = [
   'q8_name',
 ];
 
-// Quiz illustration assets (assets/quiz/). Heights: 160 Q1–Q7, 140 breather/Q8, 180 results, loading ~80.
+// Quiz illustration assets (assets/quiz/). Style: assets/quiz/ILLUSTRATION_PROMPTS.md (match symptoms/).
+// Heights: 160 Q1–Q7, 140 breather/Q8, 180 results, loading ~80.
 const QUIZ_ILLUSTRATION_SOURCES: Record<string, ImageSourcePropType> = {
   q1_age: require('../../assets/quiz/illustration_q1_age.png'),
   q2_here_for: require('../../assets/quiz/illustration_q2_here_for.png'),

@@ -66,7 +66,7 @@ Low-opacity rgba backgrounds render inconsistently on Android. Always use opaque
 - Selected: `colors.primary` bg, white label; unselected: `rgba(255,141,161,0.10)` bg (intentional — on light gradient)
 - Entry animation: `FadeIn.duration(300)` from reanimated on the content `Animated.View`
 - CTA disabled state: `colors.primaryLight` bg, semi-transparent text — never block submission visually with red
-- Image placeholder: `assets/mood-checkin.png` 280×240 — watercolor illustration (see file comment for prompt)
+- Daily mood modal hero: `assets/quiz/illustration_q2_here_for.png` (280×240 container in `DailyMoodModal`)
 
 ## StaggeredZoomIn delay indices (Dashboard)
 - 0: greeting, 1: streak pill, 4: error, 5: daily message line, 6: action cards row (Chat + Track), 7: history link, 8: wavy divider, 9: WhatLisaNoticedCard, 10: disclaimer

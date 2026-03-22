@@ -1,6 +1,7 @@
 /**
  * Maps symptom names to illustration assets in assets/symptoms/.
  * Filenames use snake_case (e.g. hot_flashes.png, night_sweats.png).
+ * New PNGs should match the global style in assets/quiz/ILLUSTRATION_PROMPTS.md (symptom watercolor + line art).
  * If no asset exists for a symptom (e.g. custom or "Good Day"), fallback to Ionicons via getSymptomIconName.
  */
 import type { ImageSourcePropType } from 'react-native';

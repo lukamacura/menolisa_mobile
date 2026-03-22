@@ -1,8 +1,4 @@
-// AI image needed: assets/mood-checkin.png
-// Prompt: "Soft watercolor illustration of a woman sitting cross-legged on a cozy window seat,
-// seen from the side, holding a warm cup of tea, with morning light and botanical elements
-// (lavender, chamomile). Palette: blush pink, sage green, warm cream. No face visible.
-// Calm and introspective. Portrait 4:3."
+// Hero: reuse quiz onboarding art (same family as RegisterScreen) — illustration_q2_here_for.png
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
@@ -161,10 +157,10 @@ export function DailyMoodModal({ visible, onSubmit, onDismiss, onGratitudeComple
             {/* Illustration */}
             <View style={styles.illustrationContainer}>
               <Image
-                source={require('../../assets/mood-checkin.png')}
+                source={require('../../assets/quiz/illustration_q2_here_for.png')}
                 style={styles.illustration}
                 resizeMode="contain"
-                accessibilityLabel="Illustration of a woman relaxing with a cup of tea"
+                accessibilityLabel="Illustration of an opening blossom"
               />
             </View>
 
