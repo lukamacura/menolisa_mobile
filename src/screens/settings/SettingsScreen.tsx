@@ -135,22 +135,28 @@ export function SettingsScreen() {
         <View style={styles.section}>
           <StaggeredZoomIn delayIndex={0} reduceMotion={reduceMotion}>
             <View style={styles.statusCard}>
-              <Ionicons name="card-outline" size={20} color={colors.textMuted} />
-              <Text style={styles.statusLabel}>{getStatusLabel()}</Text>
+              <View style={styles.statusIconWrap}>
+                <Ionicons name="card-outline" size={20} color={colors.textMuted} />
+              </View>
+              <View style={styles.statusLabelWrap}>
+                <Text style={styles.statusLabel}>{getStatusLabel()}</Text>
+              </View>
             </View>
           </StaggeredZoomIn>
           <StaggeredZoomIn delayIndex={1} reduceMotion={reduceMotion}>
             <TouchableOpacity
               activeOpacity={1}
-              style={[styles.row, styles.navyRow]}
+              style={[styles.row, styles.manageAccountRow]}
               onPress={handleOpenAccountWeb}
             >
-              <Ionicons name="globe-outline" size={22} color={colors.navy} />
+              <Ionicons name="globe-outline" size={22} color={colors.success} />
               <View style={styles.rowTextWrap}>
-                <Text style={styles.navyRowLabel}>Manage account</Text>
-                <Text style={styles.navyRowSubtext}>Plan, billing, and subscription at www.menolisa.com</Text>
+                <Text style={styles.manageAccountRowLabel}>Manage account</Text>
+                <Text style={styles.manageAccountRowSubtext}>
+                  Plan, billing, and subscription at www.menolisa.com
+                </Text>
               </View>
-              <Ionicons name="open-outline" size={18} color={colors.navy} />
+              <Ionicons name="open-outline" size={18} color={colors.success} />
             </TouchableOpacity>
           </StaggeredZoomIn>
         </View>
@@ -258,7 +264,7 @@ const styles = StyleSheet.create({
   },
   statusCard: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: spacing.sm,
     backgroundColor: colors.card,
     padding: spacing.md,
@@ -267,10 +273,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
+  statusIconWrap: {
+    paddingTop: 1,
+  },
+  statusLabelWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
   statusLabel: {
     fontSize: 15,
     fontFamily: typography.family.medium,
     color: colors.text,
+    flexShrink: 1,
   },
   row: {
     flexDirection: 'row',
@@ -298,16 +312,16 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     marginTop: 2,
   },
-  navyRow: {
-    backgroundColor: colors.rowNavyBg,
-    borderColor: 'rgba(46, 42, 77, 0.60)',
+  manageAccountRow: {
+    backgroundColor: colors.successBg,
+    borderColor: 'rgba(34, 160, 107, 0.45)',
   },
-  navyRowLabel: {
+  manageAccountRowLabel: {
     fontSize: 16,
     fontFamily: typography.family.medium,
-    color: colors.navy,
+    color: colors.text,
   },
-  navyRowSubtext: {
+  manageAccountRowSubtext: {
     fontSize: 12,
     fontFamily: typography.family.regular,
     color: colors.textMuted,
