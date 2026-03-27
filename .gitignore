@@ -49,3 +49,6 @@ npm-debug.log*
 # generated native folders
 /ios
 /android
+
+# Local explanatory / planning docs (not committed)
+/docs/

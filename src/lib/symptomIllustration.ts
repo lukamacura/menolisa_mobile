@@ -1,7 +1,7 @@
 /**
  * Maps symptom names to illustration assets in assets/symptoms/.
  * Filenames use snake_case (e.g. hot_flashes.png, night_sweats.png).
- * New PNGs should match the global style in assets/quiz/ILLUSTRATION_PROMPTS.md (symptom watercolor + line art).
+ * New PNGs should match the global style in docs/quiz/ILLUSTRATION_PROMPTS.md (symptom watercolor + line art).
  * If no asset exists for a symptom (e.g. custom or "Good Day"), fallback to Ionicons via getSymptomIconName.
  */
 import type { ImageSourcePropType } from 'react-native';
@@ -52,9 +52,11 @@ export function getSymptomIllustration(
     return { type: 'image', source: apiSource };
   }
   const slug = nameToSlug(symptomName);
-  const source = SYMPTOM_IMAGES[slug];
-  if (source) {
-    return { type: 'image', source };
+  const slugSource =
+    SYMPTOM_IMAGES[slug] ??
+    (slug === 'insomnia' ? SYMPTOM_IMAGES.sleep_problems : undefined);
+  if (slugSource) {
+    return { type: 'image', source: slugSource };
   }
   return {
     type: 'icon',

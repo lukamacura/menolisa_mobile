@@ -55,7 +55,7 @@ const STEPS: Step[] = [
   'q8_name',
 ];
 
-// Quiz illustration assets (assets/quiz/). Style: assets/quiz/ILLUSTRATION_PROMPTS.md (match symptoms/).
+// Quiz illustration assets (assets/quiz/). Style: docs/quiz/ILLUSTRATION_PROMPTS.md (match symptoms/).
 // Heights: 160 Q1–Q7, 140 breather/Q8, 180 results, loading ~80.
 const QUIZ_ILLUSTRATION_SOURCES: Record<string, ImageSourcePropType> = {
   q1_age: require('../../assets/quiz/illustration_q1_age.png'),
@@ -1292,6 +1292,8 @@ export function RegisterScreen() {
       }
       logger.log('Password set successfully');
       // Auth state listener will navigate to main app
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save your password. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -1466,7 +1468,9 @@ export function RegisterScreen() {
             Set up your login to start your free 3-day trial. No credit card required.
           </Text>
           <Text style={styles.emailTrialNote}>
-            After 3 days you can subscribe on our website. You can cancel anytime.
+            {Platform.OS === 'ios'
+              ? 'After the trial, subscriptions are managed through the App Store.'
+              : 'After the trial, you can continue using website checkout.'}
           </Text>
 
           {/* Email Input */}
@@ -1565,7 +1569,7 @@ export function RegisterScreen() {
               ) : (
                 <>
                   <Text style={[styles.gradientButtonText, !canSubmit && styles.buttonTextDisabled]}>
-                    Start my free trial
+                    Start trial
                   </Text>
                   <Ionicons name="arrow-forward" size={20} color={canSubmit ? colors.background : colors.textMuted} />
                 </>

@@ -21,4 +21,4 @@ You are the product-lead agent for Menolisa — an AI health companion for perim
 - Align with existing navigation (Home, Chat, Notifications, Settings) and auth flow (Landing → Login/Register).
 - Keep health and privacy in mind; no medical claims; data handling via existing auth and API.
 
-Reference `CLAUDE.md` and `src/theme/tokens.ts` for project context. Prefer i18n-ready copy (keys or placeholders, not hardcoded strings).
+Reference `docs/CLAUDE.md` and `src/theme/tokens.ts` for project context. Prefer i18n-ready copy (keys or placeholders, not hardcoded strings).

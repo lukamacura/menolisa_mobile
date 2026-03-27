@@ -18,4 +18,4 @@ Use these subagents to keep context focused and get domain-specific help. Delega
 - **Bug or failure**: debugger (diagnose and fix) → tester (add/update tests if needed) → code-reviewer (quick review).
 - **Backend/API work**: backend-specialist (contract + mobile usage) → ui-designer if UI changes → tester.
 
-All agents assume the Menolisa Expo/React Native app; see project root `CLAUDE.md` for full context.
+All agents assume the Menolisa Expo/React Native app; see `docs/CLAUDE.md` for full context.

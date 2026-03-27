@@ -9,6 +9,10 @@
 
 import { Linking, Platform } from 'react-native';
 import { supabase } from './supabase';
+import {
+  confirmExternalPurchaseRedirect,
+  openIapManagePage,
+} from './billingCompliance';
 
 const PRODUCTION_API_URL = 'https://www.menolisa.com';
 
@@ -175,6 +179,22 @@ export async function openWebAccount(webPath: string = '/dashboard/account'): Pr
     if (!canOpen) throw new Error('Cannot open account URL');
     await Linking.openURL(fallbackUrl);
   }
+}
+
+/**
+ * Account/billing entry point by platform:
+ * - iOS: native App Store subscriptions management page.
+ * - Android/Web: existing external website checkout flow (with confirmation).
+ */
+export async function openAccountBillingEntry(webPath: string = '/dashboard/account'): Promise<void> {
+  if (Platform.OS === 'ios') {
+    await openIapManagePage();
+    return;
+  }
+
+  const confirmed = await confirmExternalPurchaseRedirect();
+  if (!confirmed) return;
+  await openWebAccount(webPath);
 }
 
 /**

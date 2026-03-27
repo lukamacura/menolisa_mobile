@@ -11,8 +11,9 @@ import { getNativeExpoNotifications } from '../lib/expoNotificationsGate';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { RefetchTrialContext } from '../context/RefetchTrialContext';
-import { openWebAccount } from '../lib/api';
+import { openAccountBillingEntry } from '../lib/api';
 import { logger } from '../lib/logger';
+import { syncIosReceiptStatus } from '../lib/iap';
 import { LandingScreenWithButton } from '../screens/LandingScreen';
 import { RegisterScreen } from '../screens/RegisterScreen';
 import { LoginScreen } from '../screens/LoginScreen';
@@ -39,6 +40,40 @@ export function AppNavigator() {
   const { user, loading } = useAuth();
   const refetchTrialRef = useRef<(() => Promise<void>) | null>(null);
   const [disclaimerVisible, setDisclaimerVisible] = useState(false);
+
+  // Notification runtime hardening: foreground behavior + Android channel.
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    const Notifications = getNativeExpoNotifications();
+    if (!Notifications) return;
+
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
+      }),
+    });
+
+    if (Platform.OS === 'android') {
+      Notifications.setNotificationChannelAsync('default', {
+        name: 'Default',
+        importance: Notifications.AndroidImportance.DEFAULT,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#ff8da1',
+      }).catch((err) => logger.warn('Failed to set notification channel', err));
+    }
+  }, []);
+
+  // iOS launch sync: re-check local App Store purchases and push receipt to backend.
+  useEffect(() => {
+    if (Platform.OS !== 'ios' || !user) return;
+    syncIosReceiptStatus()
+      .then(() => refetchTrialRef.current?.().catch(() => {}))
+      .catch(() => {});
+  }, [user]);
 
   // Show medical disclaimer on first launch
   useEffect(() => {
@@ -175,7 +210,7 @@ export function AppNavigator() {
     Linking.getInitialURL().then((url) => {
       if (url) {
         logger.log('Initial URL received');
-        handleDeepLink({ url });
+        handleDeepLink({ url }).catch((err) => logger.error('Initial deep link handling failed:', err));
       }
     });
 
@@ -197,7 +232,7 @@ export function AppNavigator() {
       const data = response.notification.request.content.data as Record<string, string> | undefined;
       if (!data) return;
       if (data.action === 'upgrade') {
-        openWebAccount().catch((e) => logger.warn('Open account page failed', e));
+        openAccountBillingEntry().catch((e) => logger.warn('Open account page failed', e));
         return;
       }
       if (data.screen === 'Notifications' && navigationRef.isReady()) {

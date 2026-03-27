@@ -11,7 +11,7 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { apiFetchWithAuth, API_CONFIG, openWebAccount } from '../../lib/api';
+import { apiFetchWithAuth, API_CONFIG, openAccountBillingEntry } from '../../lib/api';
 import { colors, spacing, radii, typography, shadows } from '../../theme/tokens';
 import { StaggeredZoomIn, useReduceMotion } from '../../components/StaggeredZoomIn';
 import { ListSkeleton, ContentTransition } from '../../components/skeleton';
@@ -205,7 +205,7 @@ export function NotificationsScreen() {
           const style = getNotificationStyle(item.type);
           const isTrial = item.type === 'trial';
           const onPress = isTrial
-            ? () => openWebAccount().catch(() => {})
+            ? () => openAccountBillingEntry().catch(() => {})
             : undefined;
           const Wrapper = onPress ? TouchableOpacity : View;
           const wrapperProps = onPress ? { activeOpacity: 0.7, onPress } : {};

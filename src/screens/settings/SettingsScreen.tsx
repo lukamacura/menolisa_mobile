@@ -16,7 +16,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAuth } from '../../context/AuthContext';
 import { RefetchTrialContext } from '../../context/RefetchTrialContext';
-import { deleteAccount, getWebAppUrl, openWebAccount } from '../../lib/api';
+import { deleteAccount, getWebAppUrl, openAccountBillingEntry } from '../../lib/api';
 import { useTrialStatus } from '../../hooks/useTrialStatus';
 import { colors, spacing, radii, typography } from '../../theme/tokens';
 import { StaggeredZoomIn, useReduceMotion } from '../../components/StaggeredZoomIn';
@@ -92,11 +92,11 @@ export function SettingsScreen() {
 
   const handleOpenAccountWeb = useCallback(async () => {
     try {
-      await openWebAccount();
+      await openAccountBillingEntry();
     } catch (e) {
       Alert.alert(
         'Open account',
-        e instanceof Error ? e.message : 'Could not open your account on the web. Please try again.'
+        e instanceof Error ? e.message : 'Could not open account options. Please try again.'
       );
     }
   }, []);
@@ -149,11 +149,19 @@ export function SettingsScreen() {
               style={[styles.row, styles.manageAccountRow]}
               onPress={handleOpenAccountWeb}
             >
-              <Ionicons name="globe-outline" size={22} color={colors.success} />
+              <Ionicons
+                name={Platform.OS === 'ios' ? 'card-outline' : 'globe-outline'}
+                size={22}
+                color={colors.success}
+              />
               <View style={styles.rowTextWrap}>
-                <Text style={styles.manageAccountRowLabel}>Manage account</Text>
+                <Text style={styles.manageAccountRowLabel}>
+                  {Platform.OS === 'ios' ? 'Manage subscription' : 'Manage account'}
+                </Text>
                 <Text style={styles.manageAccountRowSubtext}>
-                  Plan, billing, and subscription at www.menolisa.com
+                  {Platform.OS === 'ios'
+                    ? 'Open App Store subscription settings'
+                    : 'Plan and subscription options on the website'}
                 </Text>
               </View>
               <Ionicons name="open-outline" size={18} color={colors.success} />

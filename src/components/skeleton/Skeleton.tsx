@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View, StyleSheet, type ViewStyle } from 'react-native';
+import { View, StyleSheet, type DimensionValue, type ViewStyle } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -55,8 +55,8 @@ export function Skeleton({
   }));
 
   const baseStyle: ViewStyle = {
-    width: width ?? '100%',
-    height: height ?? 20,
+    width: (width ?? '100%') as DimensionValue,
+    height: (height ?? 20) as DimensionValue,
     borderRadius,
     backgroundColor: colors.border,
     overflow: 'hidden',

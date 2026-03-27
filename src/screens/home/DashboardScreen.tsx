@@ -26,7 +26,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useEventListener } from 'expo';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { HomeStackParamList, MainTabParamList } from '../../navigation/types';
-import { apiFetchWithAuth, API_CONFIG, openWebAccount } from '../../lib/api';
+import { apiFetchWithAuth, API_CONFIG, openAccountBillingEntry } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
 import { RefetchTrialContext } from '../../context/RefetchTrialContext';
 import { useTrialStatus } from '../../hooks/useTrialStatus';
@@ -156,7 +156,7 @@ function getDailyLisaMessage(): string {
 }
 
 // ---------------------------------------------------------------------------
-// Hero ambient video (native only; pause when unfocused / background for stability)
+// Hero ambient video (expo-video on native + web; pause when unfocused / background)
 // ---------------------------------------------------------------------------
 
 type DashboardHeroAmbientVideoProps = {
@@ -306,11 +306,11 @@ export function DashboardScreen() {
 
   const handleOpenAccountWeb = useCallback(async () => {
     try {
-      await openWebAccount();
+      await openAccountBillingEntry();
     } catch (e) {
       Alert.alert(
         'Open account',
-        e instanceof Error ? e.message : 'Could not open your account on the web. Please try again.'
+        e instanceof Error ? e.message : 'Could not open account options. Please try again.'
       );
     }
   }, []);
@@ -447,6 +447,7 @@ export function DashboardScreen() {
             variant="fullScreen"
             trialState="expired"
             onPress={handleOpenAccountWeb}
+            onSubscriptionSuccess={() => trialStatus.refetch().catch(() => {})}
             reduceMotion={reduceMotion}
           />
         </Animated.View>
@@ -464,6 +465,7 @@ export function DashboardScreen() {
             daysLeft={trialStatus.daysLeft}
             onPress={handleOpenAccountWeb}
             onSkip={() => setEndingSoonPaywallDismissed(true)}
+            onSubscriptionSuccess={() => trialStatus.refetch().catch(() => {})}
             reduceMotion={reduceMotion}
           />
         </Animated.View>
@@ -477,13 +479,13 @@ export function DashboardScreen() {
           }
         >
           {/* ----------------------------------------------------------------
-              Hero: ambient video (native) / navy (web) + greeting + Talk to Lisa CTA
+              Hero: ambient video + greeting + Talk to Lisa CTA
           ---------------------------------------------------------------- */}
           <View
             style={[
               styles.dashboardHero,
               { height: dashboardHeroHeight },
-              Platform.OS !== 'web' && styles.dashboardHeroVideoCanvas,
+              styles.dashboardHeroVideoCanvas,
             ]}
           >
             <View
@@ -491,15 +493,11 @@ export function DashboardScreen() {
               pointerEvents="none"
               collapsable={false}
             >
-              {Platform.OS === 'web' ? (
-                <View style={styles.dashboardHeroBg} />
-              ) : (
-                <DashboardHeroAmbientVideo
-                  shouldPlay={heroVideoPlayback}
-                  layoutWidth={windowWidth}
-                  layoutHeight={dashboardHeroHeight}
-                />
-              )}
+              <DashboardHeroAmbientVideo
+                shouldPlay={heroVideoPlayback}
+                layoutWidth={windowWidth}
+                layoutHeight={dashboardHeroHeight}
+              />
               {/* Readability only at bottom — full-hero navy was hiding the video */}
               <LinearGradient
                 colors={['transparent', 'rgba(0, 0, 0, 0.35)']}
@@ -788,10 +786,6 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: '#000000',
   },
-  dashboardHeroBg: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: colors.navy,
-  },
   dashboardHeroSheen: {
     ...StyleSheet.absoluteFillObject,
   },
@@ -852,6 +846,10 @@ const styles = StyleSheet.create({
       android: {
         elevation: 0,
         borderColor: 'rgba(255, 255, 255, 0.22)',
+        shadowColor: 'transparent',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0,
+        shadowRadius: 0,
       },
       ios: {
         ...shadows.card,

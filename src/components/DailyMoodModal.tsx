@@ -310,11 +310,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 2,
     // Android: elevation + translucent fill draws an ugly grey “card” behind the tile — use border instead (see moodBtnUnselected).
-    ...Platform.select({
-      web: shadows.card,
-      android: { elevation: 0 },
-      default: shadows.card,
-    }),
+    ...(Platform.OS === 'android' ? { elevation: 0 } : shadows.card),
     paddingVertical: 6,
     paddingHorizontal: 4,
   },

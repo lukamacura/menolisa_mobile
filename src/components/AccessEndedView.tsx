@@ -7,42 +7,52 @@ import {
   Image,
   Dimensions,
   ScrollView,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radii, typography, minTouchTarget, shadows } from '../theme/tokens';
-import { openWebAccount } from '../lib/api';
+import { openAccountBillingEntry } from '../lib/api';
+import { getBillingDestinationLabel, resolveBillingRoute } from '../lib/billingCompliance';
+import {
+  buyIosSubscription,
+  IOS_SUBSCRIPTION_PRODUCTS,
+  type IosSubscriptionProductId,
+  initIosIap,
+  isIosIapEnabled,
+  loadIosSubscriptions,
+  restoreIosPurchases,
+  closeIosIap,
+} from '../lib/iap';
+import type { Product } from 'react-native-iap';
 
 const { width: WINDOW_WIDTH } = Dimensions.get('window');
 
 const COPY_EXPIRED = {
-  heading: 'Lisa has been learning your body. Keep going.',
+  heading: 'Your access has ended',
   subheading:
-    "She's already spotting patterns most women miss. Your insights are saved — subscribe to pick up right where you left off.",
+    "Subscribe to keep using MenoLisa and continue saving your insights.",
 };
 
 const COPY_ENDING_SOON = {
-  heading: 'Your patterns are just starting to show.',
+  heading: 'Your free access ends soon',
   subheading:
-    "Lisa gets sharper the longer she knows you. Choose a plan and keep everything she's learned about your body.",
+    "Subscribe now so you can keep using the app without losing your progress.",
 };
 
-const URGENCY_EXPIRED = 'Your trial has ended. Your data is saved for 30 days.';
+const URGENCY_EXPIRED = 'Access ended. Subscribe to continue using the app.';
 
 function getUrgencyEndingSoon(daysLeft: number): string {
-  if (daysLeft === 0) return 'Your free access ends tonight.';
-  if (daysLeft === 1) return 'Your free access ends in 1 day.';
-  return 'Your free access ends in 2 days.';
+  if (daysLeft === 0) return 'Access ends tonight. Subscribe to continue.';
+  if (daysLeft === 1) return 'Access ends in 1 day. Subscribe to continue.';
+  return 'Access ends in 2 days. Subscribe to continue.';
 }
 
-const BUTTON_LABEL_CONTINUE = 'Continue with Lisa';
-const BUTTON_LABEL_MANAGE = 'Manage account';
+const BUTTON_LABEL_CONTINUE = 'Subscribe';
+const BUTTON_LABEL_MANAGE = 'Manage subscription';
 const REMIND_LATER_LABEL = 'Remind me later';
 const SKIP_LABEL = 'Skip';
-
-const PRICE_MONTHLY = 12;
-const PRICE_ANNUAL = 79;
-const PRICE_ANNUAL_PER_MONTH = 6.58;
 
 type Variant = 'card' | 'fullScreen';
 export type TrialPaywallState = 'expired' | 'ending_soon';
@@ -58,6 +68,10 @@ type AccessEndedViewProps = {
   onRemindLater?: () => void;
   /** When provided, shows a small "Skip" link under the CTA that calls this to close the paywall. */
   onSkip?: () => void;
+  /** When true, skip entrance animation (accessibility / user preference). */
+  reduceMotion?: boolean;
+  /** Optional callback when subscription becomes active (purchase/restore). */
+  onSubscriptionSuccess?: () => void;
 };
 
 export function AccessEndedView({
@@ -67,16 +81,85 @@ export function AccessEndedView({
   onPress,
   onRemindLater,
   onSkip,
+  reduceMotion = false,
+  onSubscriptionSuccess,
 }: AccessEndedViewProps) {
+  const [subscriptions, setSubscriptions] = React.useState<Product[]>([]);
+  const monthlyId = IOS_SUBSCRIPTION_PRODUCTS[0];
+  const annualId = IOS_SUBSCRIPTION_PRODUCTS[1];
+  const [selectedPlan, setSelectedPlan] = React.useState<IosSubscriptionProductId>(annualId);
+  const [loadingPlans, setLoadingPlans] = React.useState(false);
+  const [purchaseBusy, setPurchaseBusy] = React.useState(false);
+  const [restoreBusy, setRestoreBusy] = React.useState(false);
   const copy = trialState === 'ending_soon' ? COPY_ENDING_SOON : COPY_EXPIRED;
   const urgencyLine =
     trialState === 'expired' ? URGENCY_EXPIRED : getUrgencyEndingSoon(daysLeft);
+  const billingRoute = resolveBillingRoute();
+  const destinationLabel = getBillingDestinationLabel();
+  const isIosIap = isIosIapEnabled();
+
+  React.useEffect(() => {
+    if (!isIosIap) return;
+    let active = true;
+    (async () => {
+      try {
+        setLoadingPlans(true);
+        await initIosIap();
+        const loaded = await loadIosSubscriptions();
+        if (active) setSubscriptions(loaded);
+      } catch {
+        if (active) setSubscriptions([]);
+      } finally {
+        if (active) setLoadingPlans(false);
+      }
+    })();
+    return () => {
+      active = false;
+      closeIosIap().catch(() => {});
+    };
+  }, [isIosIap]);
 
   const handlePress = () => {
     if (onPress) {
       onPress();
     } else {
-      openWebAccount().catch(() => {});
+      openAccountBillingEntry().catch(() => {});
+    }
+  };
+
+  const getPlanPrice = (productId: IosSubscriptionProductId): string => {
+    const item = subscriptions.find((p) => p.id === productId);
+    return item?.displayPrice ?? (productId === monthlyId ? '$12.99' : '$79.99');
+  };
+
+  const handleSubscribe = async () => {
+    if (!isIosIap) {
+      handlePress();
+      return;
+    }
+    try {
+      setPurchaseBusy(true);
+      const result = await buyIosSubscription(selectedPlan);
+      if (result?.active) onSubscriptionSuccess?.();
+    } catch (err: unknown) {
+      const errObj = err as { message?: string; code?: string; productId?: string };
+      const parts = [errObj?.message || 'Unable to start purchase.'];
+      if (errObj?.code) parts.push(`Code: ${errObj.code}`);
+      if (errObj?.productId) parts.push(`Product: ${errObj.productId}`);
+      Alert.alert('Purchase unavailable', parts.join('\n'));
+    } finally {
+      setPurchaseBusy(false);
+    }
+  };
+
+  const handleRestore = async () => {
+    if (!isIosIap) return;
+    try {
+      setRestoreBusy(true);
+      const result = await restoreIosPurchases();
+      if (result?.active) onSubscriptionSuccess?.();
+    } finally {
+      setRestoreBusy(false);
     }
   };
 
@@ -104,20 +187,52 @@ export function AccessEndedView({
             {copy.subheading}
           </Text>
         </View>
+        {isIosIap && (
+          <View style={styles.pricingWrap}>
+            <Text style={styles.pricingSub}>Choose your plan:</Text>
+            {IOS_SUBSCRIPTION_PRODUCTS.map((productId) => {
+              const selected = selectedPlan === productId;
+              const isMonthly = productId === monthlyId;
+              const label = isMonthly ? 'Monthly' : 'Annual';
+              const hint = isMonthly ? 'Billed every month' : 'Best value - billed yearly';
+              return (
+                <TouchableOpacity
+                  key={productId}
+                  activeOpacity={0.85}
+                  style={[styles.pricingBox, selected && styles.pricingBoxSelected]}
+                  onPress={() => setSelectedPlan(productId)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Choose ${label} plan`}
+                >
+                  <View style={styles.pricingLeft}>
+                    <Text style={styles.pricingLabel}>{label}</Text>
+                    <Text style={styles.pricingHint}>{hint}</Text>
+                  </View>
+                  <Text style={styles.pricingAmount}>{getPlanPrice(productId)}</Text>
+                </TouchableOpacity>
+              );
+            })}
+            {loadingPlans && <Text style={styles.pricingSub}>Loading App Store pricing...</Text>}
+          </View>
+        )}
         <TouchableOpacity
           activeOpacity={0.8}
           style={isFullScreen ? styles.primaryButton : styles.cardButton}
-          onPress={handlePress}
+          onPress={isIosIap ? handleSubscribe : handlePress}
           accessibilityRole="button"
-          accessibilityLabel={isFullScreen ? BUTTON_LABEL_CONTINUE : BUTTON_LABEL_MANAGE}
+          accessibilityLabel={isIosIap ? 'Subscribe' : isFullScreen ? BUTTON_LABEL_CONTINUE : BUTTON_LABEL_MANAGE}
         >
-          <Text
-            style={isFullScreen ? styles.primaryButtonText : styles.cardButtonText}
-            numberOfLines={1}
-          >
-            {isFullScreen ? BUTTON_LABEL_CONTINUE : BUTTON_LABEL_MANAGE}
-          </Text>
-          {isFullScreen && (
+          {purchaseBusy ? (
+            <ActivityIndicator color={colors.background} />
+          ) : (
+            <Text
+              style={isFullScreen ? styles.primaryButtonText : styles.cardButtonText}
+              numberOfLines={1}
+            >
+              {isIosIap ? `Subscribe to ${selectedPlan === monthlyId ? 'Monthly' : 'Annual'}` : isFullScreen ? BUTTON_LABEL_CONTINUE : BUTTON_LABEL_MANAGE}
+            </Text>
+          )}
+          {isFullScreen && !purchaseBusy && (
             <Ionicons name="open-outline" size={18} color={colors.background} />
           )}
         </TouchableOpacity>
@@ -138,19 +253,34 @@ export function AccessEndedView({
         >
           {urgencyLine}
         </Text>
-        <View style={styles.pricingWrap}>
-          <View style={styles.pricingBox}>
-            <Text style={styles.pricingLabel}>Monthly</Text>
-            <Text style={styles.pricingAmount}>${PRICE_MONTHLY}/mo</Text>
-          </View>
-          <View style={[styles.pricingBox, styles.pricingBoxLast]}>
-            <Text style={styles.pricingLabel}>Annual</Text>
-            <View style={styles.pricingRight}>
-              <Text style={styles.pricingAmount}>${PRICE_ANNUAL}/year</Text>
-              <Text style={styles.pricingSub}>${PRICE_ANNUAL_PER_MONTH}/mo</Text>
+        {!isIosIap && (
+          <View style={styles.pricingWrap}>
+            <View style={styles.upgradeExternalCard}>
+              <View style={styles.upgradeRequiredLabel}>
+                <Text style={styles.upgradeRequiredLabelText}>Upgrade required</Text>
+              </View>
+              <Text style={styles.upgradeExternalBody}>
+                {billingRoute === 'external_purchase'
+                  ? 'Complete your subscription on our secure website checkout.'
+                  : `Subscriptions are managed through ${destinationLabel}.`}
+              </Text>
             </View>
           </View>
-        </View>
+        )}
+        {isIosIap && (
+          <TouchableOpacity
+            activeOpacity={0.8}
+            style={styles.secondaryButton}
+            onPress={handleRestore}
+            accessibilityRole="button"
+            accessibilityLabel="Restore Purchases"
+            disabled={restoreBusy}
+          >
+            <Text style={styles.secondaryButtonText}>
+              {restoreBusy ? 'Restoring...' : 'Restore Purchases'}
+            </Text>
+          </TouchableOpacity>
+        )}
         {isFullScreen && onSkip == null && onRemindLater != null && (
           <TouchableOpacity
             activeOpacity={0.8}
@@ -176,7 +306,7 @@ export function AccessEndedView({
           keyboardShouldPersistTaps="handled"
         >
           <Animated.View
-            entering={FadeIn.duration(280)}
+            entering={reduceMotion ? undefined : FadeIn.duration(280)}
             style={styles.fullScreenCard}
           >
             {content}
@@ -333,6 +463,38 @@ const styles = StyleSheet.create({
     width: '100%',
     marginTop: spacing.lg,
   },
+  upgradeExternalCard: {
+    width: '100%',
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    backgroundColor: colors.rowNavyBg,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    borderRadius: radii.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+  },
+  upgradeRequiredLabel: {
+    alignSelf: 'flex-start',
+    marginBottom: spacing.sm,
+    backgroundColor: colors.dangerBg,
+    borderWidth: 1,
+    borderColor: colors.danger,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radii.pill,
+  },
+  upgradeRequiredLabelText: {
+    ...typography.presets.label,
+    color: colors.danger,
+    fontWeight: '700',
+  },
+  upgradeExternalBody: {
+    ...typography.presets.bodyMedium,
+    color: colors.text,
+    width: '100%',
+  },
   pricingBox: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -345,6 +507,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     marginBottom: spacing.sm,
   },
+  pricingBoxSelected: {
+    borderColor: colors.primary,
+  },
   pricingBoxLast: {
     marginBottom: 0,
   },
@@ -352,9 +517,19 @@ const styles = StyleSheet.create({
     ...typography.presets.label,
     color: colors.text,
   },
+  pricingLeft: {
+    flex: 1,
+    marginRight: spacing.md,
+  },
+  pricingHint: {
+    ...typography.presets.caption,
+    color: colors.textMuted,
+    marginTop: spacing.xs,
+  },
   pricingAmount: {
     ...typography.presets.bodyMedium,
     color: colors.text,
+    fontWeight: '700',
   },
   pricingRight: {
     flexDirection: 'row',

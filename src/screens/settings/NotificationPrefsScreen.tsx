@@ -5,9 +5,11 @@ import {
   StyleSheet,
   Switch,
   TouchableOpacity,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiFetchWithAuth, API_CONFIG } from '../../lib/api';
+import { getNativeExpoNotifications } from '../../lib/expoNotificationsGate';
 import { colors, spacing, radii, typography } from '../../theme/tokens';
 import { StaggeredZoomIn, useReduceMotion } from '../../components/StaggeredZoomIn';
 import { NotificationPrefsSkeleton, ContentTransition } from '../../components/skeleton';
@@ -16,6 +18,7 @@ export function NotificationPrefsScreen() {
   const reduceMotion = useReduceMotion();
   const [notificationEnabled, setNotificationEnabled] = useState(true);
   const [weeklyInsightsEnabled, setWeeklyInsightsEnabled] = useState(true);
+  const [systemPermissionDenied, setSystemPermissionDenied] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -37,6 +40,14 @@ export function NotificationPrefsScreen() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    const Notifications = getNativeExpoNotifications();
+    if (!Notifications) return;
+    Notifications.getPermissionsAsync()
+      .then(({ status }) => setSystemPermissionDenied(status === 'denied'))
+      .catch(() => setSystemPermissionDenied(false));
+  }, []);
 
   const updatePref = useCallback(
     async (key: 'notification_enabled' | 'weekly_insights_enabled', value: boolean) => {
@@ -77,6 +88,17 @@ export function NotificationPrefsScreen() {
       </StaggeredZoomIn>
       <StaggeredZoomIn delayIndex={1} reduceMotion={reduceMotion}>
         <View style={styles.section}>
+          {systemPermissionDenied ? (
+            <View style={styles.systemBanner}>
+              <Text style={styles.systemBannerTitle}>Notifications are blocked in system settings</Text>
+              <Text style={styles.systemBannerText}>
+                Enable notifications in your device settings to receive alerts from Lisa.
+              </Text>
+              <TouchableOpacity activeOpacity={0.8} onPress={() => Linking.openSettings()}>
+                <Text style={styles.systemBannerLink}>Open settings</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
           <View style={styles.row}>
             <Text style={styles.rowLabel}>Notifications</Text>
             <Switch
@@ -118,6 +140,32 @@ const styles = StyleSheet.create({
   },
   section: {
     paddingHorizontal: spacing.lg,
+  },
+  systemBanner: {
+    backgroundColor: colors.rowGoldBg,
+    borderColor: 'rgba(255, 179, 138, 0.80)',
+    borderWidth: 1,
+    borderRadius: radii.md,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  systemBannerTitle: {
+    fontSize: 14,
+    fontFamily: typography.family.semibold,
+    color: colors.text,
+    marginBottom: spacing.xs,
+  },
+  systemBannerText: {
+    fontSize: 13,
+    fontFamily: typography.family.regular,
+    color: colors.textMuted,
+  },
+  systemBannerLink: {
+    fontSize: 13,
+    fontFamily: typography.family.semibold,
+    color: colors.primary,
+    marginTop: spacing.sm,
+    textDecorationLine: 'underline',
   },
   row: {
     flexDirection: 'row',

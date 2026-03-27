@@ -15,6 +15,7 @@ import {
   useWindowDimensions,
   Animated,
   Easing,
+  Keyboard,
   type TextStyle,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -23,7 +24,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../lib/supabase';
-import { apiFetchWithAuth, API_CONFIG, getApiUrl, openWebAccount } from '../../lib/api';
+import { apiFetchWithAuth, API_CONFIG, getApiUrl, openAccountBillingEntry } from '../../lib/api';
 import { useTrialStatus } from '../../hooks/useTrialStatus';
 import { AccessEndedView } from '../../components/AccessEndedView';
 import { MarkdownText } from '../../components/MarkdownText';
@@ -92,6 +93,9 @@ function normalizeMarkdown(src: string): string {
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
+
+const ASSISTANT_EMPTY_FALLBACK =
+  'I could not load this reply. Please tap send again.';
 
 /** Matches `/api/langchain-rag` non-streaming `tool_notifications` and SSE `tool_result` for in-chat toasts */
 type ChatToolNotification = {
@@ -202,7 +206,8 @@ export function ChatThreadScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteProps>();
   const { sessionId } = route.params;
-  const { expired: trialExpired } = useTrialStatus();
+  const trialStatus = useTrialStatus();
+  const trialExpired = trialStatus.expired;
   const reduceMotion = useReduceMotion();
   const insets = useSafeAreaInsets();
   const dimensions = useWindowDimensions();
@@ -227,6 +232,7 @@ export function ChatThreadScreen() {
   const sendSpinnerOpacity = useRef(new Animated.Value(0)).current;
   const toolToastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [toolToast, setToolToast] = useState<{ title: string; message: string } | null>(null);
+  const [forcePaywall, setForcePaywall] = useState(false);
 
   const MIN_INPUT_HEIGHT = SEND_BTN_SIZE;
   const MAX_INPUT_HEIGHT = 120;
@@ -311,6 +317,16 @@ export function ChatThreadScreen() {
     };
   }, []);
 
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const showSub = Keyboard.addListener(showEvent, () => {
+      requestAnimationFrame(() => {
+        flatListRef.current?.scrollToEnd({ animated: false });
+      });
+    });
+    return () => { showSub.remove(); };
+  }, []);
+
   const sendMessage = useCallback(
     async (textOverride?: string) => {
       const text = (textOverride ?? input).trim();
@@ -319,10 +335,19 @@ export function ChatThreadScreen() {
       if (trialExpired) {
         Alert.alert(
           'Trial ended',
-          "I'm just getting to know your patterns. Continue with Lisa at www.menolisa.com to keep the insights coming.",
+          "I'm just getting to know your patterns. Continue with Lisa to keep the insights coming.",
           [
             { text: 'OK', style: 'cancel' },
-            { text: 'Continue with Lisa', onPress: () => openWebAccount().catch(() => {}) },
+            {
+              text: 'Continue with Lisa',
+              onPress: () => {
+                if (Platform.OS === 'ios') {
+                  setForcePaywall(true);
+                  return;
+                }
+                openAccountBillingEntry().catch(() => {});
+              },
+            },
           ]
         );
         return;
@@ -352,16 +377,18 @@ export function ChatThreadScreen() {
       const history = buildHistory([...messages, userMsg]);
 
       const applyAssistantReply = (content: string, followUpLinks?: FollowUpLink[]) => {
+        const normalized = normalizeMarkdown(content);
+        const safeContent = normalized || ASSISTANT_EMPTY_FALLBACK;
         setMessages((prev) => {
           const next = [...prev];
           const last = next[next.length - 1];
           if (last?.role === 'assistant') {
-            next[next.length - 1] = { ...last, content: normalizeMarkdown(content), follow_up_links: followUpLinks };
+            next[next.length - 1] = { ...last, content: safeContent, follow_up_links: followUpLinks };
           } else {
             next.push({
               id: `assistant-${Date.now()}`,
               role: 'assistant',
-              content: normalizeMarkdown(content),
+              content: safeContent,
               created_at: new Date().toISOString(),
               follow_up_links: followUpLinks,
             });
@@ -466,7 +493,7 @@ export function ChatThreadScreen() {
                       showToolToast,
                     );
                   } else if (data.type === 'done') {
-                    const reply = normalizeMarkdown(fullResponse);
+                    const reply = normalizeMarkdown(fullResponse) || ASSISTANT_EMPTY_FALLBACK;
                     setMessages((prev) => {
                       const next = [...prev];
                       const last = next[next.length - 1];
@@ -494,7 +521,7 @@ export function ChatThreadScreen() {
             }
 
             if (fullResponse) {
-              const reply = normalizeMarkdown(fullResponse);
+              const reply = normalizeMarkdown(fullResponse) || ASSISTANT_EMPTY_FALLBACK;
               setMessages((prev) => {
                 const next = [...prev];
                 const last = next[next.length - 1];
@@ -536,20 +563,21 @@ export function ChatThreadScreen() {
             Array.isArray(data.follow_up_links) && data.follow_up_links.length > 0
               ? data.follow_up_links
               : undefined;
+          const safeContent = normalizeMarkdown(content) || ASSISTANT_EMPTY_FALLBACK;
           setMessages((prev) => {
             const next = [...prev];
             const last = next[next.length - 1];
             if (last?.role === 'assistant' && !last.content) {
               next[next.length - 1] = {
                 ...last,
-                content: normalizeMarkdown(content),
+                content: safeContent,
                 follow_up_links: followUpLinks,
               };
             } else {
               next.push({
                 id: `assistant-${Date.now()}`,
                 role: 'assistant',
-                content: normalizeMarkdown(content),
+                content: safeContent,
                 created_at: new Date().toISOString(),
                 follow_up_links: followUpLinks,
               });
@@ -606,10 +634,17 @@ export function ChatThreadScreen() {
     );
   }
 
-  if (trialExpired) {
+  if (trialExpired || forcePaywall) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
-        <AccessEndedView variant="fullScreen" reduceMotion={reduceMotion} />
+        <AccessEndedView
+          variant="fullScreen"
+          reduceMotion={reduceMotion}
+          onSubscriptionSuccess={() => {
+            setForcePaywall(false);
+            trialStatus.refetch().catch(() => {});
+          }}
+        />
       </SafeAreaView>
     );
   }
@@ -647,6 +682,8 @@ export function ChatThreadScreen() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.messageList}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+          removeClippedSubviews={Platform.OS === 'android'}
           ListEmptyComponent={
             <View style={styles.empty}>
               <View style={styles.emptyIconWrap}>
@@ -668,7 +705,9 @@ export function ChatThreadScreen() {
               </View>
             ) : null
           }
-          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+          onContentSizeChange={() =>
+            flatListRef.current?.scrollToEnd({ animated: true })
+          }
           renderItem={({ item, index }) => {
             const isLastAssistant = item.role === 'assistant' && index === displayMessages.length - 1;
             const showStreaming = isLastAssistant && isStreaming;
@@ -693,6 +732,10 @@ export function ChatThreadScreen() {
                     <>
                       {showStreaming && !streamingContent ? (
                         <CoffeeLoading />
+                      ) : !showStreaming && !item.content?.trim() ? (
+                        <Text style={[styles.bubbleText, styles.bubbleTextAssistant, styles.assistantFallbackText]}>
+                          {ASSISTANT_EMPTY_FALLBACK}
+                        </Text>
                       ) : (
                         <>
                           <MarkdownText
@@ -749,7 +792,9 @@ export function ChatThreadScreen() {
               value={input}
               onChangeText={setInput}
               onFocus={() => {
-                setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+                requestAnimationFrame(() => {
+                  flatListRef.current?.scrollToEnd({ animated: false });
+                });
               }}
               onContentSizeChange={(e) => {
                 const raw = e.nativeEvent.contentSize.height;
@@ -979,6 +1024,9 @@ const styles = StyleSheet.create({
   },
   bubbleTextAssistant: {
     color: colors.text,
+  },
+  assistantFallbackText: {
+    color: colors.textMuted,
   },
   cursor: {
     width: 2,
