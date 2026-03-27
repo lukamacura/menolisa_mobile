@@ -12,17 +12,15 @@ import {
   Platform,
   Alert,
   Linking,
-  useWindowDimensions,
   Animated,
   Easing,
   Keyboard,
   type TextStyle,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getDefaultHeaderHeight } from '@react-navigation/elements';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useRoute, RouteProp } from '@react-navigation/native';
+import { useHeaderHeight } from '@react-navigation/elements';
 import { supabase } from '../../lib/supabase';
 import { apiFetchWithAuth, API_CONFIG, getApiUrl, openAccountBillingEntry } from '../../lib/api';
 import { useTrialStatus } from '../../hooks/useTrialStatus';
@@ -36,7 +34,6 @@ type ChatStackParamList = {
   ChatList: undefined;
   ChatThread: { sessionId: string };
 };
-type NavProp = NativeStackNavigationProp<ChatStackParamList, 'ChatThread'>;
 type RouteProps = RouteProp<ChatStackParamList, 'ChatThread'>;
 
 type FollowUpLink = {
@@ -200,23 +197,24 @@ function ConversationLoader() {
   );
 }
 
-const KEYBOARD_OFFSET_EXTRA = 8;
-
 export function ChatThreadScreen() {
-  const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteProps>();
   const { sessionId } = route.params;
   const trialStatus = useTrialStatus();
   const trialExpired = trialStatus.expired;
   const reduceMotion = useReduceMotion();
   const insets = useSafeAreaInsets();
-  const dimensions = useWindowDimensions();
-  const keyboardVerticalOffset =
-    getDefaultHeaderHeight(
-      { width: dimensions.width, height: dimensions.height },
-      false,
-      insets.top
-    ) + KEYBOARD_OFFSET_EXTRA;
+
+  // ──────────────────────────────────────────────────────
+  // FIX 1: Get the navigation header height for iOS offset
+  // ──────────────────────────────────────────────────────
+  let headerHeight = 0;
+  try {
+    // useHeaderHeight throws if no header exists; guard it
+    headerHeight = useHeaderHeight();
+  } catch {
+    headerHeight = 0;
+  }
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -234,9 +232,13 @@ export function ChatThreadScreen() {
   const [toolToast, setToolToast] = useState<{ title: string; message: string } | null>(null);
   const [forcePaywall, setForcePaywall] = useState(false);
 
+  // ──────────────────────────────────────────────────────
+  // FIX 5: Track whether user has manually scrolled up
+  // ──────────────────────────────────────────────────────
+  const isNearBottomRef = useRef(true);
+
   const MIN_INPUT_HEIGHT = SEND_BTN_SIZE;
   const MAX_INPUT_HEIGHT = 120;
-  const INPUT_PADDING_V = 8;
 
   const loadMessages = useCallback(async () => {
     const {
@@ -317,14 +319,22 @@ export function ChatThreadScreen() {
     };
   }, []);
 
+  // ──────────────────────────────────────────────────────
+  // FIX 4: Use keyboardWillShow on iOS (fires before the
+  // keyboard animation begins, so the layout is in sync)
+  // ──────────────────────────────────────────────────────
   useEffect(() => {
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const showSub = Keyboard.addListener(showEvent, () => {
+    const eventName = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const showSub = Keyboard.addListener(eventName, () => {
       requestAnimationFrame(() => {
-        flatListRef.current?.scrollToEnd({ animated: false });
+        if (isNearBottomRef.current) {
+          flatListRef.current?.scrollToEnd({ animated: true });
+        }
       });
     });
-    return () => { showSub.remove(); };
+    return () => {
+      showSub.remove();
+    };
   }, []);
 
   const sendMessage = useCallback(
@@ -365,6 +375,9 @@ export function ChatThreadScreen() {
       setSending(true);
       setStreamingContent('');
       setError(null);
+
+      // Reset scroll-tracking so new messages auto-scroll
+      isNearBottomRef.current = true;
 
       const placeholderAssistant: Message = {
         id: `assistant-${Date.now()}`,
@@ -655,7 +668,11 @@ export function ChatThreadScreen() {
   const isStreaming = sending && displayMessages.some((m) => m.role === 'assistant' && !m.content);
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    // ──────────────────────────────────────────────────────
+    // FIX 2: Add 'bottom' edge so home-indicator inset is
+    // respected on modern iPhones
+    // ──────────────────────────────────────────────────────
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       {toolToast && (
         <View style={[styles.toolToast, { top: insets.top + spacing.sm }]}>
           <Ionicons name="checkmark-circle" size={20} color={colors.success} style={styles.toolToastIcon} />
@@ -665,171 +682,209 @@ export function ChatThreadScreen() {
           </View>
         </View>
       )}
-      <StaggeredZoomIn delayIndex={0} reduceMotion={reduceMotion} style={styles.flex}>
+      {/* ──────────────────────────────────────────────────
+          FIX 1: Wrap the entire chat area (list + input)
+          inside KeyboardAvoidingView so the FlatList shrinks
+          when the keyboard opens, and use the header height
+          as the vertical offset on iOS.
+          ────────────────────────────────────────────────── */}
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
-        keyboardVerticalOffset={keyboardVerticalOffset}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? headerHeight : 0}
       >
         {error && (
           <View style={styles.errorBanner}>
             <Text style={styles.errorText}>{error}</Text>
           </View>
         )}
-        <FlatList
-          ref={flatListRef}
-          data={displayMessages}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.messageList}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
-          removeClippedSubviews={Platform.OS === 'android'}
-          ListEmptyComponent={
-            <View style={styles.empty}>
-              <View style={styles.emptyIconWrap}>
-                <Ionicons name="chatbubble-ellipses" size={36} color={CHAT.emptyIcon} />
-              </View>
-              <Text style={styles.emptyText}>Start the conversation</Text>
-              <Text style={styles.emptySubtext}>Say hi to Lisa—she’s here to listen and help.</Text>
-            </View>
-          }
-          ListFooterComponent={
-            sending &&
-            displayMessages.length > 0 &&
-            displayMessages[displayMessages.length - 1].role === 'user' ? (
-              <View style={styles.bubbleWrapper}>
-                <Text style={styles.lisaLabel}>Lisa</Text>
-                <View style={[styles.bubble, styles.bubbleAssistant]}>
-                  <CoffeeLoading />
+        <StaggeredZoomIn delayIndex={0} reduceMotion={reduceMotion} style={styles.flex}>
+          <FlatList
+            ref={flatListRef}
+            style={styles.flex}
+            data={displayMessages}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={styles.messageList}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+            removeClippedSubviews={Platform.OS === 'android'}
+            // ──────────────────────────────────────────────
+            // FIX 5: Track scroll position so we only
+            // auto-scroll when the user is near the bottom
+            // ──────────────────────────────────────────────
+            onScroll={(e) => {
+              const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent;
+              const distanceFromBottom =
+                contentSize.height - layoutMeasurement.height - contentOffset.y;
+              isNearBottomRef.current = distanceFromBottom < 120;
+            }}
+            scrollEventThrottle={100}
+            ListEmptyComponent={
+              <View style={styles.empty}>
+                <View style={styles.emptyIconWrap}>
+                  <Ionicons name="chatbubble-ellipses" size={36} color={CHAT.emptyIcon} />
                 </View>
+                <Text style={styles.emptyText}>Start the conversation</Text>
+                <Text style={styles.emptySubtext}>Say hi to Lisa—she's here to listen and help.</Text>
               </View>
-            ) : null
-          }
-          onContentSizeChange={() =>
-            flatListRef.current?.scrollToEnd({ animated: true })
-          }
-          renderItem={({ item, index }) => {
-            const isLastAssistant = item.role === 'assistant' && index === displayMessages.length - 1;
-            const showStreaming = isLastAssistant && isStreaming;
-
-            return (
-              <View style={styles.bubbleWrapper}>
-                {item.role === 'assistant' && (
+            }
+            ListFooterComponent={
+              sending &&
+              displayMessages.length > 0 &&
+              displayMessages[displayMessages.length - 1].role === 'user' ? (
+                <View style={styles.bubbleWrapper}>
                   <Text style={styles.lisaLabel}>Lisa</Text>
-                )}
-                <View
-                  style={[
-                    styles.bubble,
-                    item.role === 'user' ? styles.bubbleUser : styles.bubbleAssistant,
-                    item.role === 'assistant' && (Platform.OS === 'ios' || Platform.OS === 'web') && styles.bubbleAssistantWide,
-                  ]}
-                >
-                  {item.role === 'user' ? (
-                    <Text style={[styles.bubbleText, styles.bubbleTextUser]}>
-                      {item.content}
-                    </Text>
-                  ) : (
-                    <>
-                      {showStreaming && !streamingContent ? (
-                        <CoffeeLoading />
-                      ) : !showStreaming && !item.content?.trim() ? (
-                        <Text style={[styles.bubbleText, styles.bubbleTextAssistant, styles.assistantFallbackText]}>
-                          {ASSISTANT_EMPTY_FALLBACK}
-                        </Text>
-                      ) : (
-                        <>
-                          <MarkdownText
-                            textStyle={[styles.bubbleText, styles.bubbleTextAssistant]}
+                  <View style={[styles.bubble, styles.bubbleAssistant]}>
+                    <CoffeeLoading />
+                  </View>
+                </View>
+              ) : null
+            }
+            // ──────────────────────────────────────────────
+            // FIX 5: Only auto-scroll when user hasn't
+            // scrolled away from the bottom
+            // ──────────────────────────────────────────────
+            onContentSizeChange={() => {
+              if (isNearBottomRef.current) {
+                flatListRef.current?.scrollToEnd({ animated: false });
+              }
+            }}
+            renderItem={({ item, index }) => {
+              const isLastAssistant = item.role === 'assistant' && index === displayMessages.length - 1;
+              const showStreaming = isLastAssistant && isStreaming;
+
+              return (
+                <View style={styles.bubbleWrapper}>
+                  {item.role === 'assistant' && (
+                    <Text style={styles.lisaLabel}>Lisa</Text>
+                  )}
+                  <View
+                    style={[
+                      styles.bubble,
+                      item.role === 'user' ? styles.bubbleUser : styles.bubbleAssistant,
+                      item.role === 'assistant' && (Platform.OS === 'ios' || Platform.OS === 'web') && styles.bubbleAssistantWide,
+                    ]}
+                  >
+                    {item.role === 'user' ? (
+                      <Text style={[styles.bubbleText, styles.bubbleTextUser]}>
+                        {item.content}
+                      </Text>
+                    ) : (
+                      <>
+                        {showStreaming && !streamingContent ? (
+                          <CoffeeLoading />
+                        ) : !showStreaming && !item.content?.trim() ? (
+                          <Text style={[styles.bubbleText, styles.bubbleTextAssistant, styles.assistantFallbackText]}>
+                            {ASSISTANT_EMPTY_FALLBACK}
+                          </Text>
+                        ) : (
+                          <>
+                            <MarkdownText
+                              textStyle={[styles.bubbleText, styles.bubbleTextAssistant]}
+                            >
+                              {showStreaming && streamingContent ? streamingContent : item.content || ''}
+                            </MarkdownText>
+                            {showStreaming && streamingContent ? <View style={styles.cursor} /> : null}
+                          </>
+                        )}
+                      </>
+                    )}
+                  </View>
+                  {item.role === 'assistant' && item.follow_up_links && item.follow_up_links.length > 0 && (
+                    <View style={styles.followUpRow}>
+                      <Text style={styles.followUpLabel}>You might also like:</Text>
+                      <View style={styles.followUpChips}>
+                        {item.follow_up_links.map((link: FollowUpLink, linkIdx: number) => (
+                          <TouchableOpacity
+                            key={linkIdx}
+                            activeOpacity={1}
+                            style={styles.followUpChip}
+                            onPress={() => onFollowUpPress(link.subtopic)}
+                            disabled={sending}
                           >
-                            {showStreaming && streamingContent ? streamingContent : item.content || ''}
-                          </MarkdownText>
-                          {showStreaming && streamingContent ? <View style={styles.cursor} /> : null}
-                        </>
-                      )}
-                    </>
+                            <Ionicons name="link" size={16} color={colors.primary} />
+                            <Text style={styles.followUpChipText}>{link.label}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
                   )}
                 </View>
-                {item.role === 'assistant' && item.follow_up_links && item.follow_up_links.length > 0 && (
-                  <View style={styles.followUpRow}>
-                    <Text style={styles.followUpLabel}>You might also like:</Text>
-                    <View style={styles.followUpChips}>
-                      {item.follow_up_links.map((link: FollowUpLink, linkIdx: number) => (
-                        <TouchableOpacity
-                          key={linkIdx}
-                          activeOpacity={1}
-                          style={styles.followUpChip}
-                          onPress={() => onFollowUpPress(link.subtopic)}
-                          disabled={sending}
-                        >
-                          <Ionicons name="link" size={16} color={colors.primary} />
-                          <Text style={styles.followUpChipText}>{link.label}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </View>
-                )}
-              </View>
-            );
-          }}
-        />
-        <Text style={styles.chatDisclaimer}>MenoLisa is for informational purposes only and is not a substitute for professional medical advice, diagnosis, or treatment. Always consult a qualified healthcare provider.</Text>
-        <View style={styles.inputRow}>
-          <View style={styles.composerContainer}>
-            <TextInput
-              style={[
-                styles.input,
-                {
-                  height: !input.trim()
-                    ? MIN_INPUT_HEIGHT
-                    : Math.max(MIN_INPUT_HEIGHT, Math.min(MAX_INPUT_HEIGHT, inputHeight)),
-                },
-                Platform.OS === 'web' && ({
-                  overflowY: inputHeight > MAX_INPUT_HEIGHT ? 'auto' : 'hidden',
-                  scrollbarWidth: 'none',
-                  msOverflowStyle: 'none',
-                } as Record<string, unknown>),
-              ]}
-              value={input}
-              onChangeText={setInput}
-              onFocus={() => {
-                requestAnimationFrame(() => {
-                  flatListRef.current?.scrollToEnd({ animated: false });
-                });
-              }}
-              onContentSizeChange={(e) => {
-                const raw = e.nativeEvent.contentSize.height;
-                if (!input.trim() && raw > 60) return;
-                const h = raw > 200 ? raw : raw + INPUT_PADDING_V * 2;
-                setInputHeight(Math.max(MIN_INPUT_HEIGHT, Math.min(MAX_INPUT_HEIGHT, h)));
-              }}
-              placeholder="Ask Lisa anything..."
-              placeholderTextColor={colors.textMuted}
-              multiline
-              maxLength={2000}
-              editable={!sending}
-              scrollEnabled={inputHeight >= MAX_INPUT_HEIGHT}
-            />
-            <TouchableOpacity
-              activeOpacity={1}
-              style={[styles.sendBtn, (!input.trim() || sending) && styles.sendBtnDisabled]}
-              onPress={() => sendMessage()}
-              disabled={!input.trim() || sending}
-            >
-              <Animated.View
-                style={[StyleSheet.absoluteFillObject, styles.sendBtnContent, { opacity: sendIconOpacity, pointerEvents: 'none' }]}
+              );
+            }}
+          />
+        </StaggeredZoomIn>
+
+        {/* Input area — now INSIDE KAV so it moves with the keyboard */}
+        <View>
+          <Text style={styles.chatDisclaimer}>MenoLisa is for informational purposes only and is not a substitute for professional medical advice, diagnosis, or treatment. Always consult a qualified healthcare provider.</Text>
+          <View style={styles.inputRow}>
+            <View style={styles.composerContainer}>
+              <TextInput
+                style={[
+                  styles.input,
+                  {
+                    // ──────────────────────────────────────
+                    // FIX 3: Simplified height — let the
+                    // platform's contentSize be the source
+                    // of truth, clamped to min/max.
+                    // ──────────────────────────────────────
+                    height: Math.max(
+                      MIN_INPUT_HEIGHT,
+                      Math.min(MAX_INPUT_HEIGHT, inputHeight)
+                    ),
+                  },
+                  Platform.OS === 'web' && ({
+                    overflowY: inputHeight > MAX_INPUT_HEIGHT ? 'auto' : 'hidden',
+                    scrollbarWidth: 'none',
+                    msOverflowStyle: 'none',
+                  } as Record<string, unknown>),
+                ]}
+                value={input}
+                onChangeText={setInput}
+                onFocus={() => {
+                  requestAnimationFrame(() => {
+                    flatListRef.current?.scrollToEnd({ animated: true });
+                  });
+                }}
+                // ──────────────────────────────────────────
+                // FIX 3: Use contentSize.height directly —
+                // iOS already includes internal padding, so
+                // adding extra padding caused the input to
+                // grow taller every keystroke.
+                // ──────────────────────────────────────────
+                onContentSizeChange={(e) => {
+                  const h = e.nativeEvent.contentSize.height;
+                  setInputHeight(Math.max(MIN_INPUT_HEIGHT, Math.min(MAX_INPUT_HEIGHT, h)));
+                }}
+                placeholder="Ask Lisa anything..."
+                placeholderTextColor={colors.textMuted}
+                multiline
+                maxLength={2000}
+                editable={!sending}
+                scrollEnabled={inputHeight >= MAX_INPUT_HEIGHT}
+              />
+              <TouchableOpacity
+                activeOpacity={1}
+                style={[styles.sendBtn, (!input.trim() || sending) && styles.sendBtnDisabled]}
+                onPress={() => sendMessage()}
+                disabled={!input.trim() || sending}
               >
-                <Ionicons name="send" size={22} color={colors.textInverse} />
-              </Animated.View>
-              <Animated.View
-                style={[StyleSheet.absoluteFillObject, styles.sendBtnContent, { opacity: sendSpinnerOpacity, pointerEvents: 'none' }]}
-              >
-                <ActivityIndicator size="small" color={colors.textInverse} />
-              </Animated.View>
-            </TouchableOpacity>
+                <Animated.View
+                  style={[StyleSheet.absoluteFillObject, styles.sendBtnContent, { opacity: sendIconOpacity, pointerEvents: 'none' }]}
+                >
+                  <Ionicons name="send" size={22} color={colors.textInverse} />
+                </Animated.View>
+                <Animated.View
+                  style={[StyleSheet.absoluteFillObject, styles.sendBtnContent, { opacity: sendSpinnerOpacity, pointerEvents: 'none' }]}
+                >
+                  <ActivityIndicator size="small" color={colors.textInverse} />
+                </Animated.View>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </KeyboardAvoidingView>
-      </StaggeredZoomIn>
     </SafeAreaView>
   );
 }
@@ -1082,7 +1137,6 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.sm,
-    paddingBottom: spacing.lg,
     backgroundColor: CHAT.screenBg,
     borderTopWidth: 0,
   },
