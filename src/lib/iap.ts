@@ -29,7 +29,8 @@ export async function loadIosSubscriptions(): Promise<any[]> {
 }
 
 export async function buyIosSubscription(
-  _productId: IosSubscriptionProductId
+  _productId: IosSubscriptionProductId,
+  _appAccountToken?: string
 ): Promise<IosIapVerifyReceiptResponse | null> {
   return null;
 }

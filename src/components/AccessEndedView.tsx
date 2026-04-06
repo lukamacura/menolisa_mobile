@@ -14,6 +14,7 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radii, typography, minTouchTarget, shadows } from '../theme/tokens';
 import { openAccountBillingEntry } from '../lib/api';
+import { useAuth } from '../context/AuthContext';
 import { getBillingDestinationLabel, resolveBillingRoute } from '../lib/billingCompliance';
 import {
   buyIosSubscription,
@@ -25,7 +26,7 @@ import {
   restoreIosPurchases,
   closeIosIap,
 } from '../lib/iap';
-import type { Product } from 'react-native-iap';
+import type { ProductCommon } from 'react-native-iap';
 
 const { width: WINDOW_WIDTH } = Dimensions.get('window');
 
@@ -84,7 +85,8 @@ export function AccessEndedView({
   reduceMotion = false,
   onSubscriptionSuccess,
 }: AccessEndedViewProps) {
-  const [subscriptions, setSubscriptions] = React.useState<Product[]>([]);
+  const { user } = useAuth();
+  const [subscriptions, setSubscriptions] = React.useState<ProductCommon[]>([]);
   const monthlyId = IOS_SUBSCRIPTION_PRODUCTS[0];
   const annualId = IOS_SUBSCRIPTION_PRODUCTS[1];
   const [selectedPlan, setSelectedPlan] = React.useState<IosSubscriptionProductId>(annualId);
@@ -137,16 +139,29 @@ export function AccessEndedView({
       handlePress();
       return;
     }
+    if (subscriptions.length === 0) {
+      Alert.alert('Purchase unavailable', 'Could not load subscription options from the App Store. Please check your connection and try again.');
+      return;
+    }
     try {
       setPurchaseBusy(true);
-      const result = await buyIosSubscription(selectedPlan);
+      const result = await buyIosSubscription(selectedPlan, user?.id);
       if (result?.active) onSubscriptionSuccess?.();
     } catch (err: unknown) {
-      const errObj = err as { message?: string; code?: string; productId?: string };
-      const parts = [errObj?.message || 'Unable to start purchase.'];
-      if (errObj?.code) parts.push(`Code: ${errObj.code}`);
-      if (errObj?.productId) parts.push(`Product: ${errObj.productId}`);
-      Alert.alert('Purchase unavailable', parts.join('\n'));
+      const errObj = err as { message?: string; code?: string; productId?: string; error?: string; provider?: string };
+      // Server returns 409 { error: 'already_subscribed', provider: 'stripe' } when the
+      // user already has an active web (Stripe) subscription. Show a clear message.
+      if (errObj?.error === 'already_subscribed' && errObj?.provider === 'stripe') {
+        Alert.alert(
+          'You already have a subscription',
+          'You have an active subscription managed on our website. Manage it at menolisa.com.'
+        );
+      } else {
+        const parts = [errObj?.message || 'Unable to start purchase.'];
+        if (errObj?.code) parts.push(`Code: ${errObj.code}`);
+        if (errObj?.productId) parts.push(`Product: ${errObj.productId}`);
+        Alert.alert('Purchase unavailable', parts.join('\n'));
+      }
     } finally {
       setPurchaseBusy(false);
     }

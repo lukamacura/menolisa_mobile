@@ -20,6 +20,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../lib/supabase';
@@ -258,6 +259,11 @@ export function RegisterScreen() {
   const reduceMotion = useReduceMotion();
   const { user: authUser } = useAuth();
   const [referralCode, setReferralCode] = useState<string | null>(null);
+  const [isAppleAvailable, setIsAppleAvailable] = useState(false);
+
+  useEffect(() => {
+    AppleAuthentication.isAvailableAsync().then(setIsAppleAvailable);
+  }, []);
 
   // When app opens with session that has temp_password (e.g. reopened mid-flow), show set-password phase.
   // Only move to email phase when still on quiz so we don't skip loading/results after gate submit.
@@ -514,6 +520,55 @@ export function RegisterScreen() {
       setLoading(false);
     }
   }, [canSubmitGate, email, firstName, topProblems, derivedSeverity, timing, triedOptions, goal, referralCode]);
+
+  const handleAppleSignInGate = useCallback(async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+      if (!credential.identityToken) throw new Error('No identity token received');
+      const { data, error: authError } = await supabase.auth.signInWithIdToken({
+        provider: 'apple',
+        token: credential.identityToken,
+      });
+      if (authError) throw authError;
+      if (!data.user) throw new Error('Apple sign-in succeeded but no user was returned');
+      const quizAnswers = {
+        top_problems: topProblems,
+        severity: derivedSeverity,
+        timing,
+        tried_options: triedOptions,
+        goal,
+        name: firstName.trim() || null,
+      };
+      try {
+        await fetch(getApiUrl(API_CONFIG.endpoints.saveQuizAuth), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: data.user.id,
+            quizAnswers,
+            ...(referralCode ? { referralCode } : {}),
+          }),
+        });
+      } catch (quizErr) {
+        logger.warn('Failed to save quiz answers after Apple sign-in:', quizErr);
+      }
+      setSignedUpAtGate(true);
+      setPhase('loading');
+    } catch (err: any) {
+      if (err.code === 'ERR_REQUEST_CANCELED') return;
+      logger.error('Apple sign-in gate error:', err);
+      setError('Apple sign-in failed. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }, [topProblems, derivedSeverity, timing, triedOptions, goal, firstName, referralCode]);
 
   const termsUrl = getWebAppUrl('/terms');
   const privacyUrl = getWebAppUrl('/privacy');
@@ -1106,6 +1161,22 @@ export function RegisterScreen() {
                   )}
                 </View>
               </TouchableOpacity>
+              {Platform.OS === 'ios' && isAppleAvailable && (
+                <>
+                  <View style={styles.dividerRow}>
+                    <View style={styles.divider} />
+                    <Text style={styles.dividerText}>or</Text>
+                    <View style={styles.divider} />
+                  </View>
+                  <AppleAuthentication.AppleAuthenticationButton
+                    buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
+                    buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+                    cornerRadius={radii.lg}
+                    style={styles.appleButton}
+                    onPress={handleAppleSignInGate}
+                  />
+                </>
+              )}
             </>
           )}
         </ScrollView>
@@ -2581,5 +2652,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xl,
     paddingTop: spacing.md,
+  },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  divider: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.border,
+  },
+  dividerText: {
+    fontSize: 13,
+    fontFamily: typography.family.regular,
+    color: colors.textMuted,
+  },
+  appleButton: {
+    height: minTouchTarget,
+    width: '100%',
   },
 });

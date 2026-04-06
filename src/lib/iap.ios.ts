@@ -3,7 +3,7 @@ import { Platform } from 'react-native';
 import {
   clearTransactionIOS,
   endConnection,
-  fetchProducts,
+  getSubscriptions,
   finishTransaction,
   getReceiptIOS,
   initConnection,
@@ -13,7 +13,8 @@ import {
   requestReceiptRefreshIOS,
   restorePurchases,
   type Purchase,
-  type Product,
+  type ProductCommon,
+  type EventSubscription,
 } from 'react-native-iap';
 
 // Shared product IDs (must match App Store Connect).
@@ -29,6 +30,8 @@ export type IosIapVerifyReceiptResponse = {
 
 let isConnected = false;
 let listenersReady = false;
+let purchaseUpdateSub: EventSubscription | null = null;
+let purchaseErrorSub: EventSubscription | null = null;
 let pendingPurchase:
   | {
       expectedProductId?: string;
@@ -75,7 +78,7 @@ export async function initIosIap(): Promise<void> {
   if (listenersReady) return;
   listenersReady = true;
 
-  purchaseUpdatedListener(async (purchase: Purchase) => {
+  purchaseUpdateSub = purchaseUpdatedListener(async (purchase: Purchase) => {
     if (!pendingPurchase) return;
     // iOS purchases may not include purchaseState; Android does.
     if (Platform.OS === 'android' && purchase.purchaseState !== 'purchased') return;
@@ -98,7 +101,7 @@ export async function initIosIap(): Promise<void> {
     }
   });
 
-  purchaseErrorListener((error) => {
+  purchaseErrorSub = purchaseErrorListener((error) => {
     if (!pendingPurchase) return;
     try {
       pendingPurchase.reject(new Error(error.message));
@@ -112,14 +115,18 @@ export async function initIosIap(): Promise<void> {
 export async function closeIosIap(): Promise<void> {
   pendingPurchase?.reject(new Error('IAP connection closed.'));
   pendingPurchase = null;
+  purchaseUpdateSub?.remove();
+  purchaseUpdateSub = null;
+  purchaseErrorSub?.remove();
+  purchaseErrorSub = null;
   listenersReady = false;
   isConnected = false;
   await endConnection();
 }
 
-export async function loadIosSubscriptions(): Promise<Product[]> {
-  const products = await fetchProducts({ skus: [...IOS_SUBSCRIPTION_PRODUCTS], type: 'subs' });
-  return (products ?? []) as Product[];
+export async function loadIosSubscriptions(): Promise<ProductCommon[]> {
+  const products = await getSubscriptions({ skus: [...IOS_SUBSCRIPTION_PRODUCTS] });
+  return (products ?? []) as ProductCommon[];
 }
 
 async function verifyReceiptWithBackend(params: {
@@ -142,7 +149,8 @@ async function verifyFromCurrentReceipt(productId?: string): Promise<IosIapVerif
 }
 
 export async function buyIosSubscription(
-  productId: IosSubscriptionProductId
+  productId: IosSubscriptionProductId,
+  appAccountToken?: string
 ): Promise<IosIapVerifyReceiptResponse | null> {
   if (!isConnected) {
     await initIosIap();
@@ -171,6 +179,9 @@ export async function buyIosSubscription(
         apple: {
           sku: productId,
           andDangerouslyFinishTransactionAutomatically: false,
+          // Tags this purchase with the Supabase user UUID so Apple Server
+          // Notifications V2 can reconcile renewals/refunds back to the user.
+          ...(appAccountToken ? { appAccountToken } : {}),
         },
       },
       type: 'subs',
@@ -200,10 +211,8 @@ export async function syncIosReceiptStatus(): Promise<IosIapVerifyReceiptRespons
   if (!isConnected) {
     await initIosIap();
   }
-  try {
-    return await verifyReceiptWithRetry();
-  } catch {
-    return verifyFromCurrentReceipt();
-  }
+  // Use the existing receipt without refreshing — requestReceiptRefreshIOS() triggers
+  // an Apple ID password prompt on iOS even for users who have never purchased.
+  return verifyFromCurrentReceipt();
 }
 

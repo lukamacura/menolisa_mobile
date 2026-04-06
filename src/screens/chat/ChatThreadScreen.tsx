@@ -427,13 +427,18 @@ export function ChatThreadScreen() {
             headers: {
               'Content-Type': 'application/json',
               Authorization: `Bearer ${session.access_token}`,
+              // Prevent gzip/brotli compression - compressed SSE breaks \n\n splitting on iOS
+              'Accept-Encoding': 'identity',
             },
             body: JSON.stringify({
               user_id: userId,
               sessionId,
               userInput: text,
               history,
-              stream: Platform.OS !== 'android',
+              // Disable SSE streaming on iOS: React Native's NSURLSession buffers aggressively
+              // and can drop the final `done` event, leaving fullResponse empty.
+              // Non-streaming returns a single JSON response which is reliable on all platforms.
+              stream: false,
             }),
           });
         } catch (fetchErr) {
@@ -474,62 +479,84 @@ export function ChatThreadScreen() {
           let fullResponse = '';
           let lastFollowUpLinks: FollowUpLink[] | null = null;
 
+          const processSSELine = (line: string) => {
+              if (!line.trim() || !line.startsWith('data: ')) return false;
+              const jsonStr = line.slice(6).trim();
+              if (!jsonStr) return false;
+              try {
+                const data = JSON.parse(jsonStr);
+                if (data.type === 'chunk' && data.content !== undefined) {
+                  fullResponse = data.content;
+                  setStreamingContent(fullResponse);
+                } else if (data.type === 'follow_up_links' && data.links) {
+                  lastFollowUpLinks = data.links;
+                } else if (data.type === 'tool_result' && data.success) {
+                  applyChatToolNotifications(
+                    [
+                      {
+                        tool_name: String(data.tool_name ?? ''),
+                        tool_args: (data.tool_args as Record<string, unknown>) ?? {},
+                        success: true,
+                      },
+                    ],
+                    showToolToast,
+                  );
+                } else if (data.type === 'done') {
+                  return true; // signal caller to finalize
+                } else if (data.type === 'error') {
+                  throw new Error(data.error || 'Streaming error');
+                }
+              } catch (parseErr) {
+                if (jsonStr !== '[DONE]' && !jsonStr.startsWith(':')) {
+                  // ignore malformed lines
+                }
+              }
+              return false;
+            };
+
           try {
             while (true) {
               const { done, value } = await reader.read();
-              if (done) break;
+              if (done) {
+                // Flush any bytes still held inside the TextDecoder (iOS can leave
+                // incomplete multibyte sequences buffered until the stream closes).
+                buffer += decoder.decode();
+                break;
+              }
               buffer += decoder.decode(value, { stream: true });
               const parts = buffer.split('\n\n');
               buffer = parts.pop() || '';
 
               for (const line of parts) {
-                if (!line.trim() || !line.startsWith('data: ')) continue;
-                const jsonStr = line.slice(6).trim();
-                if (!jsonStr) continue;
-                try {
-                  const data = JSON.parse(jsonStr);
-
-                  if (data.type === 'chunk' && data.content !== undefined) {
-                    fullResponse = data.content;
-                    setStreamingContent(fullResponse);
-                  } else if (data.type === 'follow_up_links' && data.links) {
-                    lastFollowUpLinks = data.links;
-                  } else if (data.type === 'tool_result' && data.success) {
-                    applyChatToolNotifications(
-                      [
-                        {
-                          tool_name: String(data.tool_name ?? ''),
-                          tool_args: (data.tool_args as Record<string, unknown>) ?? {},
-                          success: true,
-                        },
-                      ],
-                      showToolToast,
-                    );
-                  } else if (data.type === 'done') {
-                    const reply = normalizeMarkdown(fullResponse) || ASSISTANT_EMPTY_FALLBACK;
-                    setMessages((prev) => {
-                      const next = [...prev];
-                      const last = next[next.length - 1];
-                      if (last?.role === 'assistant') {
-                        next[next.length - 1] = {
-                          ...last,
-                          content: reply,
-                          follow_up_links: lastFollowUpLinks ?? undefined,
-                        };
-                      }
-                      return next;
-                    });
-                    setStreamingContent('');
-                    setSending(false);
-                    return;
-                  } else if (data.type === 'error') {
-                    throw new Error(data.error || 'Streaming error');
-                  }
-                } catch (parseErr) {
-                  if (jsonStr !== '[DONE]' && !jsonStr.startsWith(':')) {
-                    // ignore malformed lines
-                  }
+                const isDone = processSSELine(line);
+                if (isDone) {
+                  const reply = normalizeMarkdown(fullResponse) || ASSISTANT_EMPTY_FALLBACK;
+                  setMessages((prev) => {
+                    const next = [...prev];
+                    const last = next[next.length - 1];
+                    if (last?.role === 'assistant') {
+                      next[next.length - 1] = {
+                        ...last,
+                        content: reply,
+                        follow_up_links: lastFollowUpLinks ?? undefined,
+                      };
+                    }
+                    return next;
+                  });
+                  setStreamingContent('');
+                  setSending(false);
+                  return;
                 }
+              }
+            }
+
+            // Process any remaining bytes in the buffer that didn't end with \n\n.
+            // On iOS the network stack may close the TCP connection before the server
+            // flushes the final \n\n, leaving the last SSE event (often the 'done'
+            // event or the final chunk) stranded in the buffer.
+            if (buffer.trim()) {
+              for (const line of buffer.split('\n')) {
+                processSSELine(line);
               }
             }
 
@@ -725,7 +752,7 @@ export function ChatThreadScreen() {
                   <Ionicons name="chatbubble-ellipses" size={36} color={CHAT.emptyIcon} />
                 </View>
                 <Text style={styles.emptyText}>Start the conversation</Text>
-                <Text style={styles.emptySubtext}>Say hi to Lisa—she's here to listen and help.</Text>
+                <Text style={styles.emptySubtext}>Say hi to Lisa-she's here to listen and help.</Text>
               </View>
             }
             ListFooterComponent={
@@ -815,9 +842,16 @@ export function ChatThreadScreen() {
           />
         </StaggeredZoomIn>
 
-        {/* Input area — now INSIDE KAV so it moves with the keyboard */}
+        {/* Input area - now INSIDE KAV so it moves with the keyboard */}
         <View>
-          <Text style={styles.chatDisclaimer}>MenoLisa is for informational purposes only and is not a substitute for professional medical advice, diagnosis, or treatment. Always consult a qualified healthcare provider.</Text>
+          <Text style={styles.chatDisclaimer}>
+            AI responses are generated by <Text style={styles.chatDisclaimerLink} onPress={() => Linking.openURL('https://openai.com/policies/privacy-policy')} accessibilityRole="link">OpenAI</Text> and are for informational purposes only - not medical advice. Sources:{' '}
+            <Text style={styles.chatDisclaimerLink} onPress={() => Linking.openURL('https://www.nhs.uk/conditions/menopause/')} accessibilityRole="link">NHS</Text>
+            {', '}
+            <Text style={styles.chatDisclaimerLink} onPress={() => Linking.openURL('https://www.mayoclinic.org/diseases-conditions/menopause/symptoms-causes/syc-20353397')} accessibilityRole="link">Mayo Clinic</Text>
+            {', '}
+            <Text style={styles.chatDisclaimerLink} onPress={() => Linking.openURL('https://menopause.org')} accessibilityRole="link">The Menopause Society</Text>
+          </Text>
           <View style={styles.inputRow}>
             <View style={styles.composerContainer}>
               <TextInput
@@ -825,7 +859,7 @@ export function ChatThreadScreen() {
                   styles.input,
                   {
                     // ──────────────────────────────────────
-                    // FIX 3: Simplified height — let the
+                    // FIX 3: Simplified height - let the
                     // platform's contentSize be the source
                     // of truth, clamped to min/max.
                     // ──────────────────────────────────────
@@ -848,7 +882,7 @@ export function ChatThreadScreen() {
                   });
                 }}
                 // ──────────────────────────────────────────
-                // FIX 3: Use contentSize.height directly —
+                // FIX 3: Use contentSize.height directly -
                 // iOS already includes internal padding, so
                 // adding extra padding caused the input to
                 // grow taller every keystroke.
@@ -1131,6 +1165,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: spacing.md,
     paddingTop: spacing.xs,
+  },
+  chatDisclaimerLink: {
+    color: colors.primary,
+    textDecorationLine: 'underline',
   },
   inputRow: {
     flexDirection: 'row',

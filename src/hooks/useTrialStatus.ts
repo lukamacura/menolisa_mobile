@@ -7,6 +7,9 @@ const MS = { DAY: 86_400_000 };
 /** account_status from user_trials: paid = subscriber, expired, trial, etc. */
 export type AccountStatus = 'paid' | 'expired' | 'trial' | string | null;
 
+/** Which provider manages the active subscription. null = trial / no subscription. */
+export type SubscriptionProvider = 'apple' | 'stripe' | 'google' | null;
+
 export type TrialStatus = {
   expired: boolean;
   loading: boolean;
@@ -19,6 +22,8 @@ export type TrialStatus = {
   accountStatus: AccountStatus;
   /** True when subscription is set to cancel (show "Access until" not "Renews") */
   subscriptionCanceled: boolean;
+  /** Which provider manages this subscription (apple = manage in iOS Settings, stripe = manage on web). */
+  provider: SubscriptionProvider;
   /** Call to refetch trial/subscription state (e.g. after checkout success) */
   refetch: () => Promise<void>;
 };
@@ -32,25 +37,27 @@ export function useTrialStatus(): TrialStatus {
     end: null,
     accountStatus: null,
     subscriptionCanceled: false,
+    provider: null,
   });
 
   const fetchTrial = useCallback(async (userId: string) => {
     try {
       const { data, error } = await supabase
         .from('user_trials')
-        .select('trial_start, trial_end, trial_days, account_status, subscription_ends_at, subscription_canceled')
+        .select('trial_start, trial_end, trial_days, account_status, subscription_ends_at, subscription_canceled, provider')
         .eq('user_id', userId)
         .single();
 
       if (error) {
         if (error.code === 'PGRST116') {
-          return { expired: false, daysLeft: 0, end: null, accountStatus: null, subscriptionCanceled: false };
+          return { expired: false, daysLeft: 0, end: null, accountStatus: null, subscriptionCanceled: false, provider: null };
         }
-        return { expired: false, daysLeft: 0, end: null, accountStatus: null, subscriptionCanceled: false };
+        return { expired: false, daysLeft: 0, end: null, accountStatus: null, subscriptionCanceled: false, provider: null };
       }
 
       const accountStatus = (data?.account_status as AccountStatus) ?? null;
       const subscriptionCanceled = !!data?.subscription_canceled;
+      const provider = (data?.provider as SubscriptionProvider) ?? null;
 
       if (accountStatus === 'paid') {
         const subEnd = data?.subscription_ends_at ? new Date(data.subscription_ends_at).getTime() : null;
@@ -58,7 +65,7 @@ export function useTrialStatus(): TrialStatus {
         const expired = data?.account_status === 'expired' || (subEnd != null && Date.now() >= subEnd);
         const daysLeft = expired ? 0 : Math.max(0, Math.ceil((endMs - Date.now()) / MS.DAY));
         const end = new Date(endMs);
-        return { expired, daysLeft, end, accountStatus, subscriptionCanceled };
+        return { expired, daysLeft, end, accountStatus, subscriptionCanceled, provider };
       }
 
       const trialDays = data?.trial_days ?? 3;
@@ -70,9 +77,9 @@ export function useTrialStatus(): TrialStatus {
         data?.account_status === 'expired' || Date.now() >= endMs;
       const daysLeft = expired ? 0 : Math.max(0, Math.ceil((endMs - Date.now()) / MS.DAY));
       const end = new Date(endMs);
-      return { expired, daysLeft, end, accountStatus, subscriptionCanceled: false };
+      return { expired, daysLeft, end, accountStatus, subscriptionCanceled: false, provider };
     } catch {
-      return { expired: false, daysLeft: 0, end: null, accountStatus: null, subscriptionCanceled: false };
+      return { expired: false, daysLeft: 0, end: null, accountStatus: null, subscriptionCanceled: false, provider: null };
     }
   }, []);
 
@@ -84,11 +91,13 @@ export function useTrialStatus(): TrialStatus {
         const { data } = await supabase.auth.getUser();
         const userId = data.user?.id;
         if (!userId) {
-          if (mounted) setStatus({ expired: false, loading: false, error: null, daysLeft: 0, end: null, accountStatus: null, subscriptionCanceled: false });
+          if (mounted) setStatus({ expired: false, loading: false, error: null, daysLeft: 0, end: null, accountStatus: null, subscriptionCanceled: false, provider: null });
           return;
         }
         let result = await fetchTrial(userId);
-        if (result.accountStatus === 'paid') {
+        // Only sync from Stripe if this is a Stripe-managed subscription.
+        // Apple subscriptions reconcile via Server Notifications V2, not Stripe.
+        if (result.accountStatus === 'paid' && result.provider !== 'apple') {
           try {
             await apiFetchWithAuth('/api/stripe/sync-subscription', { method: 'POST' });
             result = await fetchTrial(userId);
@@ -96,7 +105,7 @@ export function useTrialStatus(): TrialStatus {
             // ignore sync errors
           }
         }
-        if (mounted) setStatus({ expired: result.expired, loading: false, error: null, daysLeft: result.daysLeft, end: result.end, accountStatus: result.accountStatus, subscriptionCanceled: result.subscriptionCanceled });
+        if (mounted) setStatus({ expired: result.expired, loading: false, error: null, daysLeft: result.daysLeft, end: result.end, accountStatus: result.accountStatus, subscriptionCanceled: result.subscriptionCanceled, provider: result.provider });
       } catch (e) {
         if (mounted) {
           setStatus({
@@ -107,6 +116,7 @@ export function useTrialStatus(): TrialStatus {
             end: null,
             accountStatus: null,
             subscriptionCanceled: false,
+            provider: null,
           });
         }
       }
@@ -124,7 +134,7 @@ export function useTrialStatus(): TrialStatus {
       if (!userId) return;
       setStatus((s) => ({ ...s, loading: true }));
       let result = await fetchTrial(userId);
-      if (result.accountStatus === 'paid') {
+      if (result.accountStatus === 'paid' && result.provider !== 'apple') {
         try {
           await apiFetchWithAuth('/api/stripe/sync-subscription', { method: 'POST' });
           result = await fetchTrial(userId);
@@ -132,7 +142,7 @@ export function useTrialStatus(): TrialStatus {
           // ignore sync errors
         }
       }
-      setStatus({ expired: result.expired, loading: false, error: null, daysLeft: result.daysLeft, end: result.end, accountStatus: result.accountStatus, subscriptionCanceled: result.subscriptionCanceled });
+      setStatus({ expired: result.expired, loading: false, error: null, daysLeft: result.daysLeft, end: result.end, accountStatus: result.accountStatus, subscriptionCanceled: result.subscriptionCanceled, provider: result.provider });
     } catch (e) {
       setStatus((s) => ({
         ...s,

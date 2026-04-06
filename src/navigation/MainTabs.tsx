@@ -12,7 +12,6 @@ import { colors, typography } from '../theme/tokens';
 import { DashboardScreen } from '../screens/home/DashboardScreen';
 import { SymptomsScreen } from '../screens/home/SymptomsScreen';
 import { SymptomLogsScreen } from '../screens/home/SymptomLogsScreen';
-import { HealthSummaryReportScreen } from '../screens/home/HealthSummaryReportScreen';
 import { ChatListScreen } from '../screens/chat/ChatListScreen';
 import { ChatThreadScreen } from '../screens/chat/ChatThreadScreen';
 import { NotificationsScreen } from '../screens/notifications/NotificationsScreen';
@@ -48,18 +47,6 @@ function HomeStackScreen() {
         options={{
           headerShown: true,
           headerTitle: 'Symptom history',
-          headerBackTitle: 'Back',
-          headerTintColor: colors.primary,
-          headerStyle: { backgroundColor: colors.background },
-          headerShadowVisible: false,
-        }}
-      />
-      <HomeStack.Screen
-        name="HealthSummaryReport"
-        component={HealthSummaryReportScreen}
-        options={{
-          headerShown: true,
-          headerTitle: 'Symptom summary',
           headerBackTitle: 'Back',
           headerTintColor: colors.primary,
           headerStyle: { backgroundColor: colors.background },

@@ -119,9 +119,10 @@ export function InviteFriendsScreen() {
     if (!link) return;
     const c = INVITE_COPY[inviteCopyState];
     Share.share({
+      // Do not pass `url` separately — on iOS the share sheet appends it after `message`,
+      // causing the link to appear twice. Embed the link directly in the message instead.
       message: `${c.shareMessage}\n${link}`,
       title: 'Try MenoLisa',
-      url: link,
     }).catch((err) => {
       if (err?.message?.includes('cancel')) return;
       copyLink();

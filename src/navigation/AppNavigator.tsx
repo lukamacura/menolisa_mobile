@@ -34,7 +34,7 @@ function LoadingScreen() {
   );
 }
 
-const DISCLAIMER_KEY = '@menolisa:disclaimer_accepted';
+const DISCLAIMER_KEY = '@menolisa:consent_v2_accepted';
 
 export function AppNavigator() {
   const { user, loading } = useAuth();
@@ -60,7 +60,7 @@ export function AppNavigator() {
     if (Platform.OS === 'android') {
       Notifications.setNotificationChannelAsync('default', {
         name: 'Default',
-        importance: Notifications.AndroidImportance.DEFAULT,
+        importance: Notifications.AndroidImportance.HIGH,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#ff8da1',
       }).catch((err) => logger.warn('Failed to set notification channel', err));

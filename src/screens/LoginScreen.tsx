@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
   Image,
   Linking,
 } from 'react-native';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -38,6 +39,12 @@ export function LoginScreen() {
   const [error, setError] = useState<string | null>(null);
   const [errorType, setErrorType] = useState<ErrorType>(null);
   const [loading, setLoading] = useState(false);
+  const [appleLoading, setAppleLoading] = useState(false);
+  const [isAppleAvailable, setIsAppleAvailable] = useState(false);
+
+  useEffect(() => {
+    AppleAuthentication.isAvailableAsync().then(setIsAppleAvailable);
+  }, []);
 
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   const passwordValid = password.length >= 8;
@@ -104,6 +111,34 @@ export function LoginScreen() {
       setLoading(false);
     }
   }, [canSubmit, email, password]);
+
+  const handleAppleSignIn = useCallback(async () => {
+    setError(null);
+    setErrorType(null);
+    setAppleLoading(true);
+    try {
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+      if (!credential.identityToken) throw new Error('No identity token received');
+      const { error: authError } = await supabase.auth.signInWithIdToken({
+        provider: 'apple',
+        token: credential.identityToken,
+      });
+      if (authError) throw authError;
+      // Navigation handled automatically by auth listener
+    } catch (err: any) {
+      if (err.code === 'ERR_REQUEST_CANCELED') return;
+      logger.error('Apple sign-in error:', err);
+      setError('Apple sign-in failed. Please try again.');
+      setErrorType('unknown');
+    } finally {
+      setAppleLoading(false);
+    }
+  }, []);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -225,6 +260,28 @@ export function LoginScreen() {
                 )}
               </View>
             </TouchableOpacity>
+
+            {/* Apple Sign In */}
+            {Platform.OS === 'ios' && isAppleAvailable && (
+              <>
+                <View style={styles.dividerRow}>
+                  <View style={styles.divider} />
+                  <Text style={styles.dividerText}>or</Text>
+                  <View style={styles.divider} />
+                </View>
+                {appleLoading ? (
+                  <ActivityIndicator color={colors.text} style={styles.appleLoader} />
+                ) : (
+                  <AppleAuthentication.AppleAuthenticationButton
+                    buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+                    buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+                    cornerRadius={radii.lg}
+                    style={styles.appleButton}
+                    onPress={handleAppleSignIn}
+                  />
+                )}
+              </>
+            )}
 
             {/* Error Display */}
             {error && (
@@ -498,5 +555,27 @@ const styles = StyleSheet.create({
     fontFamily: typography.family.semibold,
     color: colors.primary,
     textDecorationLine: 'underline',
+  },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  divider: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.border,
+  },
+  dividerText: {
+    fontSize: 13,
+    fontFamily: typography.family.regular,
+    color: colors.textMuted,
+  },
+  appleButton: {
+    height: minTouchTarget,
+    width: '100%',
+  },
+  appleLoader: {
+    height: minTouchTarget,
   },
 });

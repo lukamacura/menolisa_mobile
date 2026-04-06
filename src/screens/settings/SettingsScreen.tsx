@@ -9,6 +9,7 @@ import {
   Alert,
   ScrollView,
   Platform,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,6 +21,7 @@ import { deleteAccount, getWebAppUrl, openAccountBillingEntry } from '../../lib/
 import { useTrialStatus } from '../../hooks/useTrialStatus';
 import { colors, spacing, radii, typography } from '../../theme/tokens';
 import { StaggeredZoomIn, useReduceMotion } from '../../components/StaggeredZoomIn';
+import { AccessEndedView } from '../../components/AccessEndedView';
 
 type SettingsStackParamList = {
   Settings: undefined;
@@ -35,6 +37,7 @@ export function SettingsScreen() {
   const trialStatus = useTrialStatus();
   const reduceMotion = useReduceMotion();
   const [actionLoading, setActionLoading] = useState<'delete' | null>(null);
+  const [showIapPaywall, setShowIapPaywall] = useState(false);
 
   useEffect(() => {
     if (refetchTrialRef) refetchTrialRef.current = trialStatus.refetch;
@@ -91,6 +94,10 @@ export function SettingsScreen() {
   }, [runDeleteAccount]);
 
   const handleOpenAccountWeb = useCallback(async () => {
+    if (Platform.OS === 'ios') {
+      setShowIapPaywall(true);
+      return;
+    }
     try {
       await openAccountBillingEntry();
     } catch (e) {
@@ -160,11 +167,15 @@ export function SettingsScreen() {
                 </Text>
                 <Text style={styles.manageAccountRowSubtext}>
                   {Platform.OS === 'ios'
-                    ? 'Open App Store subscription settings'
+                    ? 'View plans and subscribe'
                     : 'Plan and subscription options on the website'}
                 </Text>
               </View>
-              <Ionicons name="open-outline" size={18} color={colors.success} />
+              <Ionicons
+                name={Platform.OS === 'ios' ? 'chevron-forward' : 'open-outline'}
+                size={18}
+                color={colors.success}
+              />
             </TouchableOpacity>
           </StaggeredZoomIn>
         </View>
@@ -254,6 +265,18 @@ export function SettingsScreen() {
           </Text>
         </StaggeredZoomIn>
       </ScrollView>
+      {Platform.OS === 'ios' && (
+        <Modal visible={showIapPaywall} animationType="slide" presentationStyle="fullScreen">
+          <AccessEndedView
+            variant="fullScreen"
+            onSkip={() => setShowIapPaywall(false)}
+            onSubscriptionSuccess={() => {
+              setShowIapPaywall(false);
+              trialStatus.refetch().catch(() => {});
+            }}
+          />
+        </Modal>
+      )}
     </SafeAreaView>
   );
 }

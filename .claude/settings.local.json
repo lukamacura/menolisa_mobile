@@ -8,7 +8,24 @@
       "mcp__claude_ai_Supabase__list_projects",
       "mcp__claude_ai_Supabase__list_tables",
       "mcp__claude_ai_Supabase__apply_migration",
-      "mcp__claude_ai_Supabase__execute_sql"
+      "mcp__claude_ai_Supabase__execute_sql",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(claude plugin:*)",
+      "Bash(cd \"D:\\\\MUNJA\\\\LUKA\\\\menolisa\\\\applications\\\\mobile app\\\\src\" && for hook in useDailyMood useRegisterPushToken useTrialStatus; do echo \"=== $hook ===\" && grep -r \"from.*hooks/$hook\\\\|import.*$hook\" . --include=\"*.tsx\" --include=\"*.ts\" 2>/dev/null | grep -v \"^./hooks/\"; done)",
+      "Bash(cd \"D:/MUNJA/LUKA/menolisa/applications/mobile app\" && npm install expo-apple-authentication 2>&1 | tail -5)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"D:/MUNJA/LUKA/menolisa/applications/mobile app\" && npx tsc --noEmit --pretty false 2>&1 | grep -E \"error TS\" | head -20"
+          }
+        ]
+      }
     ]
   }
 }
