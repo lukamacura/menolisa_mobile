@@ -13,7 +13,6 @@ import { useAuth } from '../context/AuthContext';
 import { RefetchTrialContext } from '../context/RefetchTrialContext';
 import { openAccountBillingEntry } from '../lib/api';
 import { logger } from '../lib/logger';
-import { syncIosReceiptStatus } from '../lib/iap';
 import { LandingScreenWithButton } from '../screens/LandingScreen';
 import { RegisterScreen } from '../screens/RegisterScreen';
 import { LoginScreen } from '../screens/LoginScreen';
@@ -67,13 +66,12 @@ export function AppNavigator() {
     }
   }, []);
 
-  // iOS launch sync: re-check local App Store purchases and push receipt to backend.
-  useEffect(() => {
-    if (Platform.OS !== 'ios' || !user) return;
-    syncIosReceiptStatus()
-      .then(() => refetchTrialRef.current?.().catch(() => {}))
-      .catch(() => {});
-  }, [user]);
+  // NOTE: We intentionally do NOT call any StoreKit / receipt APIs on login.
+  // getReceiptIOS / requestReceiptRefreshIOS prompt for the Apple ID password
+  // when the user has no local receipt (fresh install, sandbox tester, never
+  // purchased). Entitlement state is reconciled server-side via Apple Server
+  // Notifications V2 (appAccountToken → user_id), so the client should only
+  // touch StoreKit when the user opens the paywall or taps Restore.
 
   // Show medical disclaimer on first launch
   useEffect(() => {

@@ -100,26 +100,33 @@ export function AccessEndedView({
   const destinationLabel = getBillingDestinationLabel();
   const isIosIap = isIosIapEnabled();
 
+  // We deliberately do NOT init StoreKit on mount. Touching IAP APIs
+  // (initConnection / getSubscriptions / receipts) on a sandbox tester or
+  // a user who has never purchased can trigger an Apple ID password popup.
+  // Init lazily on the first user action (Subscribe or Restore).
+  // Returns the loaded subscriptions so callers don't read stale React state.
+  const ensureIapReady = React.useCallback(async (): Promise<ProductCommon[]> => {
+    if (!isIosIap) return [];
+    if (subscriptions.length > 0) return subscriptions;
+    try {
+      setLoadingPlans(true);
+      await initIosIap();
+      const loaded = await loadIosSubscriptions();
+      setSubscriptions(loaded);
+      return loaded;
+    } catch {
+      setSubscriptions([]);
+      return [];
+    } finally {
+      setLoadingPlans(false);
+    }
+  }, [isIosIap, subscriptions]);
+
   React.useEffect(() => {
-    if (!isIosIap) return;
-    let active = true;
-    (async () => {
-      try {
-        setLoadingPlans(true);
-        await initIosIap();
-        const loaded = await loadIosSubscriptions();
-        if (active) setSubscriptions(loaded);
-      } catch {
-        if (active) setSubscriptions([]);
-      } finally {
-        if (active) setLoadingPlans(false);
-      }
-    })();
     return () => {
-      active = false;
       closeIosIap().catch(() => {});
     };
-  }, [isIosIap]);
+  }, []);
 
   const handlePress = () => {
     if (onPress) {
@@ -139,12 +146,13 @@ export function AccessEndedView({
       handlePress();
       return;
     }
-    if (subscriptions.length === 0) {
-      Alert.alert('Purchase unavailable', 'Could not load subscription options from the App Store. Please check your connection and try again.');
-      return;
-    }
     try {
       setPurchaseBusy(true);
+      const loadedSubs = await ensureIapReady();
+      if (loadedSubs.length === 0) {
+        Alert.alert('Purchase unavailable', 'Could not load subscription options from the App Store. Please check your connection and try again.');
+        return;
+      }
       const result = await buyIosSubscription(selectedPlan, user?.id);
       if (result?.active) onSubscriptionSuccess?.();
     } catch (err: unknown) {
@@ -171,6 +179,7 @@ export function AccessEndedView({
     if (!isIosIap) return;
     try {
       setRestoreBusy(true);
+      await ensureIapReady();
       const result = await restoreIosPurchases();
       if (result?.active) onSubscriptionSuccess?.();
     } finally {

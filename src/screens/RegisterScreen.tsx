@@ -21,6 +21,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as AppleAuthentication from 'expo-apple-authentication';
+import * as Crypto from 'expo-crypto';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../lib/supabase';
@@ -260,19 +261,15 @@ export function RegisterScreen() {
   const { user: authUser } = useAuth();
   const [referralCode, setReferralCode] = useState<string | null>(null);
   const [isAppleAvailable, setIsAppleAvailable] = useState(false);
+  // Cold-start recovery: if the user already has a temp_password session when this screen mounts,
+  // show a spinner and silently clear the flag so AppNavigator routes them to Main instead.
+  const [restoringSession, setRestoringSession] = useState(
+    () => !!authUser?.user_metadata?.temp_password
+  );
 
   useEffect(() => {
     AppleAuthentication.isAvailableAsync().then(setIsAppleAvailable);
   }, []);
-
-  // When app opens with session that has temp_password (e.g. reopened mid-flow), show set-password phase.
-  // Only move to email phase when still on quiz so we don't skip loading/results after gate submit.
-  useEffect(() => {
-    if (!authUser?.user_metadata?.temp_password || !authUser?.email) return;
-    setPhase((p) => (p === 'quiz' ? 'email' : p));
-    setEmail(authUser.email);
-    setSignedUpAtGate(true);
-  }, [authUser?.id, authUser?.user_metadata?.temp_password, authUser?.email]);
 
   useEffect(() => {
     const params = route.params as { ref?: string } | undefined;
@@ -317,6 +314,16 @@ export function RegisterScreen() {
   const [error, setError] = useState<string | null>(null);
   const [userExists, setUserExists] = useState(false);
   const [signedUpAtGate, setSignedUpAtGate] = useState(false);
+
+  // Cold-start recovery: user has a temp_password session but isn't mid-quiz-flow.
+  // Silently clear the flag so they land on the dashboard without any password prompt.
+  useEffect(() => {
+    if (!authUser?.user_metadata?.temp_password || !authUser?.email) return;
+    if (signedUpAtGate) return; // mid-quiz-flow: don't interfere
+    supabase.auth.updateUser({ data: { temp_password: false } }).catch(() => {
+      setRestoringSession(false); // if API fails, fall through to quiz welcome
+    });
+  }, [authUser?.id, signedUpAtGate]);
 
   // Loading phase (after gate): ~3s then transition to results (match web)
   const LOADING_PHASE_DURATION_MS = 3000;
@@ -525,16 +532,23 @@ export function RegisterScreen() {
     setError(null);
     setLoading(true);
     try {
+      const rawNonce = Crypto.randomUUID();
+      const hashedNonce = await Crypto.digestStringAsync(
+        Crypto.CryptoDigestAlgorithm.SHA256,
+        rawNonce
+      );
       const credential = await AppleAuthentication.signInAsync({
         requestedScopes: [
           AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
           AppleAuthentication.AppleAuthenticationScope.EMAIL,
         ],
+        nonce: hashedNonce,
       });
       if (!credential.identityToken) throw new Error('No identity token received');
       const { data, error: authError } = await supabase.auth.signInWithIdToken({
         provider: 'apple',
         token: credential.identityToken,
+        nonce: rawNonce,
       });
       if (authError) throw authError;
       if (!data.user) throw new Error('Apple sign-in succeeded but no user was returned');
@@ -1660,6 +1674,14 @@ export function RegisterScreen() {
     );
   };
 
+  if (restoringSession) {
+    return (
+      <View style={styles.restoringContainer}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
   if (phase === 'welcome') {
     return renderWelcome();
   }
@@ -2612,6 +2634,12 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     textAlign: 'center',
     lineHeight: 22,
+  },
+  restoringContainer: {
+    flex: 1,
+    backgroundColor: colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   // Welcome screen
   welcomeContainer: {

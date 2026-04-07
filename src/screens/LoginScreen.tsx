@@ -10,21 +10,18 @@ import {
   KeyboardAvoidingView,
   Platform,
   Image,
-  Linking,
 } from 'react-native';
 import * as AppleAuthentication from 'expo-apple-authentication';
+import * as Crypto from 'expo-crypto';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../lib/supabase';
-import { getWebAppUrl } from '../lib/api';
 import { logger } from '../lib/logger';
 import { colors, spacing, radii, typography, shadows, minTouchTarget, landingGradient } from '../theme/tokens';
 import { StaggeredZoomIn, useReduceMotion } from '../components/StaggeredZoomIn';
-
-const FORGOT_PASSWORD_URL = getWebAppUrl('/forgot-password');
 
 type NavigationProp = NativeStackNavigationProp<any>;
 
@@ -41,13 +38,15 @@ export function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [appleLoading, setAppleLoading] = useState(false);
   const [isAppleAvailable, setIsAppleAvailable] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
 
   useEffect(() => {
     AppleAuthentication.isAvailableAsync().then(setIsAppleAvailable);
   }, []);
 
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-  const passwordValid = password.length >= 8;
+  const passwordValid = password.length > 0;
   const canSubmit = emailValid && passwordValid && !loading;
 
   const handleLogin = useCallback(async () => {
@@ -112,21 +111,42 @@ export function LoginScreen() {
     }
   }, [canSubmit, email, password]);
 
+  const handleForgotPassword = useCallback(async () => {
+    if (!emailValid) return;
+    setResetLoading(true);
+    setResetSent(false);
+    try {
+      await supabase.auth.resetPasswordForEmail(email.toLowerCase().trim());
+      setResetSent(true);
+    } catch (err: any) {
+      logger.error('Reset password error:', err);
+    } finally {
+      setResetLoading(false);
+    }
+  }, [email, emailValid]);
+
   const handleAppleSignIn = useCallback(async () => {
     setError(null);
     setErrorType(null);
     setAppleLoading(true);
     try {
+      const rawNonce = Crypto.randomUUID();
+      const hashedNonce = await Crypto.digestStringAsync(
+        Crypto.CryptoDigestAlgorithm.SHA256,
+        rawNonce
+      );
       const credential = await AppleAuthentication.signInAsync({
         requestedScopes: [
           AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
           AppleAuthentication.AppleAuthenticationScope.EMAIL,
         ],
+        nonce: hashedNonce,
       });
       if (!credential.identityToken) throw new Error('No identity token received');
       const { error: authError } = await supabase.auth.signInWithIdToken({
         provider: 'apple',
         token: credential.identityToken,
+        nonce: rawNonce,
       });
       if (authError) throw authError;
       // Navigation handled automatically by auth listener
@@ -203,8 +223,8 @@ export function LoginScreen() {
             <View style={styles.inputGroup}>
               <View style={styles.passwordLabelRow}>
                 <Text style={styles.label}>Password</Text>
-                <TouchableOpacity activeOpacity={1} onPress={() => Linking.openURL(FORGOT_PASSWORD_URL)}>
-                  <Text style={styles.forgotLink}>Forgot password?</Text>
+                <TouchableOpacity activeOpacity={0.7} onPress={handleForgotPassword} disabled={resetLoading}>
+                  <Text style={styles.forgotLink}>{resetLoading ? 'Sending…' : 'Forgot password?'}</Text>
                 </TouchableOpacity>
               </View>
               <View style={styles.passwordContainer}>
@@ -233,8 +253,11 @@ export function LoginScreen() {
                   />
                 </TouchableOpacity>
               </View>
-              {password.length > 0 && password.length < 8 && (
-                <Text style={styles.helperText}>Password must be at least 8 characters</Text>
+              {resetSent && (
+                <Text style={styles.helperTextSuccess}>Reset link sent — check your email.</Text>
+              )}
+              {!resetSent && !emailValid && email.length > 0 && (
+                <Text style={styles.helperText}>Enter your email above to reset your password.</Text>
               )}
             </View>
 
@@ -449,6 +472,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: typography.family.regular,
     color: colors.textMuted,
+    marginTop: spacing.xs,
+  },
+  helperTextSuccess: {
+    fontSize: 12,
+    fontFamily: typography.family.medium,
+    color: colors.success,
     marginTop: spacing.xs,
   },
   submitButton: {

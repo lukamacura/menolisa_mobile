@@ -12,7 +12,8 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(claude plugin:*)",
       "Bash(cd \"D:\\\\MUNJA\\\\LUKA\\\\menolisa\\\\applications\\\\mobile app\\\\src\" && for hook in useDailyMood useRegisterPushToken useTrialStatus; do echo \"=== $hook ===\" && grep -r \"from.*hooks/$hook\\\\|import.*$hook\" . --include=\"*.tsx\" --include=\"*.ts\" 2>/dev/null | grep -v \"^./hooks/\"; done)",
-      "Bash(cd \"D:/MUNJA/LUKA/menolisa/applications/mobile app\" && npm install expo-apple-authentication 2>&1 | tail -5)"
+      "Bash(cd \"D:/MUNJA/LUKA/menolisa/applications/mobile app\" && npm install expo-apple-authentication 2>&1 | tail -5)",
+      "Bash(node -e \"console.log\\(require\\('./package.json'\\).dependencies['expo-crypto']||'missing'\\)\")"
     ]
   },
   "hooks": {

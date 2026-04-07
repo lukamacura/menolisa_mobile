@@ -1,7 +1,6 @@
 import { apiFetchWithAuth } from './api';
 import { Platform } from 'react-native';
 import {
-  clearTransactionIOS,
   endConnection,
   getSubscriptions,
   finishTransaction,
@@ -72,8 +71,12 @@ export async function initIosIap(): Promise<void> {
   await initConnection();
   isConnected = true;
 
-  try { await clearTransactionIOS(); } catch {}
-
+  // NOTE: We deliberately do NOT call clearTransactionIOS() here.
+  // In sandbox (and occasionally in production), finishing leftover
+  // transactions can trigger an Apple ID password prompt because
+  // finishTransaction requires StoreKit auth. Unfinished transactions
+  // are handled inside the purchaseUpdatedListener instead, where the
+  // user is already in an active purchase flow they initiated.
 
   if (listenersReady) return;
   listenersReady = true;
@@ -199,11 +202,16 @@ export async function restoreIosPurchases(): Promise<IosIapVerifyReceiptResponse
     await initIosIap();
   }
   await restorePurchases();
-  // Restore can also be a race; retry receipt verification.
+  // Try the existing local receipt first — avoids requestReceiptRefreshIOS() which
+  // prompts for Apple ID even for users who have never purchased.
+  // Only fall back to the refresh+retry path if no local receipt exists.
+  const existing = await verifyFromCurrentReceipt();
+  if (existing !== null) return existing;
+  // No local receipt (new device / clean install) — must refresh to get one.
   try {
     return await verifyReceiptWithRetry();
   } catch {
-    return verifyFromCurrentReceipt();
+    return null;
   }
 }
 
