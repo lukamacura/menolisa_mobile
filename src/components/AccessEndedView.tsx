@@ -7,51 +7,36 @@ import {
   Image,
   Dimensions,
   ScrollView,
-  ActivityIndicator,
-  Alert,
 } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radii, typography, minTouchTarget, shadows } from '../theme/tokens';
 import { openAccountBillingEntry } from '../lib/api';
-import { useAuth } from '../context/AuthContext';
-import { getBillingDestinationLabel, resolveBillingRoute } from '../lib/billingCompliance';
-import {
-  buyIosSubscription,
-  IOS_SUBSCRIPTION_PRODUCTS,
-  type IosSubscriptionProductId,
-  initIosIap,
-  isIosIapEnabled,
-  loadIosSubscriptions,
-  restoreIosPurchases,
-  closeIosIap,
-} from '../lib/iap';
-import type { ProductCommon } from 'react-native-iap';
 
 const { width: WINDOW_WIDTH } = Dimensions.get('window');
 
 const COPY_EXPIRED = {
   heading: 'Your access has ended',
   subheading:
-    "Subscribe to keep using MenoLisa and continue saving your insights.",
+    'Manage your subscription on menolisa.com to continue using MenoLisa and keep your insights.',
 };
 
 const COPY_ENDING_SOON = {
   heading: 'Your free access ends soon',
   subheading:
-    "Subscribe now so you can keep using the app without losing your progress.",
+    'Manage your subscription on menolisa.com so you can keep using the app without losing your progress.',
 };
 
-const URGENCY_EXPIRED = 'Access ended. Subscribe to continue using the app.';
+const URGENCY_EXPIRED = 'Access ended. Continue on menolisa.com.';
 
 function getUrgencyEndingSoon(daysLeft: number): string {
-  if (daysLeft === 0) return 'Access ends tonight. Subscribe to continue.';
-  if (daysLeft === 1) return 'Access ends in 1 day. Subscribe to continue.';
-  return 'Access ends in 2 days. Subscribe to continue.';
+  if (daysLeft === 0) return 'Access ends tonight. Continue on menolisa.com.';
+  if (daysLeft === 1) return 'Access ends in 1 day. Continue on menolisa.com.';
+  return 'Access ends in 2 days. Continue on menolisa.com.';
 }
 
-const BUTTON_LABEL_CONTINUE = 'Subscribe';
-const BUTTON_LABEL_MANAGE = 'Manage subscription';
+const BUTTON_LABEL_FULL = 'Continue on menolisa.com';
+const BUTTON_LABEL_CARD = 'Manage on menolisa.com';
 const REMIND_LATER_LABEL = 'Remind me later';
 const SKIP_LABEL = 'Skip';
 
@@ -60,18 +45,12 @@ export type TrialPaywallState = 'expired' | 'ending_soon';
 
 type AccessEndedViewProps = {
   variant: Variant;
-  /** 'expired' = trial ended; 'ending_soon' = 0-2 days left. Default 'expired'. */
   trialState?: TrialPaywallState;
-  /** For trialState 'ending_soon': 0, 1, or 2 days left (used for urgency line). */
   daysLeft?: number;
   onPress?: () => void;
-  /** When provided (fullScreen only), shows "Remind me later"; on press dismisses paywall for this session. */
   onRemindLater?: () => void;
-  /** When provided, shows a small "Skip" link under the CTA that calls this to close the paywall. */
   onSkip?: () => void;
-  /** When true, skip entrance animation (accessibility / user preference). */
   reduceMotion?: boolean;
-  /** Optional callback when subscription becomes active (purchase/restore). */
   onSubscriptionSuccess?: () => void;
 };
 
@@ -83,50 +62,10 @@ export function AccessEndedView({
   onRemindLater,
   onSkip,
   reduceMotion = false,
-  onSubscriptionSuccess,
 }: AccessEndedViewProps) {
-  const { user } = useAuth();
-  const [subscriptions, setSubscriptions] = React.useState<ProductCommon[]>([]);
-  const monthlyId = IOS_SUBSCRIPTION_PRODUCTS[0];
-  const annualId = IOS_SUBSCRIPTION_PRODUCTS[1];
-  const [selectedPlan, setSelectedPlan] = React.useState<IosSubscriptionProductId>(annualId);
-  const [loadingPlans, setLoadingPlans] = React.useState(false);
-  const [purchaseBusy, setPurchaseBusy] = React.useState(false);
-  const [restoreBusy, setRestoreBusy] = React.useState(false);
   const copy = trialState === 'ending_soon' ? COPY_ENDING_SOON : COPY_EXPIRED;
   const urgencyLine =
     trialState === 'expired' ? URGENCY_EXPIRED : getUrgencyEndingSoon(daysLeft);
-  const billingRoute = resolveBillingRoute();
-  const destinationLabel = getBillingDestinationLabel();
-  const isIosIap = isIosIapEnabled();
-
-  // We deliberately do NOT init StoreKit on mount. Touching IAP APIs
-  // (initConnection / getSubscriptions / receipts) on a sandbox tester or
-  // a user who has never purchased can trigger an Apple ID password popup.
-  // Init lazily on the first user action (Subscribe or Restore).
-  // Returns the loaded subscriptions so callers don't read stale React state.
-  const ensureIapReady = React.useCallback(async (): Promise<ProductCommon[]> => {
-    if (!isIosIap) return [];
-    if (subscriptions.length > 0) return subscriptions;
-    try {
-      setLoadingPlans(true);
-      await initIosIap();
-      const loaded = await loadIosSubscriptions();
-      setSubscriptions(loaded);
-      return loaded;
-    } catch {
-      setSubscriptions([]);
-      return [];
-    } finally {
-      setLoadingPlans(false);
-    }
-  }, [isIosIap, subscriptions]);
-
-  React.useEffect(() => {
-    return () => {
-      closeIosIap().catch(() => {});
-    };
-  }, []);
 
   const handlePress = () => {
     if (onPress) {
@@ -136,58 +75,8 @@ export function AccessEndedView({
     }
   };
 
-  const getPlanPrice = (productId: IosSubscriptionProductId): string => {
-    const item = subscriptions.find((p) => p.id === productId);
-    return item?.displayPrice ?? (productId === monthlyId ? '$12.99' : '$79.99');
-  };
-
-  const handleSubscribe = async () => {
-    if (!isIosIap) {
-      handlePress();
-      return;
-    }
-    try {
-      setPurchaseBusy(true);
-      const loadedSubs = await ensureIapReady();
-      if (loadedSubs.length === 0) {
-        Alert.alert('Purchase unavailable', 'Could not load subscription options from the App Store. Please check your connection and try again.');
-        return;
-      }
-      const result = await buyIosSubscription(selectedPlan, user?.id);
-      if (result?.active) onSubscriptionSuccess?.();
-    } catch (err: unknown) {
-      const errObj = err as { message?: string; code?: string; productId?: string; error?: string; provider?: string };
-      // Server returns 409 { error: 'already_subscribed', provider: 'stripe' } when the
-      // user already has an active web (Stripe) subscription. Show a clear message.
-      if (errObj?.error === 'already_subscribed' && errObj?.provider === 'stripe') {
-        Alert.alert(
-          'You already have a subscription',
-          'You have an active subscription managed on our website. Manage it at menolisa.com.'
-        );
-      } else {
-        const parts = [errObj?.message || 'Unable to start purchase.'];
-        if (errObj?.code) parts.push(`Code: ${errObj.code}`);
-        if (errObj?.productId) parts.push(`Product: ${errObj.productId}`);
-        Alert.alert('Purchase unavailable', parts.join('\n'));
-      }
-    } finally {
-      setPurchaseBusy(false);
-    }
-  };
-
-  const handleRestore = async () => {
-    if (!isIosIap) return;
-    try {
-      setRestoreBusy(true);
-      await ensureIapReady();
-      const result = await restoreIosPurchases();
-      if (result?.active) onSubscriptionSuccess?.();
-    } finally {
-      setRestoreBusy(false);
-    }
-  };
-
   const isFullScreen = variant === 'fullScreen';
+  const buttonLabel = isFullScreen ? BUTTON_LABEL_FULL : BUTTON_LABEL_CARD;
 
   const content = (
     <>
@@ -211,52 +100,20 @@ export function AccessEndedView({
             {copy.subheading}
           </Text>
         </View>
-        {isIosIap && (
-          <View style={styles.pricingWrap}>
-            <Text style={styles.pricingSub}>Choose your plan:</Text>
-            {IOS_SUBSCRIPTION_PRODUCTS.map((productId) => {
-              const selected = selectedPlan === productId;
-              const isMonthly = productId === monthlyId;
-              const label = isMonthly ? 'Monthly' : 'Annual';
-              const hint = isMonthly ? 'Billed every month' : 'Best value - billed yearly';
-              return (
-                <TouchableOpacity
-                  key={productId}
-                  activeOpacity={0.85}
-                  style={[styles.pricingBox, selected && styles.pricingBoxSelected]}
-                  onPress={() => setSelectedPlan(productId)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Choose ${label} plan`}
-                >
-                  <View style={styles.pricingLeft}>
-                    <Text style={styles.pricingLabel}>{label}</Text>
-                    <Text style={styles.pricingHint}>{hint}</Text>
-                  </View>
-                  <Text style={styles.pricingAmount}>{getPlanPrice(productId)}</Text>
-                </TouchableOpacity>
-              );
-            })}
-            {loadingPlans && <Text style={styles.pricingSub}>Loading App Store pricing...</Text>}
-          </View>
-        )}
         <TouchableOpacity
           activeOpacity={0.8}
           style={isFullScreen ? styles.primaryButton : styles.cardButton}
-          onPress={isIosIap ? handleSubscribe : handlePress}
+          onPress={handlePress}
           accessibilityRole="button"
-          accessibilityLabel={isIosIap ? 'Subscribe' : isFullScreen ? BUTTON_LABEL_CONTINUE : BUTTON_LABEL_MANAGE}
+          accessibilityLabel={buttonLabel}
         >
-          {purchaseBusy ? (
-            <ActivityIndicator color={colors.background} />
-          ) : (
-            <Text
-              style={isFullScreen ? styles.primaryButtonText : styles.cardButtonText}
-              numberOfLines={1}
-            >
-              {isIosIap ? `Subscribe to ${selectedPlan === monthlyId ? 'Monthly' : 'Annual'}` : isFullScreen ? BUTTON_LABEL_CONTINUE : BUTTON_LABEL_MANAGE}
-            </Text>
-          )}
-          {isFullScreen && !purchaseBusy && (
+          <Text
+            style={isFullScreen ? styles.primaryButtonText : styles.cardButtonText}
+            numberOfLines={1}
+          >
+            {buttonLabel}
+          </Text>
+          {isFullScreen && (
             <Ionicons name="open-outline" size={18} color={colors.background} />
           )}
         </TouchableOpacity>
@@ -277,34 +134,6 @@ export function AccessEndedView({
         >
           {urgencyLine}
         </Text>
-        {!isIosIap && (
-          <View style={styles.pricingWrap}>
-            <View style={styles.upgradeExternalCard}>
-              <View style={styles.upgradeRequiredLabel}>
-                <Text style={styles.upgradeRequiredLabelText}>Upgrade required</Text>
-              </View>
-              <Text style={styles.upgradeExternalBody}>
-                {billingRoute === 'external_purchase'
-                  ? 'Complete your subscription on our secure website checkout.'
-                  : `Subscriptions are managed through ${destinationLabel}.`}
-              </Text>
-            </View>
-          </View>
-        )}
-        {isIosIap && (
-          <TouchableOpacity
-            activeOpacity={0.8}
-            style={styles.secondaryButton}
-            onPress={handleRestore}
-            accessibilityRole="button"
-            accessibilityLabel="Restore Purchases"
-            disabled={restoreBusy}
-          >
-            <Text style={styles.secondaryButtonText}>
-              {restoreBusy ? 'Restoring...' : 'Restore Purchases'}
-            </Text>
-          </TouchableOpacity>
-        )}
         {isFullScreen && onSkip == null && onRemindLater != null && (
           <TouchableOpacity
             activeOpacity={0.8}
@@ -482,87 +311,6 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     textAlign: 'center',
     marginTop: spacing.md,
-  },
-  pricingWrap: {
-    width: '100%',
-    marginTop: spacing.lg,
-  },
-  upgradeExternalCard: {
-    width: '100%',
-    flexDirection: 'column',
-    alignItems: 'stretch',
-    backgroundColor: colors.rowNavyBg,
-    borderWidth: 1,
-    borderColor: colors.borderStrong,
-    borderRadius: radii.md,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    marginBottom: spacing.sm,
-  },
-  upgradeRequiredLabel: {
-    alignSelf: 'flex-start',
-    marginBottom: spacing.sm,
-    backgroundColor: colors.dangerBg,
-    borderWidth: 1,
-    borderColor: colors.danger,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radii.pill,
-  },
-  upgradeRequiredLabelText: {
-    ...typography.presets.label,
-    color: colors.danger,
-    fontWeight: '700',
-  },
-  upgradeExternalBody: {
-    ...typography.presets.bodyMedium,
-    color: colors.text,
-    width: '100%',
-  },
-  pricingBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.rowNavyBg,
-    borderWidth: 1,
-    borderColor: colors.borderStrong,
-    borderRadius: radii.md,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    marginBottom: spacing.sm,
-  },
-  pricingBoxSelected: {
-    borderColor: colors.primary,
-  },
-  pricingBoxLast: {
-    marginBottom: 0,
-  },
-  pricingLabel: {
-    ...typography.presets.label,
-    color: colors.text,
-  },
-  pricingLeft: {
-    flex: 1,
-    marginRight: spacing.md,
-  },
-  pricingHint: {
-    ...typography.presets.caption,
-    color: colors.textMuted,
-    marginTop: spacing.xs,
-  },
-  pricingAmount: {
-    ...typography.presets.bodyMedium,
-    color: colors.text,
-    fontWeight: '700',
-  },
-  pricingRight: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: spacing.sm,
-  },
-  pricingSub: {
-    ...typography.presets.caption,
-    color: colors.textMuted,
   },
   card: {
     backgroundColor: colors.rowNavyBg,

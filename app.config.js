@@ -22,6 +22,9 @@ module.exports = {
           android: {
             usesCleartextTraffic: !isProduction,
           },
+          ios: {
+            deploymentTarget: '15.1',
+          },
         },
       ],
       './plugins/android-large-screen.js',

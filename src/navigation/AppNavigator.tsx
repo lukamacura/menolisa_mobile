@@ -8,14 +8,13 @@ import { View, Text, ActivityIndicator, StyleSheet, Platform } from 'react-nativ
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Linking from 'expo-linking';
 import { getNativeExpoNotifications } from '../lib/expoNotificationsGate';
-import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { RefetchTrialContext } from '../context/RefetchTrialContext';
 import { openAccountBillingEntry } from '../lib/api';
 import { logger } from '../lib/logger';
 import { LandingScreenWithButton } from '../screens/LandingScreen';
-import { RegisterScreen } from '../screens/RegisterScreen';
 import { LoginScreen } from '../screens/LoginScreen';
+import { SubscriptionRequiredScreen } from '../screens/SubscriptionRequiredScreen';
 import { MainTabs } from './MainTabs';
 import { MedicalDisclaimerModal } from '../components/MedicalDisclaimerModal';
 import { colors } from '../theme/tokens';
@@ -36,9 +35,19 @@ function LoadingScreen() {
 const DISCLAIMER_KEY = '@menolisa:consent_v2_accepted';
 
 export function AppNavigator() {
-  const { user, loading } = useAuth();
+  const { user, loading, accountStatus, refetchAccountStatus } = useAuth();
   const refetchTrialRef = useRef<(() => Promise<void>) | null>(null);
   const [disclaimerVisible, setDisclaimerVisible] = useState(false);
+
+  // Keep RefetchTrialContext consumers in sync with AuthContext's accountStatus refetch.
+  useEffect(() => {
+    refetchTrialRef.current = refetchAccountStatus;
+    return () => {
+      if (refetchTrialRef.current === refetchAccountStatus) {
+        refetchTrialRef.current = null;
+      }
+    };
+  }, [refetchAccountStatus]);
 
   // Notification runtime hardening: foreground behavior + Android channel.
   useEffect(() => {
@@ -66,13 +75,6 @@ export function AppNavigator() {
     }
   }, []);
 
-  // NOTE: We intentionally do NOT call any StoreKit / receipt APIs on login.
-  // getReceiptIOS / requestReceiptRefreshIOS prompt for the Apple ID password
-  // when the user has no local receipt (fresh install, sandbox tester, never
-  // purchased). Entitlement state is reconciled server-side via Apple Server
-  // Notifications V2 (appAccountToken → user_id), so the client should only
-  // touch StoreKit when the user opens the paywall or taps Restore.
-
   // Show medical disclaimer on first launch
   useEffect(() => {
     AsyncStorage.getItem(DISCLAIMER_KEY).then((value) => {
@@ -94,130 +96,24 @@ export function AppNavigator() {
     setDisclaimerVisible(false);
   };
 
-  // Handle web auth callback (tokens in URL hash)
+  // Handle return-from-web deep links: refresh subscription status when the user
+  // comes back from menolisa.com after completing or managing checkout.
   useEffect(() => {
-    if (Platform.OS !== 'web') return;
+    if (Platform.OS === 'web') return;
 
-    const handleWebAuthCallback = async () => {
-      // Check if we have tokens in the URL hash
-      if (typeof window !== 'undefined' && window.location.hash) {
-        const hash = window.location.hash.substring(1);
-        
-        if (hash.includes('access_token') && hash.includes('refresh_token')) {
-          logger.log('Auth tokens detected in URL hash');
-          
-          try {
-            const params = new URLSearchParams(hash);
-            const access_token = params.get('access_token');
-            const refresh_token = params.get('refresh_token');
-            
-            if (access_token && refresh_token) {
-              logger.log('Setting session from URL tokens...');
-              const { data, error } = await supabase.auth.setSession({
-                access_token,
-                refresh_token,
-              });
-              
-              if (error) {
-                logger.error('Error setting session:', error);
-                return;
-              }
-              
-              if (data?.session) {
-                logger.log('Session established from URL hash!');
-                // Auth state will update via onAuthStateChange
-                
-                // Clean up the URL hash
-                if (window.history.replaceState) {
-                  window.history.replaceState({}, document.title, window.location.pathname);
-                }
-              }
-            }
-          } catch (err) {
-            logger.error('Error handling web auth callback:', err);
-          }
-        }
-      }
-    };
-
-    handleWebAuthCallback();
-  }, []);
-
-  // Handle deep link authentication (for mobile)
-  useEffect(() => {
-    if (Platform.OS === 'web') return; // Skip on web, handled above
-
-    const handleDeepLink = async (event: { url: string }) => {
+    const handleDeepLink = (event: { url: string }) => {
       const url = event.url;
-      logger.log('Deep link received');
-
-      // Return from web dashboard: refresh trial/subscription status
-      if (url.startsWith('menolisa://settings')) {
+      if (url.startsWith('menolisa://settings') || url.startsWith('menolisa://account')) {
         refetchTrialRef.current?.().catch(() => {});
-        return;
-      }
-      
-      // Check if this is an auth callback
-      if (url.includes('/auth/callback') || url.includes('access_token=') || url.includes('refresh_token=')) {
-        logger.log('Auth callback detected');
-        
-        try {
-          // Extract tokens from URL
-          const urlObj = new URL(url.replace('menolisa://', 'https://www.menolisa.com/'));
-          const hash = urlObj.hash.substring(1); // Remove the # symbol
-          const params = new URLSearchParams(hash);
-          
-          const access_token = params.get('access_token');
-          const refresh_token = params.get('refresh_token');
-          
-          if (access_token && refresh_token) {
-            // Set the session with the tokens
-            const { data, error } = await supabase.auth.setSession({
-              access_token,
-              refresh_token,
-            });
-            
-            if (error) {
-              logger.error('Error setting session:', error);
-              return;
-            }
-            
-            if (data?.session) {
-              logger.log('Session established from deep link!');
-            }
-          } else {
-            // Fallback: try to get session normally
-            const { data, error } = await supabase.auth.getSession();
-            
-            if (error) {
-              logger.error('Error getting session after deep link:', error);
-              return;
-            }
-            
-            if (data?.session) {
-              logger.log('Session established from deep link (fallback method)');
-            }
-          }
-        } catch (err) {
-          logger.error('Error handling deep link:', err);
-        }
       }
     };
 
-    // Get the initial URL if app was opened from a link
     Linking.getInitialURL().then((url) => {
-      if (url) {
-        logger.log('Initial URL received');
-        handleDeepLink({ url }).catch((err) => logger.error('Initial deep link handling failed:', err));
-      }
+      if (url) handleDeepLink({ url });
     });
 
-    // Listen for deep links while app is open
     const subscription = Linking.addEventListener('url', handleDeepLink);
-
-    return () => {
-      subscription.remove();
-    };
+    return () => subscription.remove();
   }, []);
 
   // Push notification response: open dashboard (trial) or deep link to Notifications tab
@@ -245,26 +141,53 @@ export function AppNavigator() {
     return <LoadingScreen />;
   }
 
-  // User with temp_password (signed up at gate) must complete set-password on Register; don't show Main yet
-  const needsPassword = !!user?.user_metadata?.temp_password;
-  const showMain = !!user && !needsPassword;
+  // Routing logic:
+  // - No session → auth stack (Landing → Login).
+  // - Session, but accountStatus says expired/pending_payment → SubscriptionRequired.
+  // - Session and active subscription → Main tabs.
+  // While accountStatus is null right after login, hold on the loading screen so we
+  // don't flash MainTabs to a user who turns out to be expired.
+  const isAuthed = !!user;
+  const hasAccess = !!accountStatus && !accountStatus.expired;
+  const awaitingStatus = isAuthed && accountStatus === null;
+
+  let stackKey: 'auth' | 'main' | 'gated' | 'pending';
+  let initialRoute: 'Landing' | 'Main' | 'SubscriptionRequired';
+  if (!isAuthed) {
+    stackKey = 'auth';
+    initialRoute = 'Landing';
+  } else if (awaitingStatus) {
+    stackKey = 'pending';
+    initialRoute = 'SubscriptionRequired';
+  } else if (hasAccess) {
+    stackKey = 'main';
+    initialRoute = 'Main';
+  } else {
+    stackKey = 'gated';
+    initialRoute = 'SubscriptionRequired';
+  }
+
+  if (awaitingStatus) {
+    return <LoadingScreen />;
+  }
 
   return (
     <RefetchTrialContext.Provider value={refetchTrialRef}>
       <NavigationContainer ref={navigationRef}>
         <Stack.Navigator
-          key={showMain ? 'main' : 'auth'}
+          key={stackKey}
           screenOptions={{ headerShown: false }}
-          initialRouteName={showMain ? 'Main' : needsPassword ? 'Register' : 'Landing'}
+          initialRouteName={initialRoute}
         >
-          {showMain ? (
-            <Stack.Screen name="Main" component={MainTabs} />
-          ) : (
+          {!isAuthed ? (
             <>
               <Stack.Screen name="Landing" component={LandingScreenWithButton} />
-              <Stack.Screen name="Register" component={RegisterScreen} />
               <Stack.Screen name="Login" component={LoginScreen} />
             </>
+          ) : hasAccess ? (
+            <Stack.Screen name="Main" component={MainTabs} />
+          ) : (
+            <Stack.Screen name="SubscriptionRequired" component={SubscriptionRequiredScreen} />
           )}
         </Stack.Navigator>
       </NavigationContainer>

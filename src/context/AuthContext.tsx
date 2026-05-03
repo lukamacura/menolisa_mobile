@@ -1,11 +1,15 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { logger } from '../lib/logger';
+import { fetchAccountStatus, type AccountStatus } from '../lib/accountStatus';
 
 type AuthContextType = {
   user: User | null;
   loading: boolean;
+  accountStatus: AccountStatus | null;
+  accountStatusLoading: boolean;
+  refetchAccountStatus: () => Promise<void>;
   signOut: () => Promise<void>;
 };
 
@@ -14,10 +18,39 @@ const AuthContext = createContext<AuthContextType | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [accountStatus, setAccountStatus] = useState<AccountStatus | null>(null);
+  const [accountStatusLoading, setAccountStatusLoading] = useState(false);
+  const userRef = useRef<User | null>(null);
+
+  const refetchAccountStatus = useCallback(async () => {
+    if (!userRef.current) {
+      setAccountStatus(null);
+      return;
+    }
+    setAccountStatusLoading(true);
+    try {
+      const status = await fetchAccountStatus();
+      setAccountStatus(status);
+    } catch (err) {
+      logger.warn('refetchAccountStatus failed — failing closed to expired', err);
+      // Never leave accountStatus null after an authed fetch attempt — that hangs the navigator.
+      // Fail-closed: route the user to SubscriptionRequiredScreen where they can retry or sign out.
+      setAccountStatus({
+        expired: true,
+        account_status: 'expired',
+        subscription_ends_at: null,
+        trial_end: null,
+      });
+    } finally {
+      setAccountStatusLoading(false);
+    }
+  }, []);
 
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
     setUser(null);
+    userRef.current = null;
+    setAccountStatus(null);
   }, []);
 
   useEffect(() => {
@@ -37,15 +70,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
+    const applyUser = (next: User | null) => {
+      if (!mounted) return;
+      const prevId = userRef.current?.id ?? null;
+      const nextId = next?.id ?? null;
+      userRef.current = next;
+      setUser(next);
+      if (nextId && nextId !== prevId) {
+        // New session — fetch status
+        refetchAccountStatus();
+      } else if (!nextId) {
+        setAccountStatus(null);
+      }
+    };
+
     supabase.auth
       .getSession()
       .then(({ data: { session }, error }) => {
         if (!mounted) return;
         if (error) {
           logger.warn('Auth check error:', error);
-        } else {
-          setUser(session?.user ?? null);
         }
+        applyUser(session?.user ?? null);
         setLoading(false);
       })
       .catch((err) => {
@@ -58,9 +104,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const {
       data: { subscription: authSub },
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (mounted) {
-        setUser(session?.user ?? null);
-      }
+      applyUser(session?.user ?? null);
     });
     subscription = authSub;
 
@@ -68,10 +112,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       mounted = false;
       subscription?.unsubscribe?.();
     };
-  }, []);
+  }, [refetchAccountStatus]);
 
   return (
-    <AuthContext.Provider value={{ user, loading, signOut }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        accountStatus,
+        accountStatusLoading,
+        refetchAccountStatus,
+        signOut,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

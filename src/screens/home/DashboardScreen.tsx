@@ -82,7 +82,7 @@ const STREAK_MILESTONE_COPY: Record<
 };
 const WAVE_HEIGHT = 60;
 
-const HERO_HEIGHT_RATIO = 0.58;
+const HERO_HEIGHT_RATIO = 0.38;
 
 // ---------------------------------------------------------------------------
 // WavyDivider
@@ -569,41 +569,6 @@ export function DashboardScreen() {
               </View>
 
               <View style={styles.heroOverlaySpacer} />
-
-              {!trialStatus.expired && (
-                <StaggeredZoomIn delayIndex={2} reduceMotion={reduceMotion}>
-                  <View style={styles.talkToLisaHeroCard}>
-                    {/* i18n: dashboard.lisaDailyMessage */}
-                    <Text style={styles.talkToLisaHeroSubheading}>{getDailyLisaMessage()}</Text>
-                    <AnimatedPressable
-                      containerStyle={styles.pressableContainer}
-                      style={styles.talkToLisaHeroButton}
-                      onPress={handleTalkToLisa}
-                      accessibilityRole="button"
-                      accessibilityLabel="Talk to Lisa"
-                    >
-                      <LinearGradient
-                        colors={[colors.primary, colors.primaryDark]}
-                        locations={[0, 1]}
-                        start={{ x: 0.5, y: 0 }}
-                        end={{ x: 0.5, y: 1 }}
-                        style={StyleSheet.absoluteFillObject}
-                        pointerEvents="none"
-                      />
-                      <View style={styles.talkToLisaHeroButtonContent}>
-                        <Ionicons
-                          name="chatbubble-ellipses"
-                          size={22}
-                          color={colors.navy}
-                          accessibilityElementsHidden
-                          importantForAccessibility="no-hide-descendants"
-                        />
-                        <Text style={styles.talkToLisaHeroButtonText}>Talk to Lisa</Text>
-                      </View>
-                    </AnimatedPressable>
-                  </View>
-                </StaggeredZoomIn>
-              )}
             </View>
           </View>
 
@@ -617,6 +582,40 @@ export function DashboardScreen() {
               exiting={reduceMotion ? undefined : FadeOutUp.duration(motion.duration.base)}
               style={styles.belowVideoSection}
             >
+              {/* Talk to Lisa card */}
+              <StaggeredZoomIn delayIndex={2} reduceMotion={reduceMotion}>
+                <View style={styles.talkToLisaHeroCard}>
+                  {/* i18n: dashboard.lisaDailyMessage */}
+                  <Text style={styles.talkToLisaHeroSubheading}>{getDailyLisaMessage()}</Text>
+                  <AnimatedPressable
+                    containerStyle={styles.pressableContainer}
+                    style={styles.talkToLisaHeroButton}
+                    onPress={handleTalkToLisa}
+                    accessibilityRole="button"
+                    accessibilityLabel="Talk to Lisa"
+                  >
+                    <LinearGradient
+                      colors={[colors.primary, colors.primaryDark]}
+                      locations={[0, 1]}
+                      start={{ x: 0.5, y: 0 }}
+                      end={{ x: 0.5, y: 1 }}
+                      style={StyleSheet.absoluteFillObject}
+                      pointerEvents="none"
+                    />
+                    <View style={styles.talkToLisaHeroButtonContent}>
+                      <Ionicons
+                        name="chatbubble-ellipses"
+                        size={22}
+                        color={colors.navy}
+                        accessibilityElementsHidden
+                        importantForAccessibility="no-hide-descendants"
+                      />
+                      <Text style={styles.talkToLisaHeroButtonText}>Talk to Lisa</Text>
+                    </View>
+                  </AnimatedPressable>
+                </View>
+              </StaggeredZoomIn>
+
               {/* Symptom box */}
               <StaggeredZoomIn delayIndex={3} reduceMotion={reduceMotion}>
                 <Animated.View
@@ -836,46 +835,23 @@ const styles = StyleSheet.create({
   },
 
   talkToLisaHeroCard: {
-    marginTop: 0,
+    marginBottom: spacing.xl,
     paddingVertical: spacing.xl,
     paddingHorizontal: spacing.xl,
     borderRadius: radii.xl,
-    backgroundColor: 'rgba(46, 42, 77, 0.55)',
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
     borderWidth: 1,
-    ...Platform.select({
-      android: {
-        elevation: 0,
-        borderColor: 'rgba(255, 255, 255, 0.22)',
-        shadowColor: 'transparent',
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0,
-        shadowRadius: 0,
-      },
-      ios: {
-        ...shadows.card,
-        borderColor: 'rgba(255, 255, 255, 0.2)',
-      },
-      web: {
-        borderColor: 'rgba(255, 255, 255, 0.2)',
-        boxShadow:
-          '0 10px 28px rgba(46, 42, 77, 0.3), inset 0 0 0 1px rgba(255, 255, 255, 0.14)',
-      },
-      default: {
-        borderColor: 'rgba(255, 255, 255, 0.2)',
-      },
-    }),
+    borderColor: colors.border,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 2,
   },
   talkToLisaHeroSubheading: {
     ...typography.presets.bodyMedium,
-    color: colors.background,
+    color: colors.text,
     marginBottom: spacing.lg,
-    ...(Platform.OS === 'web'
-      ? { textShadow: '0 1px 2px rgba(46, 42, 77, 0.35)' }
-      : {
-          textShadowColor: 'rgba(46, 42, 77, 0.35)',
-          textShadowOffset: { width: 0, height: 1 },
-          textShadowRadius: 3,
-        }),
   },
   talkToLisaHeroButton: {
     position: 'relative',

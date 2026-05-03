@@ -2,7 +2,7 @@
   "expo": {
     "name": "MenoLisa",
     "slug": "womenreset-mobile",
-    "version": "1.0.3",
+    "version": "1.0.7",
     "orientation": "default",
     "icon": "./assets/logo.png",
     "userInterfaceStyle": "light",
@@ -16,7 +16,6 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.menolisa.app",
-      "usesAppleSignIn": true,
       "associatedDomains": ["applinks:menolisa.com", "applinks:www.menolisa.com"],
       "infoPlist": {
         "CFBundleDisplayName": "MenoLisa",
@@ -67,7 +66,6 @@
     },
     "plugins": [
       ["expo-build-properties", { "android": { "usesCleartextTraffic": true } }],
-      "expo-apple-authentication",
       [
         "expo-notifications",
         {

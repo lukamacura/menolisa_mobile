@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,154 +10,194 @@ import {
   KeyboardAvoidingView,
   Platform,
   Image,
+  Linking,
 } from 'react-native';
-import * as AppleAuthentication from 'expo-apple-authentication';
-import * as Crypto from 'expo-crypto';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../lib/supabase';
 import { logger } from '../lib/logger';
+import { getWebAppUrl, API_CONFIG } from '../lib/api';
+
+const REVIEWER_EMAILS = new Set<string>(['luka.xzy@gmail.com']);
 import { colors, spacing, radii, typography, shadows, minTouchTarget, landingGradient } from '../theme/tokens';
 import { StaggeredZoomIn, useReduceMotion } from '../components/StaggeredZoomIn';
 
-type NavigationProp = NativeStackNavigationProp<any>;
+type Mode = 'email' | 'code';
+type ErrorType = 'no_account' | 'invalid_code' | 'rate_limit' | 'network' | 'unknown' | null;
 
-type ErrorType = 'user_not_found' | 'invalid_credentials' | 'invalid_email' | 'rate_limit' | 'network' | 'unknown' | null;
+const RESEND_COOLDOWN_SECONDS = 60;
+const CODE_LENGTH = 6;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function LoginScreen() {
-  const navigation = useNavigation<NavigationProp>();
   const reduceMotion = useReduceMotion();
+  const [mode, setMode] = useState<Mode>('email');
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+  const [code, setCode] = useState('');
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [errorType, setErrorType] = useState<ErrorType>(null);
-  const [loading, setLoading] = useState(false);
-  const [appleLoading, setAppleLoading] = useState(false);
-  const [isAppleAvailable, setIsAppleAvailable] = useState(false);
-  const [resetLoading, setResetLoading] = useState(false);
-  const [resetSent, setResetSent] = useState(false);
+  const [resendIn, setResendIn] = useState(0);
+  const codeInputRef = useRef<TextInput | null>(null);
 
+  // Countdown for resend cooldown
   useEffect(() => {
-    AppleAuthentication.isAvailableAsync().then(setIsAppleAvailable);
+    if (resendIn <= 0) return;
+    const t = setTimeout(() => setResendIn((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [resendIn]);
+
+  // Auto-focus code field when entering code step
+  useEffect(() => {
+    if (mode === 'code') {
+      const t = setTimeout(() => codeInputRef.current?.focus(), 80);
+      return () => clearTimeout(t);
+    }
+  }, [mode]);
+
+  const emailValid = EMAIL_REGEX.test(email);
+  const codeValid = /^\d{6}$/.test(code);
+
+  const sendOtp = useCallback(async (targetEmail: string) => {
+    const { error: otpError } = await supabase.auth.signInWithOtp({
+      email: targetEmail,
+      options: { shouldCreateUser: false },
+    });
+    return otpError;
   }, []);
 
-  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-  const passwordValid = password.length > 0;
-  const canSubmit = emailValid && passwordValid && !loading;
-
-  const handleLogin = useCallback(async () => {
-    if (!canSubmit) return;
-
+  const handleRequestCode = useCallback(async () => {
+    if (!emailValid || loading) return;
+    setLoading(true);
     setError(null);
     setErrorType(null);
-    setLoading(true);
-
     try {
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
-        email: email.toLowerCase().trim(),
-        password,
-      });
+      const targetEmail = email.toLowerCase().trim();
 
-      if (authError) {
-        logger.error('Login error:', authError);
-        
-        let friendly = 'An error occurred. Please try again.';
-        let errorCategory: ErrorType = 'unknown';
-
-        // Handle specific Supabase error messages
-        if (authError.message.includes('Invalid login credentials')) {
-          friendly = 'Invalid email or password. Please check your credentials and try again.';
-          errorCategory = 'invalid_credentials';
-        } else if (authError.message.includes('Email not confirmed')) {
-          friendly = 'Please verify your email address before logging in.';
-          errorCategory = 'invalid_email';
-        } else if (authError.message.includes('Too many requests')) {
-          friendly = 'Too many login attempts. Please wait a moment and try again.';
-          errorCategory = 'rate_limit';
-        } else if (authError.message.includes('User not found')) {
-          friendly = "No account found with this email. Please register to create an account.";
-          errorCategory = 'user_not_found';
-        } else {
-          friendly = authError.message;
+      if (REVIEWER_EMAILS.has(targetEmail)) {
+        try {
+          const res = await fetch(`${API_CONFIG.baseURL}/api/auth/reviewer-login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: targetEmail }),
+          });
+          if (res.ok) {
+            const { token_hash } = await res.json();
+            const { error: verifyError } = await supabase.auth.verifyOtp({
+              token_hash,
+              type: 'magiclink',
+            });
+            if (verifyError) {
+              logger.error('reviewer verifyOtp error:', verifyError);
+              setError(verifyError.message || 'Could not sign in. Please try again.');
+              setErrorType('unknown');
+              return;
+            }
+            return;
+          }
+          logger.warn('reviewer-login non-OK status', res.status);
+        } catch (bypassErr) {
+          logger.warn('reviewer-login bypass failed, falling back to OTP', bypassErr);
         }
+      }
 
-        setError(friendly);
-        setErrorType(errorCategory);
-        setLoading(false);
+      const otpError = await sendOtp(targetEmail);
+      if (otpError) {
+        const msg = otpError.message || '';
+        if (
+          msg.includes('Signups not allowed') ||
+          msg.toLowerCase().includes('user not found') ||
+          msg.toLowerCase().includes('not found')
+        ) {
+          setError("We couldn't find an account for this email.");
+          setErrorType('no_account');
+        } else if (msg.toLowerCase().includes('rate') || msg.toLowerCase().includes('too many')) {
+          setError('Too many requests. Please wait a moment and try again.');
+          setErrorType('rate_limit');
+        } else {
+          setError(msg || 'Could not send code. Please try again.');
+          setErrorType('unknown');
+        }
         return;
       }
-
-      if (data.session) {
-        // Login successful! Navigation will happen automatically via auth listener
-        logger.log('Login successful');
-      }
-      
-      setLoading(false);
-    } catch (err: any) {
-      logger.error('Unexpected login error:', err);
-      
-      if (err instanceof TypeError && err.message.includes('fetch')) {
+      setMode('code');
+      setResendIn(RESEND_COOLDOWN_SECONDS);
+    } catch (err) {
+      logger.error('signInWithOtp error:', err);
+      const msg = err instanceof Error ? err.message : '';
+      if (msg.includes('Network') || msg.includes('fetch')) {
         setError('Network error. Please check your connection and try again.');
         setErrorType('network');
       } else {
-        setError(err.message || 'Something went wrong. Please try again.');
+        setError('Something went wrong. Please try again.');
         setErrorType('unknown');
       }
+    } finally {
       setLoading(false);
     }
-  }, [canSubmit, email, password]);
+  }, [email, emailValid, loading, sendOtp]);
 
-  const handleForgotPassword = useCallback(async () => {
-    if (!emailValid) return;
-    setResetLoading(true);
-    setResetSent(false);
-    try {
-      await supabase.auth.resetPasswordForEmail(email.toLowerCase().trim());
-      setResetSent(true);
-    } catch (err: any) {
-      logger.error('Reset password error:', err);
-    } finally {
-      setResetLoading(false);
-    }
-  }, [email, emailValid]);
-
-  const handleAppleSignIn = useCallback(async () => {
+  const handleVerifyCode = useCallback(async () => {
+    if (!codeValid || loading) return;
+    setLoading(true);
     setError(null);
     setErrorType(null);
-    setAppleLoading(true);
     try {
-      const rawNonce = Crypto.randomUUID();
-      const hashedNonce = await Crypto.digestStringAsync(
-        Crypto.CryptoDigestAlgorithm.SHA256,
-        rawNonce
-      );
-      const credential = await AppleAuthentication.signInAsync({
-        requestedScopes: [
-          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
-          AppleAuthentication.AppleAuthenticationScope.EMAIL,
-        ],
-        nonce: hashedNonce,
+      const { error: verifyError } = await supabase.auth.verifyOtp({
+        email: email.toLowerCase().trim(),
+        token: code,
+        type: 'email',
       });
-      if (!credential.identityToken) throw new Error('No identity token received');
-      const { error: authError } = await supabase.auth.signInWithIdToken({
-        provider: 'apple',
-        token: credential.identityToken,
-        nonce: rawNonce,
-      });
-      if (authError) throw authError;
-      // Navigation handled automatically by auth listener
-    } catch (err: any) {
-      if (err.code === 'ERR_REQUEST_CANCELED') return;
-      logger.error('Apple sign-in error:', err);
-      setError('Apple sign-in failed. Please try again.');
+      if (verifyError) {
+        const msg = verifyError.message || '';
+        if (msg.toLowerCase().includes('expired') || msg.toLowerCase().includes('invalid')) {
+          setError('That code is invalid or expired. Please request a new one.');
+          setErrorType('invalid_code');
+        } else {
+          setError(msg || 'Could not verify code. Please try again.');
+          setErrorType('unknown');
+        }
+        return;
+      }
+      // Success — auth listener picks up the session and AppNavigator routes accordingly.
+    } catch (err) {
+      logger.error('verifyOtp error:', err);
+      setError('Something went wrong verifying your code. Please try again.');
       setErrorType('unknown');
     } finally {
-      setAppleLoading(false);
+      setLoading(false);
     }
+  }, [code, codeValid, email, loading]);
+
+  const handleResend = useCallback(async () => {
+    if (resendIn > 0 || loading) return;
+    setError(null);
+    setErrorType(null);
+    setLoading(true);
+    try {
+      const otpError = await sendOtp(email.toLowerCase().trim());
+      if (otpError) {
+        setError(otpError.message || 'Could not resend code.');
+        setErrorType('unknown');
+        return;
+      }
+      setResendIn(RESEND_COOLDOWN_SECONDS);
+    } finally {
+      setLoading(false);
+    }
+  }, [email, loading, resendIn, sendOtp]);
+
+  const handleOpenWebRegister = useCallback(() => {
+    const url = getWebAppUrl('/register');
+    Linking.openURL(url).catch((err) => logger.warn('Failed to open web register', err));
+  }, []);
+
+  const handleEditEmail = useCallback(() => {
+    setMode('email');
+    setCode('');
+    setError(null);
+    setErrorType(null);
   }, []);
 
   return (
@@ -171,15 +211,11 @@ export function LoginScreen() {
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       >
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
-          decelerationRate={0.98}
-          scrollEventThrottle={16}
-          bounces={true}
         >
           <StaggeredZoomIn delayIndex={0} reduceMotion={reduceMotion}>
             <View style={styles.loginImageWrap}>
@@ -187,194 +223,168 @@ export function LoginScreen() {
                 source={require('../../assets/quiz/illustration_email.png')}
                 style={styles.loginImage}
                 resizeMode="contain"
-                accessibilityLabel="Illustration of an envelope and welcome note"
+                accessibilityLabel="Illustration of an envelope"
               />
             </View>
           </StaggeredZoomIn>
+
           <StaggeredZoomIn delayIndex={1} reduceMotion={reduceMotion}>
             <View style={styles.header}>
-              <Text style={styles.title}>Welcome back</Text>
+              <Text style={styles.title}>
+                {mode === 'email' ? 'Welcome back' : 'Check your inbox'}
+              </Text>
               <Text style={styles.subtitle}>
-                We're so glad you're here. Let's get you back to your journey.
+                {mode === 'email'
+                  ? "Enter your email and we'll send you a 6-digit code to sign in."
+                  : `We sent a 6-digit code to ${email.toLowerCase().trim()}.`}
               </Text>
             </View>
           </StaggeredZoomIn>
 
           <StaggeredZoomIn delayIndex={2} reduceMotion={reduceMotion}>
-          <View style={styles.formContainer}>
-            {/* Email Input */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Email</Text>
-              <TextInput
-                style={[styles.input, !emailValid && email.length > 0 && styles.inputError]}
-                placeholder="you@example.com"
-                placeholderTextColor={colors.textMuted}
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoComplete="email"
-                autoCorrect={false}
-                returnKeyType="next"
-              />
-            </View>
-
-            {/* Password Input */}
-            <View style={styles.inputGroup}>
-              <View style={styles.passwordLabelRow}>
-                <Text style={styles.label}>Password</Text>
-                <TouchableOpacity activeOpacity={0.7} onPress={handleForgotPassword} disabled={resetLoading}>
-                  <Text style={styles.forgotLink}>{resetLoading ? 'Sending…' : 'Forgot password?'}</Text>
-                </TouchableOpacity>
-              </View>
-              <View style={styles.passwordContainer}>
-                <TextInput
-                  style={[styles.input, styles.passwordInput, !passwordValid && password.length > 0 && styles.inputError]}
-                  placeholder="Enter your password"
-                  placeholderTextColor={colors.textMuted}
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry={!showPassword}
-                  autoCapitalize="none"
-                  autoComplete="password"
-                  autoCorrect={false}
-                  returnKeyType="done"
-                  onSubmitEditing={handleLogin}
-                />
-                <TouchableOpacity
-                  activeOpacity={1}
-                  style={styles.passwordToggle}
-                  onPress={() => setShowPassword(!showPassword)}
-                >
-                  <Ionicons
-                    name={showPassword ? 'eye-off' : 'eye'}
-                    size={22}
-                    color={colors.textMuted}
+            <View style={styles.formContainer}>
+              {mode === 'email' ? (
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Email</Text>
+                  <TextInput
+                    style={[styles.input, !emailValid && email.length > 0 && styles.inputError]}
+                    placeholder="you@example.com"
+                    placeholderTextColor={colors.textMuted}
+                    value={email}
+                    onChangeText={setEmail}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoComplete="email"
+                    autoCorrect={false}
+                    returnKeyType="send"
+                    onSubmitEditing={handleRequestCode}
+                    editable={!loading}
                   />
-                </TouchableOpacity>
-              </View>
-              {resetSent && (
-                <Text style={styles.helperTextSuccess}>Reset link sent — check your email.</Text>
-              )}
-              {!resetSent && !emailValid && email.length > 0 && (
-                <Text style={styles.helperText}>Enter your email above to reset your password.</Text>
-              )}
-            </View>
-
-            {/* Submit Button */}
-            <TouchableOpacity
-              activeOpacity={1}
-              style={[styles.submitButton, !canSubmit && styles.submitButtonDisabled]}
-              onPress={handleLogin}
-              disabled={!canSubmit}
-            >
-              <View style={styles.submitButtonInner}>
-                {loading ? (
-                  <>
-                    <ActivityIndicator color={colors.background} />
-                    <Text style={[styles.submitButtonText, !canSubmit && styles.submitButtonTextDisabled]}>
-                      Signing in...
-                    </Text>
-                  </>
-                ) : (
-                  <Text style={[styles.submitButtonText, !canSubmit && styles.submitButtonTextDisabled]}>
-                    Sign in
-                  </Text>
-                )}
-              </View>
-            </TouchableOpacity>
-
-            {/* Apple Sign In */}
-            {Platform.OS === 'ios' && isAppleAvailable && (
-              <>
-                <View style={styles.dividerRow}>
-                  <View style={styles.divider} />
-                  <Text style={styles.dividerText}>or</Text>
-                  <View style={styles.divider} />
                 </View>
-                {appleLoading ? (
-                  <ActivityIndicator color={colors.text} style={styles.appleLoader} />
-                ) : (
-                  <AppleAuthentication.AppleAuthenticationButton
-                    buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
-                    buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
-                    cornerRadius={radii.lg}
-                    style={styles.appleButton}
-                    onPress={handleAppleSignIn}
-                  />
-                )}
-              </>
-            )}
-
-            {/* Error Display */}
-            {error && (
-              <View
-                style={[
-                  styles.errorContainer,
-                  errorType === 'user_not_found' && styles.errorContainerInfo,
-                  errorType === 'rate_limit' && styles.errorContainerWarning,
-                ]}
-              >
-                <View style={styles.errorHeader}>
-                  <Ionicons
-                    name="alert-circle"
-                    size={20}
-                    color={
-                      errorType === 'user_not_found'
-                        ? colors.info
-                        : errorType === 'rate_limit'
-                        ? colors.warning
-                        : colors.danger
-                    }
-                  />
-                  <Text
-                    style={[
-                      styles.errorTitle,
-                      errorType === 'user_not_found' && styles.errorTitleInfo,
-                      errorType === 'rate_limit' && styles.errorTitleWarning,
-                    ]}
-                  >
-                    {errorType === 'user_not_found'
-                      ? 'Account Not Found'
-                      : errorType === 'rate_limit'
-                      ? 'Too Many Requests'
-                      : errorType === 'invalid_credentials'
-                      ? 'Invalid Credentials'
-                      : errorType === 'invalid_email'
-                      ? 'Email Not Verified'
-                      : errorType === 'network'
-                      ? 'Network Error'
-                      : 'Error'}
-                  </Text>
-                </View>
-                <Text
-                  style={[
-                    styles.errorText,
-                    errorType === 'user_not_found' && styles.errorTextInfo,
-                    errorType === 'rate_limit' && styles.errorTextWarning,
-                  ]}
-                >
-                  {error}
-                </Text>
-                {errorType === 'user_not_found' && (
-                  <View style={styles.errorAction}>
-                    <Text style={styles.errorActionText}>Don't have an account yet?</Text>
-                    <TouchableOpacity activeOpacity={1} onPress={() => navigation.navigate('Register')}>
-                      <Text style={styles.errorActionLink}>Register here →</Text>
+              ) : (
+                <View style={styles.inputGroup}>
+                  <View style={styles.codeLabelRow}>
+                    <Text style={styles.label}>6-digit code</Text>
+                    <TouchableOpacity activeOpacity={0.7} onPress={handleEditEmail} disabled={loading}>
+                      <Text style={styles.editEmailLink}>Change email</Text>
                     </TouchableOpacity>
                   </View>
-                )}
-              </View>
-            )}
+                  <TextInput
+                    ref={codeInputRef}
+                    style={[styles.input, styles.codeInput, !codeValid && code.length > 0 && styles.inputError]}
+                    placeholder="123456"
+                    placeholderTextColor={colors.textMuted}
+                    value={code}
+                    onChangeText={(text) => setCode(text.replace(/\D/g, '').slice(0, CODE_LENGTH))}
+                    keyboardType="number-pad"
+                    autoComplete="one-time-code"
+                    textContentType="oneTimeCode"
+                    maxLength={CODE_LENGTH}
+                    returnKeyType="done"
+                    onSubmitEditing={handleVerifyCode}
+                    editable={!loading}
+                  />
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    onPress={handleResend}
+                    disabled={resendIn > 0 || loading}
+                    style={styles.resendRow}
+                  >
+                    <Text style={[styles.resendText, (resendIn > 0 || loading) && styles.resendTextDisabled]}>
+                      {resendIn > 0 ? `Resend code in ${resendIn}s` : 'Resend code'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
 
-            {/* Footer */}
-            <View style={styles.footer}>
-              <Text style={styles.footerText}>Don't have an account? </Text>
-              <TouchableOpacity activeOpacity={1} onPress={() => navigation.navigate('Register')}>
-                <Text style={styles.footerLink}>Sign up</Text>
+              <TouchableOpacity
+                activeOpacity={1}
+                style={[
+                  styles.submitButton,
+                  ((mode === 'email' && (!emailValid || loading)) ||
+                    (mode === 'code' && (!codeValid || loading))) &&
+                    styles.submitButtonDisabled,
+                ]}
+                onPress={mode === 'email' ? handleRequestCode : handleVerifyCode}
+                disabled={
+                  (mode === 'email' && (!emailValid || loading)) ||
+                  (mode === 'code' && (!codeValid || loading))
+                }
+              >
+                <View style={styles.submitButtonInner}>
+                  {loading ? (
+                    <>
+                      <ActivityIndicator color={colors.background} />
+                      <Text style={styles.submitButtonText}>
+                        {mode === 'email' ? 'Sending code…' : 'Verifying…'}
+                      </Text>
+                    </>
+                  ) : (
+                    <Text style={styles.submitButtonText}>
+                      {mode === 'email' ? 'Send code' : 'Sign in'}
+                    </Text>
+                  )}
+                </View>
               </TouchableOpacity>
+
+              {error && (
+                <View
+                  style={[
+                    styles.errorContainer,
+                    errorType === 'no_account' && styles.errorContainerInfo,
+                    errorType === 'rate_limit' && styles.errorContainerWarning,
+                  ]}
+                >
+                  <View style={styles.errorHeader}>
+                    <Ionicons
+                      name="alert-circle"
+                      size={20}
+                      color={
+                        errorType === 'no_account'
+                          ? colors.info
+                          : errorType === 'rate_limit'
+                          ? colors.warning
+                          : colors.danger
+                      }
+                    />
+                    <Text
+                      style={[
+                        styles.errorTitle,
+                        errorType === 'no_account' && styles.errorTitleInfo,
+                        errorType === 'rate_limit' && styles.errorTitleWarning,
+                      ]}
+                    >
+                      {errorType === 'no_account'
+                        ? 'Account not found'
+                        : errorType === 'rate_limit'
+                        ? 'Too many requests'
+                        : errorType === 'invalid_code'
+                        ? 'Invalid code'
+                        : errorType === 'network'
+                        ? 'Network error'
+                        : 'Error'}
+                    </Text>
+                  </View>
+                  <Text
+                    style={[
+                      styles.errorText,
+                      errorType === 'no_account' && styles.errorTextInfo,
+                      errorType === 'rate_limit' && styles.errorTextWarning,
+                    ]}
+                  >
+                    {error}
+                  </Text>
+                  {errorType === 'no_account' && (
+                    <View style={styles.errorAction}>
+                      <Text style={styles.errorActionText}>New to Menolisa?</Text>
+                      <TouchableOpacity activeOpacity={0.7} onPress={handleOpenWebRegister}>
+                        <Text style={styles.errorActionLink}>Create your account at menolisa.com →</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+              )}
             </View>
-          </View>
           </StaggeredZoomIn>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -424,12 +434,12 @@ const styles = StyleSheet.create({
   inputGroup: {
     gap: spacing.sm,
   },
-  passwordLabelRow: {
+  codeLabelRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  forgotLink: {
+  editEmailLink: {
     fontSize: 14,
     fontFamily: typography.family.medium,
     color: colors.primary,
@@ -451,34 +461,26 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     color: colors.text,
   },
+  codeInput: {
+    fontSize: 24,
+    letterSpacing: 8,
+    textAlign: 'center',
+    fontFamily: typography.family.semibold,
+  },
   inputError: {
     borderColor: colors.danger,
   },
-  passwordContainer: {
-    position: 'relative',
+  resendRow: {
+    alignSelf: 'flex-start',
+    paddingVertical: spacing.xs,
   },
-  passwordInput: {
-    paddingRight: 50,
-  },
-  passwordToggle: {
-    position: 'absolute',
-    right: spacing.md,
-    top: 0,
-    bottom: 0,
-    justifyContent: 'center',
-    paddingHorizontal: spacing.xs,
-  },
-  helperText: {
-    fontSize: 12,
-    fontFamily: typography.family.regular,
-    color: colors.textMuted,
-    marginTop: spacing.xs,
-  },
-  helperTextSuccess: {
-    fontSize: 12,
+  resendText: {
+    fontSize: 14,
     fontFamily: typography.family.medium,
-    color: colors.success,
-    marginTop: spacing.xs,
+    color: colors.primary,
+  },
+  resendTextDisabled: {
+    color: colors.textMuted,
   },
   submitButton: {
     borderRadius: radii.lg,
@@ -504,9 +506,6 @@ const styles = StyleSheet.create({
     fontFamily: typography.display.semibold,
     color: colors.background,
     letterSpacing: 0.5,
-  },
-  submitButtonTextDisabled: {
-    color: colors.textMuted,
   },
   errorContainer: {
     backgroundColor: colors.dangerBg,
@@ -568,43 +567,5 @@ const styles = StyleSheet.create({
     fontFamily: typography.family.semibold,
     color: colors.info,
     textDecorationLine: 'underline',
-  },
-  footer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: spacing.lg,
-  },
-  footerText: {
-    fontSize: 14,
-    color: colors.textMuted,
-  },
-  footerLink: {
-    fontSize: 14,
-    fontFamily: typography.family.semibold,
-    color: colors.primary,
-    textDecorationLine: 'underline',
-  },
-  dividerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  divider: {
-    flex: 1,
-    height: 1,
-    backgroundColor: colors.border,
-  },
-  dividerText: {
-    fontSize: 13,
-    fontFamily: typography.family.regular,
-    color: colors.textMuted,
-  },
-  appleButton: {
-    height: minTouchTarget,
-    width: '100%',
-  },
-  appleLoader: {
-    height: minTouchTarget,
   },
 });

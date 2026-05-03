@@ -9,10 +9,6 @@
 
 import { Linking, Platform } from 'react-native';
 import { supabase } from './supabase';
-import {
-  confirmExternalPurchaseRedirect,
-  openIapManagePage,
-} from './billingCompliance';
 
 const PRODUCTION_API_URL = 'https://www.menolisa.com';
 
@@ -182,18 +178,10 @@ export async function openWebAccount(webPath: string = '/dashboard/account'): Pr
 }
 
 /**
- * Account/billing entry point by platform:
- * - iOS: native App Store subscriptions management page.
- * - Android/Web: existing external website checkout flow (with confirmation).
+ * Account/billing entry point — same on iOS, Android, and web.
+ * Stripe (web) is the only payment path; IAP has been removed.
  */
 export async function openAccountBillingEntry(webPath: string = '/dashboard/account'): Promise<void> {
-  if (Platform.OS === 'ios') {
-    await openIapManagePage();
-    return;
-  }
-
-  const confirmed = await confirmExternalPurchaseRedirect();
-  if (!confirmed) return;
   await openWebAccount(webPath);
 }
 

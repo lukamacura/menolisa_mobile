@@ -6,6 +6,7 @@ import {
   Dimensions,
   TouchableOpacity,
   Image,
+  Linking,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
@@ -13,17 +14,24 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, radii, spacing, minTouchTarget, typography, landingGradient, shadows } from '../theme/tokens';
 import { StaggeredZoomIn, useReduceMotion } from '../components/StaggeredZoomIn';
+import { getWebAppUrl } from '../lib/api';
+import { logger } from '../lib/logger';
 
 const { width } = Dimensions.get('window');
 
 const CONTENT_MAX_WIDTH = 340;
 const HORIZONTAL_PADDING = spacing.xl;
 
-type AuthStackNav = { Landing: undefined; Register: undefined; Login: undefined };
+type AuthStackNav = { Landing: undefined; Login: undefined };
 
 export function LandingScreenWithButton() {
   const navigation = useNavigation<NativeStackNavigationProp<AuthStackNav, 'Landing'>>();
   const reduceMotion = useReduceMotion();
+
+  const handleOpenWebRegister = () => {
+    const url = getWebAppUrl('/register');
+    Linking.openURL(url).catch((err) => logger.warn('Failed to open web register', err));
+  };
 
   return (
     <View style={styles.wrapper}>
@@ -63,16 +71,21 @@ export function LandingScreenWithButton() {
             <TouchableOpacity
               activeOpacity={0.85}
               style={styles.primaryButton}
-              onPress={() => navigation.navigate('Register')}
-            >
-              <Text style={styles.primaryButtonText}>Get started</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              activeOpacity={0.85}
-              style={styles.secondaryButton}
               onPress={() => navigation.navigate('Login')}
             >
-              <Text style={styles.secondaryButtonText}>I already have an account</Text>
+              <Text style={styles.primaryButtonText}>Sign in</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={handleOpenWebRegister}
+              style={styles.webLinkRow}
+              accessibilityRole="link"
+              accessibilityLabel="Create your account at menolisa.com"
+            >
+              <Text style={styles.webLinkText}>
+                New to Menolisa?{' '}
+                <Text style={styles.webLinkHighlight}>Create your account at menolisa.com</Text>
+              </Text>
             </TouchableOpacity>
           </View>
         </StaggeredZoomIn>
@@ -143,21 +156,21 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     color: colors.background,
   },
-  secondaryButton: {
-    backgroundColor: colors.background,
-    minHeight: minTouchTarget + 4,
-    paddingVertical: spacing.md,
-    borderRadius: radii.lg,
-    justifyContent: 'center',
+  webLinkRow: {
+    minHeight: minTouchTarget,
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: colors.borderStrong,
-    ...shadows.buttonPrimary,
+    justifyContent: 'center',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
   },
-  secondaryButtonText: {
-    fontFamily: typography.display.semibold,
-    fontSize: 16,
-    letterSpacing: 0.3,
+  webLinkText: {
+    ...typography.presets.bodySmall,
     color: colors.textMuted,
+    textAlign: 'center',
+  },
+  webLinkHighlight: {
+    ...typography.presets.bodySmall,
+    color: colors.primary,
+    textDecorationLine: 'underline',
   },
 });
