@@ -22,12 +22,9 @@ import { AccessEndedView } from '../../components/AccessEndedView';
 import { getTriggersForSymptom, type TimeSelection } from '../../lib/symptomTrackerConstants';
 import { getSymptomIllustration } from '../../lib/symptomIllustration';
 
-type HomeStackParamList = {
-  Dashboard: undefined;
-  Symptoms: undefined;
-  SymptomLogs: undefined;
-};
-type NavProp = NativeStackNavigationProp<HomeStackParamList, 'Symptoms'>;
+import type { TodayStackParamList } from '../../navigation/types';
+
+type NavProp = NativeStackNavigationProp<TodayStackParamList, 'Symptoms'>;
 import { colors, spacing, radii, typography, minTouchTarget, shadows } from '../../theme/tokens';
 import { StaggeredZoomIn, useReduceMotion } from '../../components/StaggeredZoomIn';
 import { GratitudeSuccessPanel } from '../../components/GratitudeSuccessPanel';

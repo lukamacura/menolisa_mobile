@@ -10,14 +10,17 @@ import { useRegisterPushToken, NOTIFICATION_PROMPT_SHOWN_KEY } from '../hooks/us
 import { NotificationPromptModal } from '../components/NotificationPromptModal';
 import { colors, typography } from '../theme/tokens';
 import { PlanProvider } from '../context/PlanContext';
+import { RewardsProvider } from '../context/RewardsContext';
+import { RewardCelebrations } from '../components/rewards/RewardCelebrations';
+import { CompletionReward } from '../components/rewards/CompletionReward';
+import { RewardsScreen } from '../screens/rewards/RewardsScreen';
 import { DailyLoopScreen } from '../screens/today/DailyLoopScreen';
 import { MovementScreen } from '../screens/today/MovementScreen';
 import { NutritionScreen } from '../screens/today/NutritionScreen';
 import { RelaxationScreen } from '../screens/today/RelaxationScreen';
 import { HabitsScreen } from '../screens/today/HabitsScreen';
-import { DashboardScreen } from '../screens/home/DashboardScreen';
-import { SymptomsScreen } from '../screens/home/SymptomsScreen';
-import { SymptomLogsScreen } from '../screens/home/SymptomLogsScreen';
+import { SymptomsScreen } from '../screens/symptoms/SymptomsScreen';
+import { SymptomLogsScreen } from '../screens/symptoms/SymptomLogsScreen';
 import { ChatListScreen } from '../screens/chat/ChatListScreen';
 import { ChatThreadScreen } from '../screens/chat/ChatThreadScreen';
 import { NotificationsScreen } from '../screens/notifications/NotificationsScreen';
@@ -27,7 +30,6 @@ import { innerStackScreenOptions } from './stackScreenOptions';
 
 const Tab = createBottomTabNavigator();
 const TodayStack = createNativeStackNavigator();
-const HomeStack = createNativeStackNavigator();
 const ChatStack = createNativeStackNavigator();
 const SettingsStack = createNativeStackNavigator();
 
@@ -64,39 +66,22 @@ function TodayStackScreen() {
         component={HabitsScreen}
         options={{ ...pushedScreenHeader, headerTitle: 'Your habits' }}
       />
-    </TodayStack.Navigator>
-  );
-}
-
-function HomeStackScreen() {
-  return (
-    <HomeStack.Navigator screenOptions={innerStackScreenOptions}>
-      <HomeStack.Screen name="Dashboard" component={DashboardScreen} />
-      <HomeStack.Screen
+      <TodayStack.Screen
+        name="Rewards"
+        component={RewardsScreen}
+        options={{ ...pushedScreenHeader, headerTitle: 'Rewards' }}
+      />
+      <TodayStack.Screen
         name="Symptoms"
         component={SymptomsScreen}
-        options={{
-          headerShown: true,
-          headerTitle: 'Track symptoms',
-          headerBackTitle: 'Back',
-          headerTintColor: colors.primary,
-          headerStyle: { backgroundColor: colors.background },
-          headerShadowVisible: false,
-        }}
+        options={{ ...pushedScreenHeader, headerTitle: 'Track symptoms' }}
       />
-      <HomeStack.Screen
+      <TodayStack.Screen
         name="SymptomLogs"
         component={SymptomLogsScreen}
-        options={{
-          headerShown: true,
-          headerTitle: 'Symptom history',
-          headerBackTitle: 'Back',
-          headerTintColor: colors.primary,
-          headerStyle: { backgroundColor: colors.background },
-          headerShadowVisible: false,
-        }}
+        options={{ ...pushedScreenHeader, headerTitle: 'Symptom history' }}
       />
-    </HomeStack.Navigator>
+    </TodayStack.Navigator>
   );
 }
 
@@ -178,6 +163,9 @@ export function MainTabs() {
 
   return (
     <PlanProvider>
+    {/* Inside PlanProvider: rewards share the plan's local date, and watch it
+        for ticks so a badge earned by checking a box announces itself. */}
+    <RewardsProvider>
     <NotificationPromptModal
       visible={showNotificationPrompt}
       onEnable={handleNotificationEnable}
@@ -222,16 +210,6 @@ export function MainTabs() {
         }}
       />
       <Tab.Screen
-        name="HomeTab"
-        component={HomeStackScreen}
-        options={{
-          title: 'Home',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="home" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tab.Screen
         name="ChatTab"
         component={ChatStackScreen}
         options={{
@@ -245,10 +223,10 @@ export function MainTabs() {
         name="NotificationsTab"
         component={NotificationsScreen}
         options={{
-          // Five tabs leave ~72dp each at 360dp width; "Notifications" wraps at
-          // that size and a wrapped label breaks the hand-tuned tabBarStyle
-          // height below. The route name is unchanged, so push routing and every
-          // getParent().navigate('NotificationsTab') call site still work.
+          // "Notifications" wraps at small widths and a wrapped label breaks the
+          // hand-tuned tabBarStyle height below. The route name is unchanged, so
+          // push routing and every getParent().navigate('NotificationsTab') call
+          // site still work.
           title: 'Alerts',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="notifications" size={size} color={color} />
@@ -266,6 +244,12 @@ export function MainTabs() {
         }}
       />
     </Tab.Navigator>
+    {/* Both last, so a reward sits above the tab bar and every screen.
+        CompletionReward fires on each finished task and passes touches through;
+        RewardCelebrations is the rarer badge/level modal that does interrupt. */}
+    <CompletionReward />
+    <RewardCelebrations />
+    </RewardsProvider>
     </PlanProvider>
   );
 }

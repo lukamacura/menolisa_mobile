@@ -81,9 +81,6 @@ export const API_CONFIG = {
     notificationsPreferences: '/api/notifications/preferences',
     notificationsPushToken: '/api/notifications/push-token',
     userPreferences: '/api/user-preferences',
-    trackerInsights: '/api/tracker-insights',
-    insights: '/api/insights',
-    dailyMood: '/api/daily-mood',
     goodDays: '/api/good-days',
     healthSummary: '/api/health-summary',
     doctorReport: '/api/doctor-report',
@@ -94,6 +91,8 @@ export const API_CONFIG = {
     planComplete: '/api/plan/complete',
     /** POST to create one of her own habits, DELETE `?id=` to remove it. */
     planHabits: '/api/plan/habits',
+    /** XP, level, streak and every achievement, derived from her logs. Send `?date=`. Read-only. */
+    rewards: '/api/rewards',
   },
 };
 

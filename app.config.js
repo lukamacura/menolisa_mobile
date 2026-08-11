@@ -29,6 +29,17 @@ module.exports = {
       ],
       './plugins/android-large-screen.js',
       'expo-video',
+      [
+        // Playback only, for the reward chimes. Both flags off strip the
+        // microphone permission the plugin adds by default — we never record,
+        // and a menopause app asking for the mic is a listing that reads badly
+        // on the Play Store and an extra question at App Store review.
+        'expo-audio',
+        {
+          microphonePermission: false,
+          recordAudioAndroid: false,
+        },
+      ],
     ],
   },
 };

@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 
-/** Warm yellow surface: semantic warnings and dashboard mood + insights strip below hero */
+/** Warm yellow surface: semantic warnings */
 const WARM_YELLOW_SURFACE = '#FFF4E5';
 
 export const colors = {
@@ -14,10 +14,6 @@ export const colors = {
   blue: '#3ABFA3',
   blueLight: '#BDEEE4',
   gold: '#FFB38A',
-  /** Dashboard: mood history + Lisa insights area (same hue as warningBg / WARM_YELLOW_SURFACE) */
-  moodSectionBackground: WARM_YELLOW_SURFACE,
-  /** Gold tint for mood history card border (pairs with moodSectionBackground) */
-  moodSectionWaveMid: 'rgba(255, 179, 138, 0.32)',
   lavender: '#8B7CF6',
   plumSoft: '#EAE8F5',
   /** Accent orange. Unused since the referral screen was removed — kept as a palette slot. */

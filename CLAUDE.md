@@ -17,7 +17,9 @@ MenoLisa is an AI health companion app for women navigating perimenopause and me
 ```
 src/
   screens/         # All screens organized by tab
-    home/          # Dashboard, Symptoms, SymptomLogs
+    today/         # DailyLoop hub + Movement, Nutrition, Relaxation, Habits
+    symptoms/      # Symptoms (log), SymptomLogs (history)
+    rewards/       # RewardsScreen
     chat/          # ChatList, ChatThread
     settings/      # Settings, NotificationPrefs
     notifications/ # NotificationsScreen
@@ -36,11 +38,20 @@ RootStack  (AppNavigator picks one branch — see Access control below)
 ├── Auth Stack: Landing → Login → AccountNotFound     (no session)
 ├── SubscriptionRequired                              (session, no access)
 └── MainTabs                                          (session + access)
-    ├── HomeTab: Dashboard → Symptoms → SymptomLogs
+    ├── TodayTab: DailyLoop → Movement | Nutrition | Relaxation | Habits
+    │                       → Rewards
+    │                       → Symptoms → SymptomLogs
     ├── ChatTab: ChatList → ChatThread (sessionId)
     ├── NotificationsTab: Notifications
     └── SettingsTab: Settings → NotificationPrefs
 ```
+
+There is no Home tab. `DailyLoopScreen` is the app's front door: the four plan
+pillars, then symptom tracking below them under its own "Tracking" rule. The
+separation is deliberate — the plan is what she was asked to do today, tracking
+is what her body did to her, and a bad day must never render as a missed task.
+`DailyLoopScreen` also carries the access paywall (`AccessEndedView` for
+`expired` and `canceling`-ending-soon), which used to live on the Dashboard.
 
 Registration happens **on the web** (`/register` on menolisa.com), not in the app —
 the funnel collects the card before an account is worth anything. `LandingScreen`

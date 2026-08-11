@@ -48,6 +48,23 @@ const MAX_COUNT = 20;
 
 export type PlanStatus = 'loading' | 'generating' | 'ready' | 'error';
 
+/**
+ * Something she just finished. Emitted once, at the tick that finished it.
+ *
+ * Detected here rather than inferred from the rewards payload because this is
+ * the only place that sees the *transition* — the server can say a row is done,
+ * but not that this tap is what did it — and because it has to be instant. A
+ * reward that waits on a round trip lands after she has already moved on.
+ */
+export type PlanCompletion = {
+  /** Unique per event, so a repeat of the same row still re-triggers the UI. */
+  id: number;
+  /** What she finished, in her own plan's words. */
+  title: string;
+  /** "Nutrition" / "Movement" / "Relaxation" / "Habit" — the section it came from. */
+  kind: string;
+};
+
 type PlanContextValue = {
   status: PlanStatus;
   plan: PlanReady | null;
@@ -66,6 +83,9 @@ type PlanContextValue = {
   clear: (taskKey: string) => Promise<void>;
   addHabit: (title: string, kind: HabitKind) => Promise<void>;
   removeHabit: (id: string) => Promise<void>;
+  /** The most recent thing she finished, until the reward for it is dismissed. */
+  completion: PlanCompletion | null;
+  clearCompletion: () => void;
 };
 
 const PlanContext = createContext<PlanContextValue | null>(null);
@@ -182,6 +202,59 @@ function currentCountFor(plan: PlanReady, taskKey: string): number {
   return 0;
 }
 
+/**
+ * What (if anything) this tick just finished.
+ *
+ * The rules match what the server pays XP for, so a reward never appears for
+ * something that earns nothing:
+ *
+ * - A **nutrition row** finishes when it reaches its target. The taps on the way
+ *   there are parts of one thing, not four things — celebrating each would make
+ *   the moment worthless and put six rewards behind a glass of water.
+ * - A **plan task** finishes on every tick: one tap means one session done.
+ * - A **habit** finishes the first time it is ticked that day.
+ *
+ * Returns null for un-ticking, and for a row that was already complete.
+ */
+function describeCompletion(
+  plan: PlanReady,
+  taskKey: string,
+  previous: number,
+  next: number
+): Omit<PlanCompletion, 'id'> | null {
+  if (next <= previous) return null;
+
+  if (taskKey.startsWith('nut_')) {
+    for (const group of plan.nutrition.groups) {
+      const item = group.items.find((row) => row.key === taskKey);
+      if (!item) continue;
+      const justFinished = previous < item.target && next >= item.target;
+      return justFinished ? { title: item.title, kind: 'Nutrition' } : null;
+    }
+    return null;
+  }
+
+  if (taskKey.startsWith('habit_')) {
+    if (previous > 0) return null;
+    const habit = plan.habits.find((row) => habitTaskKey(row.id) === taskKey);
+    return habit ? { title: habit.title, kind: 'Habit' } : null;
+  }
+
+  for (const week of plan.weeks) {
+    const task = week.tasks.find((entry) => entry.key === taskKey);
+    if (!task) continue;
+    return { title: task.title, kind: PILLAR_LABELS[task.pillar] };
+  }
+  return null;
+}
+
+/** Section names, for the line above the title in a reward. */
+const PILLAR_LABELS: Record<PlanTask['pillar'], string> = {
+  movement: 'Movement',
+  relaxation: 'Relaxation',
+  habit: 'Habit',
+};
+
 // ---------------------------------------------------------------------------
 // Provider
 // ---------------------------------------------------------------------------
@@ -191,6 +264,9 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
   const [plan, setPlan] = useState<PlanReady | null>(null);
   const [status, setStatus] = useState<PlanStatus>('loading');
   const [error, setError] = useState<string | null>(null);
+  const [completion, setCompletion] = useState<PlanCompletion | null>(null);
+  /** Monotonic, so finishing the same row twice is still two distinct events. */
+  const completionSeq = useRef(0);
 
   const lastFetchedAt = useRef(0);
   const inFlight = useRef<Promise<void> | null>(null);
@@ -387,10 +463,27 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
       const next = Math.max(0, count);
       setPlan((current) => {
         if (!current) return current;
+        const previous = currentCountFor(current, taskKey);
         // Remember where to land if this whole burst fails.
         if (!baseline.current.has(taskKey)) {
-          baseline.current.set(taskKey, currentCountFor(current, taskKey));
+          baseline.current.set(taskKey, previous);
         }
+
+        // Fired optimistically, alongside the count it belongs to. She has done
+        // the thing; the write is bookkeeping. If it later fails the count rolls
+        // back and the error banner explains it — but a reward that waits for
+        // the server to agree arrives too late to feel like a reward.
+        const finished = describeCompletion(current, taskKey, previous, next);
+        if (finished) {
+          completionSeq.current += 1;
+          const event = { id: completionSeq.current, ...finished };
+          // Out of the updater: setState during another component's render phase
+          // warns, and this one runs inside setPlan.
+          queueMicrotask(() => {
+            if (mounted.current) setCompletion(event);
+          });
+        }
+
         return applyCount(current, taskKey, next);
       });
       setError(null);
@@ -448,6 +541,8 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
     [load]
   );
 
+  const clearCompletion = useCallback(() => setCompletion(null), []);
+
   const currentWeek = useMemo(
     () => plan?.weeks.find((week) => week.state === 'current') ?? null,
     [plan]
@@ -466,8 +561,23 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
       clear,
       addHabit,
       removeHabit,
+      completion,
+      clearCompletion,
     }),
-    [status, plan, date, currentWeek, error, refresh, tick, clear, addHabit, removeHabit]
+    [
+      status,
+      plan,
+      date,
+      currentWeek,
+      error,
+      refresh,
+      tick,
+      clear,
+      addHabit,
+      removeHabit,
+      completion,
+      clearCompletion,
+    ]
   );
 
   return <PlanContext.Provider value={value}>{children}</PlanContext.Provider>;

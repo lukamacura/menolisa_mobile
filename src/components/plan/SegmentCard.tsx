@@ -18,8 +18,13 @@ export type SegmentCardProps = {
    * doesn't say which teaches her the numbers are wrong.
    */
   subtitle: string;
-  value: number;
-  total: number;
+  /**
+   * Omit both to drop the ring. Tracking has no target to fill — a ring stuck
+   * at 0/1 would read as a chore she is failing, which is the opposite of what
+   * logging a symptom is for.
+   */
+  value?: number;
+  total?: number;
   onPress: () => void;
 };
 
@@ -33,7 +38,8 @@ export function SegmentCard({
   total,
   onPress,
 }: SegmentCardProps) {
-  const complete = total > 0 && value >= total;
+  const showRing = value !== undefined && total !== undefined;
+  const complete = showRing && total! > 0 && value! >= total!;
 
   return (
     <AnimatedPressable
@@ -56,13 +62,15 @@ export function SegmentCard({
         </Text>
       </View>
 
-      <ProgressRing
-        value={value}
-        total={total}
-        size={44}
-        color={tint}
-        label={complete ? undefined : `${value}/${Math.max(1, total)}`}
-      />
+      {showRing && (
+        <ProgressRing
+          value={value!}
+          total={total!}
+          size={44}
+          color={tint}
+          label={complete ? undefined : `${value}/${Math.max(1, total!)}`}
+        />
+      )}
 
       <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
     </AnimatedPressable>

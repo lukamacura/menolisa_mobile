@@ -3,76 +3,6 @@ import { View, StyleSheet } from 'react-native';
 import { colors, spacing, radii, minTouchTarget } from '../../theme/tokens';
 import { Skeleton } from './Skeleton';
 
-const WAVE_HEIGHT = 60;
-
-/** Dashboard layout: greeting, streak pill, Lisa card, primary button, symptom card, secondary button, wavy, disclaimer, card, recent activity. Same structure/sizes as DashboardScreen. */
-export function DashboardSkeleton() {
-  return (
-    <View style={styles.scrollContent}>
-      <View style={styles.heroSection}>
-        {/* Greeting */}
-        <Skeleton width={140} height={28} borderRadius={radii.sm} style={styles.greetingSkeleton} />
-        {/* Streak pill */}
-        <Skeleton width={110} height={26} borderRadius={radii.pill} style={styles.streakPillSkeleton} />
-        {/* Lisa card: avatar row + bubble */}
-        <View style={styles.lisaCardSkeleton}>
-          <View style={styles.lisaAvatarRow}>
-            <Skeleton width={36} height={36} borderRadius={18} />
-            <Skeleton width={32} height={14} borderRadius={radii.sm} />
-          </View>
-          <Skeleton width="100%" height={72} borderRadius={radii.lg} />
-        </View>
-        {/* Primary "Talk to Lisa" button */}
-        <Skeleton
-          width="100%"
-          height={minTouchTarget + 8}
-          borderRadius={radii.lg}
-          style={styles.primaryButtonSkeleton}
-        />
-        {/* Symptom history card */}
-        <View style={styles.recentActivityCard}>
-          <Skeleton width={24} height={24} borderRadius={radii.sm} />
-          <View style={styles.recentActivityTextWrap}>
-            <Skeleton width={120} height={16} style={{ marginBottom: 4 }} />
-            <Skeleton width={140} height={14} />
-          </View>
-        </View>
-        {/* Secondary "Log symptom" button */}
-        <Skeleton
-          width="100%"
-          height={minTouchTarget}
-          borderRadius={radii.lg}
-          style={styles.secondaryButtonSkeleton}
-        />
-      </View>
-
-      <View style={styles.waveSkeleton} />
-
-      <View style={styles.contentSection}>
-        <View style={styles.disclaimerCard}>
-          <Skeleton width={20} height={20} borderRadius={radii.sm} />
-          <View style={{ flex: 1 }}>
-            <Skeleton width="100%" height={12} style={{ marginBottom: 6 }} />
-            <Skeleton width="95%" height={12} style={{ marginBottom: 6 }} />
-            <Skeleton width="80%" height={12} />
-          </View>
-        </View>
-        <View style={styles.whatLisaCard}>
-          <View style={styles.whatLisaHeader}>
-            <Skeleton width={160} height={18} />
-            <Skeleton width={50} height={20} borderRadius={radii.sm} />
-          </View>
-          <Skeleton width="100%" height={20} style={{ marginTop: spacing.sm, marginBottom: 6 }} />
-          <Skeleton width="90%" height={14} style={{ marginBottom: 6 }} />
-          <Skeleton width="85%" height={14} style={{ marginBottom: spacing.md }} />
-          <Skeleton width={60} height={14} style={{ marginBottom: 6 }} />
-          <Skeleton width="100%" height={14} style={{ marginBottom: 4 }} />
-          <Skeleton width="95%" height={14} />
-        </View>
-      </View>
-    </View>
-  );
-}
 
 /** Generic list with header + N rows (icon + 2 lines). Reusable for SymptomLogs, Symptoms, Notifications, ChatList. */
 export function ListSkeleton({
@@ -174,63 +104,6 @@ export function NotificationPrefsSkeleton() {
   );
 }
 
-/** What Lisa Noticed: bento row + hero tile + short copy (matches WhatLisaNoticedCard layout). */
-export function WhatLisaNoticedCardSkeleton() {
-  return (
-    <View style={styles.whatLisaRoot}>
-      <Skeleton width={148} height={26} borderRadius={radii.pill} style={{ marginBottom: spacing.sm }} />
-      <View style={styles.whatLisaBentoRow}>
-        <View style={styles.whatLisaBentoCell}>
-          <View style={styles.whatLisaBentoCellInner}>
-            <Skeleton
-              width={minTouchTarget + spacing.xl}
-              height={minTouchTarget + spacing.xl}
-              borderRadius={radii.pill}
-            />
-            <View style={styles.whatLisaBentoTextCol}>
-              <Skeleton
-                width="72%"
-                height={13}
-                borderRadius={radii.sm}
-                style={{ marginBottom: 3, alignSelf: 'center' }}
-              />
-              <Skeleton width="55%" height={10} borderRadius={radii.sm} style={{ alignSelf: 'center' }} />
-            </View>
-          </View>
-        </View>
-        <View style={styles.whatLisaBentoCell}>
-          <View style={styles.whatLisaBentoCellInner}>
-            <Skeleton
-              width={minTouchTarget + spacing.xl}
-              height={minTouchTarget + spacing.xl}
-              borderRadius={radii.pill}
-            />
-            <View style={styles.whatLisaBentoTextCol}>
-              <Skeleton
-                width={28}
-                height={16}
-                borderRadius={radii.sm}
-                style={{ marginBottom: 3, alignSelf: 'center' }}
-              />
-              <Skeleton width="50%" height={10} borderRadius={radii.sm} style={{ alignSelf: 'center' }} />
-            </View>
-          </View>
-        </View>
-      </View>
-      <View style={styles.whatLisaHeroSkeleton}>
-        <View style={styles.skeletonRow}>
-          <Skeleton width={88} height={22} borderRadius={radii.pill} />
-          <Skeleton width={36} height={36} borderRadius={radii.md} />
-        </View>
-        <Skeleton width="40%" height={12} borderRadius={radii.sm} style={{ marginTop: spacing.sm }} />
-        <Skeleton width="100%" height={20} borderRadius={radii.sm} style={{ marginTop: 8 }} />
-        <Skeleton width="70%" height={20} borderRadius={radii.sm} style={{ marginTop: 6 }} />
-        <Skeleton width="55%" height={12} borderRadius={radii.sm} style={{ marginTop: spacing.sm }} />
-      </View>
-      <Skeleton width="100%" height={48} borderRadius={radii.lg} style={{ marginTop: spacing.sm }} />
-    </View>
-  );
-}
 
 /** Daily loop hub: week header (date row, title, focus, week dots) + 4 segment cards. */
 export function DailyLoopSkeleton() {
@@ -279,6 +152,13 @@ export function PlanDetailSkeleton() {
 }
 
 const styles = StyleSheet.create({
+  listWrap: { flex: 1 },
+  listHeader: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
   loopHeader: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
@@ -305,126 +185,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     paddingVertical: spacing.sm,
-  },
-  scrollContent: { paddingBottom: 0 },
-  heroSection: {
-    backgroundColor: colors.navy,
-    paddingTop: spacing.lg,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.lg,
-  },
-  greetingSkeleton: { marginBottom: spacing.lg },
-  streakPillSkeleton: { marginBottom: spacing.lg },
-  lisaCardSkeleton: { marginBottom: spacing.xl },
-  lisaAvatarRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    marginBottom: 6,
-    marginLeft: 4,
-  },
-  primaryButtonSkeleton: { marginBottom: spacing.md },
-  secondaryButtonSkeleton: { marginBottom: spacing.md },
-  waveSkeleton: {
-    width: '100%',
-    height: WAVE_HEIGHT,
-    backgroundColor: colors.primaryLight,
-    marginTop: -1,
-  },
-  contentSection: {
-    backgroundColor: colors.primaryLight,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.xl,
-    marginTop: -1,
-  },
-  disclaimerCard: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.sm,
-    backgroundColor: 'rgba(255, 251, 253, 0.72)',
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
-    borderRadius: radii.md,
-    marginBottom: spacing.lg,
-    borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.06)',
-  },
-  whatLisaRoot: {
-    marginBottom: spacing.xl,
-  },
-  whatLisaBentoRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  whatLisaBentoCell: {
-    flex: 1,
-    backgroundColor: colors.card,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
-    paddingHorizontal: spacing.sm,
-    minHeight:
-      minTouchTarget +
-      spacing.xl +
-      spacing.sm +
-      spacing['2xl'] +
-      spacing.lg +
-      spacing.md,
-  },
-  whatLisaBentoCellInner: {
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: spacing.sm,
-    width: '100%',
-  },
-  whatLisaBentoTextCol: {
-    width: '100%',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-  },
-  whatLisaHeroSkeleton: {
-    backgroundColor: colors.navy,
-    borderRadius: radii.lg,
-    padding: spacing.lg,
-    marginBottom: spacing.sm,
-  },
-  whatLisaCard: {
-    backgroundColor: colors.card,
-    borderRadius: radii.lg,
-    padding: spacing.lg,
-    marginBottom: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  whatLisaHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  recentActivityCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.card,
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radii.lg,
-    marginBottom: spacing.xl,
-    gap: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    minHeight: minTouchTarget + spacing.lg,
-  },
-  recentActivityTextWrap: { flex: 1 },
-  listWrap: { flex: 1 },
-  listHeader: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
   },
   listContent: {
     padding: spacing.lg,

@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import LottieView from 'lottie-react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radii, typography, minTouchTarget, shadows } from '../theme/tokens';
+import { playRewardCue, prepareRewardSounds } from '../lib/rewardSound';
 
 export type GratitudeMetaChip = {
   icon: keyof typeof Ionicons.glyphMap;
@@ -19,7 +20,7 @@ export type GratitudeSuccessPanelProps = {
 
 /**
  * Same gratitude layout as symptom log success (trophy Lottie, badge, chips).
- * Reused for mood save, streak milestones, and edit-log success.
+ * Reused for streak milestones and edit-log success.
  */
 export function GratitudeSuccessPanel({
   title,
@@ -28,6 +29,20 @@ export function GratitudeSuccessPanel({
   metaChips,
   reduceMotion,
 }: GratitudeSuccessPanelProps) {
+  /*
+    This panel is only ever mounted at the moment it is celebrating, so mount is
+    the event — every caller swaps it in for the form she just submitted.
+
+    It gets the `achievement` cue rather than the lighter `completion` one
+    because it takes the whole screen, same as the badge modal. Deliberately not
+    gated on `reduceMotion`: that setting is about vestibular comfort, and
+    someone who turns animations off should still be told the log saved.
+  */
+  useEffect(() => {
+    prepareRewardSounds();
+    playRewardCue('achievement');
+  }, []);
+
   return (
     <View style={styles.successOverlay}>
       <View style={styles.successCard}>
