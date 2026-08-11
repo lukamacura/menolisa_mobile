@@ -15,6 +15,7 @@ export type AuthStackParamList = {
   Landing: undefined;
   Login: undefined;
   Register: undefined;
+  AccountNotFound: { email: string };
 };
 
 /**

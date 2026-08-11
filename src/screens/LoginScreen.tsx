@@ -10,21 +10,24 @@ import {
   KeyboardAvoidingView,
   Platform,
   Image,
-  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../lib/supabase';
 import { logger } from '../lib/logger';
-import { getWebAppUrl, API_CONFIG } from '../lib/api';
+import { API_CONFIG } from '../lib/api';
+import type { AuthStackParamList } from '../navigation/types';
 
 const REVIEWER_EMAILS = new Set<string>(['luka.xzy@gmail.com']);
 import { colors, spacing, radii, typography, shadows, minTouchTarget, landingGradient } from '../theme/tokens';
 import { StaggeredZoomIn, useReduceMotion } from '../components/StaggeredZoomIn';
 
 type Mode = 'email' | 'code';
-type ErrorType = 'no_account' | 'invalid_code' | 'rate_limit' | 'network' | 'unknown' | null;
+type ErrorType = 'invalid_code' | 'rate_limit' | 'network' | 'unknown' | null;
+type LoginNav = NativeStackNavigationProp<AuthStackParamList, 'Login'>;
 
 const RESEND_COOLDOWN_SECONDS = 60;
 const CODE_LENGTH = 6;
@@ -32,6 +35,7 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function LoginScreen() {
   const reduceMotion = useReduceMotion();
+  const navigation = useNavigation<LoginNav>();
   const [mode, setMode] = useState<Mode>('email');
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
@@ -110,8 +114,8 @@ export function LoginScreen() {
           msg.toLowerCase().includes('user not found') ||
           msg.toLowerCase().includes('not found')
         ) {
-          setError("We couldn't find an account for this email.");
-          setErrorType('no_account');
+          navigation.navigate('AccountNotFound', { email: targetEmail });
+          return;
         } else if (msg.toLowerCase().includes('rate') || msg.toLowerCase().includes('too many')) {
           setError('Too many requests. Please wait a moment and try again.');
           setErrorType('rate_limit');
@@ -136,7 +140,7 @@ export function LoginScreen() {
     } finally {
       setLoading(false);
     }
-  }, [email, emailValid, loading, sendOtp]);
+  }, [email, emailValid, loading, navigation, sendOtp]);
 
   const handleVerifyCode = useCallback(async () => {
     if (!codeValid || loading) return;
@@ -187,11 +191,6 @@ export function LoginScreen() {
       setLoading(false);
     }
   }, [email, loading, resendIn, sendOtp]);
-
-  const handleOpenWebRegister = useCallback(() => {
-    const url = getWebAppUrl('/register');
-    Linking.openURL(url).catch((err) => logger.warn('Failed to open web register', err));
-  }, []);
 
   const handleEditEmail = useCallback(() => {
     setMode('email');
@@ -331,7 +330,6 @@ export function LoginScreen() {
                 <View
                   style={[
                     styles.errorContainer,
-                    errorType === 'no_account' && styles.errorContainerInfo,
                     errorType === 'rate_limit' && styles.errorContainerWarning,
                   ]}
                 >
@@ -339,24 +337,15 @@ export function LoginScreen() {
                     <Ionicons
                       name="alert-circle"
                       size={20}
-                      color={
-                        errorType === 'no_account'
-                          ? colors.info
-                          : errorType === 'rate_limit'
-                          ? colors.warning
-                          : colors.danger
-                      }
+                      color={errorType === 'rate_limit' ? colors.warning : colors.danger}
                     />
                     <Text
                       style={[
                         styles.errorTitle,
-                        errorType === 'no_account' && styles.errorTitleInfo,
                         errorType === 'rate_limit' && styles.errorTitleWarning,
                       ]}
                     >
-                      {errorType === 'no_account'
-                        ? 'Account not found'
-                        : errorType === 'rate_limit'
+                      {errorType === 'rate_limit'
                         ? 'Too many requests'
                         : errorType === 'invalid_code'
                         ? 'Invalid code'
@@ -368,20 +357,11 @@ export function LoginScreen() {
                   <Text
                     style={[
                       styles.errorText,
-                      errorType === 'no_account' && styles.errorTextInfo,
                       errorType === 'rate_limit' && styles.errorTextWarning,
                     ]}
                   >
                     {error}
                   </Text>
-                  {errorType === 'no_account' && (
-                    <View style={styles.errorAction}>
-                      <Text style={styles.errorActionText}>New to Menolisa?</Text>
-                      <TouchableOpacity activeOpacity={0.7} onPress={handleOpenWebRegister}>
-                        <Text style={styles.errorActionLink}>Create your account at menolisa.com →</Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
                 </View>
               )}
             </View>
@@ -514,10 +494,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(200, 58, 84, 0.30)',
   },
-  errorContainerInfo: {
-    backgroundColor: colors.infoBg,
-    borderColor: 'rgba(75, 141, 248, 0.30)',
-  },
   errorContainerWarning: {
     backgroundColor: colors.warningBg,
     borderColor: 'rgba(217, 138, 31, 0.30)',
@@ -533,9 +509,6 @@ const styles = StyleSheet.create({
     fontFamily: typography.family.semibold,
     color: colors.danger,
   },
-  errorTitleInfo: {
-    color: colors.info,
-  },
   errorTitleWarning: {
     color: colors.warning,
   },
@@ -545,27 +518,7 @@ const styles = StyleSheet.create({
     color: colors.danger,
     lineHeight: 20,
   },
-  errorTextInfo: {
-    color: colors.info,
-  },
   errorTextWarning: {
     color: colors.warning,
-  },
-  errorAction: {
-    marginTop: spacing.md,
-    paddingTop: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(75, 141, 248, 0.20)',
-  },
-  errorActionText: {
-    fontSize: 12,
-    color: colors.info,
-    marginBottom: spacing.xs,
-  },
-  errorActionLink: {
-    fontSize: 12,
-    fontFamily: typography.family.semibold,
-    color: colors.info,
-    textDecorationLine: 'underline',
   },
 });

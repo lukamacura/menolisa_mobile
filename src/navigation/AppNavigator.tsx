@@ -14,6 +14,7 @@ import { openAccountBillingEntry } from '../lib/api';
 import { logger } from '../lib/logger';
 import { LandingScreenWithButton } from '../screens/LandingScreen';
 import { LoginScreen } from '../screens/LoginScreen';
+import { AccountNotFoundScreen } from '../screens/AccountNotFoundScreen';
 import { SubscriptionRequiredScreen } from '../screens/SubscriptionRequiredScreen';
 import { MainTabs } from './MainTabs';
 import { MedicalDisclaimerModal } from '../components/MedicalDisclaimerModal';
@@ -183,6 +184,7 @@ export function AppNavigator() {
             <>
               <Stack.Screen name="Landing" component={LandingScreenWithButton} />
               <Stack.Screen name="Login" component={LoginScreen} />
+              <Stack.Screen name="AccountNotFound" component={AccountNotFoundScreen} />
             </>
           ) : hasAccess ? (
             <Stack.Screen name="Main" component={MainTabs} />
