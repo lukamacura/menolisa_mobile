@@ -7,7 +7,9 @@ MenoLisa is an AI health companion app for women navigating perimenopause and me
 - **Framework**: Expo ~54 (React Native, New Architecture enabled)
 - **Language**: TypeScript (strict)
 - **Navigation**: React Navigation v7 — bottom tabs + native stacks
-- **Backend/DB**: Supabase (auth + PostgreSQL + Edge Functions) — **no separate Node.js server**
+- **Auth/DB**: Supabase (auth + PostgreSQL)
+- **Backend**: the **Next.js app in `../menolisa_web`** serves every `/api/*` route this
+  app calls, authenticated with a `Bearer` token. There are no Supabase Edge Functions.
 - **Fonts**: Poppins (body/UI) + Nunito (display/headings)
 - **Package manager**: npm
 
@@ -19,25 +21,30 @@ src/
     chat/          # ChatList, ChatThread
     settings/      # Settings, NotificationPrefs
     notifications/ # NotificationsScreen
-    LoginScreen, RegisterScreen, LandingScreen
+    LandingScreen, LoginScreen, AccountNotFoundScreen, SubscriptionRequiredScreen
   components/      # Shared UI components
   navigation/      # AppNavigator, MainTabs, types.ts
   theme/           # tokens.ts — single source of truth for colors, spacing, radii, typography
-  lib/             # supabase.ts, api.ts, logger.ts, symptomTrackerConstants.ts
+  lib/             # supabase.ts, api.ts, accountStatus.ts, logger.ts, symptomTrackerConstants.ts
   hooks/           # Custom React hooks
   context/         # AuthContext, RefetchTrialContext
 ```
 
 ## Navigation Structure
 ```
-RootStack
-├── Auth Stack: Landing → Login → Register
-└── Main Stack → MainTabs (bottom tabs)
+RootStack  (AppNavigator picks one branch — see Access control below)
+├── Auth Stack: Landing → Login → AccountNotFound     (no session)
+├── SubscriptionRequired                              (session, no access)
+└── MainTabs                                          (session + access)
     ├── HomeTab: Dashboard → Symptoms → SymptomLogs
     ├── ChatTab: ChatList → ChatThread (sessionId)
     ├── NotificationsTab: Notifications
     └── SettingsTab: Settings → NotificationPrefs
 ```
+
+Registration happens **on the web** (`/register` on menolisa.com), not in the app —
+the funnel collects the card before an account is worth anything. `LandingScreen`
+and `AccountNotFoundScreen` both open it in the browser.
 
 ## Design Tokens
 All design values live in `src/theme/tokens.ts`. Always import from there — never hardcode.
@@ -54,11 +61,29 @@ All design values live in `src/theme/tokens.ts`. Always import from there — ne
   - **Labels/captions**: `presets.label`, `presets.caption`
 
 ## Backend Architecture
-- **Client-side data**: `src/lib/supabase.ts` — Supabase JS client for auth + direct DB queries
-- **API calls**: `src/lib/api.ts` — abstraction layer for backend calls
-- **Server-side logic**: Supabase Edge Functions (Deno/TypeScript) — NOT Express/Node.js
+- **Server-side logic**: the Next.js app in `../menolisa_web` (`app/api/*`). Its
+  `docs/mobile-app-changes.md` is the API contract — read it before touching anything
+  that talks to the backend.
+- **API calls**: `src/lib/api.ts` — `apiFetchWithAuth` attaches the Supabase access
+  token as a Bearer header and throws `ApiError` carrying the HTTP status.
 - **Auth**: Supabase Auth with JWT; all user data scoped by `user_id`
-- **AI**: OpenAI API calls made from Supabase Edge Functions, not the mobile client directly
+- **AI**: `/api/langchain-rag` on the web app, never from the client directly
+
+### Access control — read this before adding a paid feature
+`GET /api/account/status` is the **single source of truth** for whether the user has
+access. `AuthContext` fetches it, `AppNavigator` gates on its `has_access`, and
+`useTrialStatus()` is a thin adapter over it for UI.
+
+- **Never re-derive access from a direct `user_trials` query.** The client cannot see
+  disputes, dunning, or the fail-closed rules. It was done once, for the long-dropped
+  `trial_start`/`trial_end`/`trial_days` columns, and after they were dropped the whole
+  select failed (Postgres 42703) — every paying subscriber was told her trial ended today.
+- **There is no free trial.** One plan, $59 / 8 weeks, charged at checkout. `state` is
+  `active | canceling | past_due | ended | disputed`; the first three keep access, and
+  `canceling` keeps it until `ends_at`. Never write trial copy into the UI.
+- **A `403` from any `/api/*` route means "no subscription" — route to the paywall,
+  never an error toast.** Match on the status via `isSubscriptionRequiredError(err)`;
+  the message text is not stable.
 
 ## Agents
 Use specialized agents for domain-specific work:

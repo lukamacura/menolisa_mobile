@@ -9,6 +9,12 @@ import { useAuth } from '../context/AuthContext';
 import { useRegisterPushToken, NOTIFICATION_PROMPT_SHOWN_KEY } from '../hooks/useRegisterPushToken';
 import { NotificationPromptModal } from '../components/NotificationPromptModal';
 import { colors, typography } from '../theme/tokens';
+import { PlanProvider } from '../context/PlanContext';
+import { DailyLoopScreen } from '../screens/today/DailyLoopScreen';
+import { MovementScreen } from '../screens/today/MovementScreen';
+import { NutritionScreen } from '../screens/today/NutritionScreen';
+import { RelaxationScreen } from '../screens/today/RelaxationScreen';
+import { HabitsScreen } from '../screens/today/HabitsScreen';
 import { DashboardScreen } from '../screens/home/DashboardScreen';
 import { SymptomsScreen } from '../screens/home/SymptomsScreen';
 import { SymptomLogsScreen } from '../screens/home/SymptomLogsScreen';
@@ -17,13 +23,50 @@ import { ChatThreadScreen } from '../screens/chat/ChatThreadScreen';
 import { NotificationsScreen } from '../screens/notifications/NotificationsScreen';
 import { SettingsScreen } from '../screens/settings/SettingsScreen';
 import { NotificationPrefsScreen } from '../screens/settings/NotificationPrefsScreen';
-import { InviteFriendsScreen } from '../screens/settings/InviteFriendsScreen';
 import { innerStackScreenOptions } from './stackScreenOptions';
 
 const Tab = createBottomTabNavigator();
+const TodayStack = createNativeStackNavigator();
 const HomeStack = createNativeStackNavigator();
 const ChatStack = createNativeStackNavigator();
 const SettingsStack = createNativeStackNavigator();
+
+/** Header block shared by every pushed sub-screen in the app. */
+const pushedScreenHeader = {
+  headerShown: true,
+  headerBackTitle: 'Back',
+  headerTintColor: colors.primary,
+  headerStyle: { backgroundColor: colors.background },
+  headerShadowVisible: false,
+} as const;
+
+function TodayStackScreen() {
+  return (
+    <TodayStack.Navigator screenOptions={innerStackScreenOptions}>
+      <TodayStack.Screen name="DailyLoop" component={DailyLoopScreen} />
+      <TodayStack.Screen
+        name="Movement"
+        component={MovementScreen}
+        options={{ ...pushedScreenHeader, headerTitle: 'Movement' }}
+      />
+      <TodayStack.Screen
+        name="Nutrition"
+        component={NutritionScreen}
+        options={{ ...pushedScreenHeader, headerTitle: 'Nutrition' }}
+      />
+      <TodayStack.Screen
+        name="Relaxation"
+        component={RelaxationScreen}
+        options={{ ...pushedScreenHeader, headerTitle: 'Relaxation' }}
+      />
+      <TodayStack.Screen
+        name="Habits"
+        component={HabitsScreen}
+        options={{ ...pushedScreenHeader, headerTitle: 'Your habits' }}
+      />
+    </TodayStack.Navigator>
+  );
+}
 
 function HomeStackScreen() {
   return (
@@ -90,18 +133,6 @@ function SettingsStackScreen() {
     <SettingsStack.Navigator screenOptions={innerStackScreenOptions}>
       <SettingsStack.Screen name="Settings" component={SettingsScreen} />
       <SettingsStack.Screen
-        name="InviteFriends"
-        component={InviteFriendsScreen}
-        options={{
-          headerShown: true,
-          headerTitle: 'Invite friends',
-          headerBackTitle: 'Back',
-          headerTintColor: colors.primary,
-          headerStyle: { backgroundColor: colors.background },
-          headerShadowVisible: false,
-        }}
-      />
-      <SettingsStack.Screen
         name="NotificationPrefs"
         component={NotificationPrefsScreen}
         options={{
@@ -146,7 +177,7 @@ export function MainTabs() {
   const contentBottomPadding = bottomInset + 6; // extra space so descenders (e.g. "g") aren't clipped
 
   return (
-    <>
+    <PlanProvider>
     <NotificationPromptModal
       visible={showNotificationPrompt}
       onEnable={handleNotificationEnable}
@@ -181,6 +212,16 @@ export function MainTabs() {
       }}
     >
       <Tab.Screen
+        name="TodayTab"
+        component={TodayStackScreen}
+        options={{
+          title: 'Today',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="sunny" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
         name="HomeTab"
         component={HomeStackScreen}
         options={{
@@ -204,7 +245,11 @@ export function MainTabs() {
         name="NotificationsTab"
         component={NotificationsScreen}
         options={{
-          title: 'Notifications',
+          // Five tabs leave ~72dp each at 360dp width; "Notifications" wraps at
+          // that size and a wrapped label breaks the hand-tuned tabBarStyle
+          // height below. The route name is unchanged, so push routing and every
+          // getParent().navigate('NotificationsTab') call site still work.
+          title: 'Alerts',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="notifications" size={size} color={color} />
           ),
@@ -221,7 +266,7 @@ export function MainTabs() {
         }}
       />
     </Tab.Navigator>
-    </>
+    </PlanProvider>
   );
 }
 

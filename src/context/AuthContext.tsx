@@ -1,8 +1,13 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import { setSubscriptionRequiredHandler } from '../lib/api';
 import { logger } from '../lib/logger';
-import { fetchAccountStatus, type AccountStatus } from '../lib/accountStatus';
+import {
+  fetchAccountStatus,
+  DENIED_ACCOUNT_STATUS,
+  type AccountStatus,
+} from '../lib/accountStatus';
 
 type AuthContextType = {
   user: User | null;
@@ -35,16 +40,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       logger.warn('refetchAccountStatus failed — failing closed to expired', err);
       // Never leave accountStatus null after an authed fetch attempt — that hangs the navigator.
       // Fail-closed: route the user to SubscriptionRequiredScreen where they can retry or sign out.
-      setAccountStatus({
-        expired: true,
-        account_status: 'expired',
-        subscription_ends_at: null,
-        trial_end: null,
-      });
+      setAccountStatus(DENIED_ACCOUNT_STATUS);
     } finally {
       setAccountStatusLoading(false);
     }
   }, []);
+
+  // Any gated route answering 403 means access ended mid-session. Re-read status so
+  // AppNavigator moves her to the paywall instead of a screen stuck on an error.
+  useEffect(() => {
+    setSubscriptionRequiredHandler(() => {
+      if (userRef.current) refetchAccountStatus();
+    });
+    return () => setSubscriptionRequiredHandler(null);
+  }, [refetchAccountStatus]);
 
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();

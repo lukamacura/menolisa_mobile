@@ -26,9 +26,10 @@ export type MainStackParamList = {
 };
 
 /**
- * Bottom tab navigator: 4 tabs.
+ * Bottom tab navigator: 5 tabs.
  */
 export type MainTabParamList = {
+  TodayTab: NavigatorScreenParams<TodayStackParamList>;
   HomeTab: NavigatorScreenParams<HomeStackParamList>;
   ChatTab: NavigatorScreenParams<ChatStackParamList>;
   NotificationsTab: NavigatorScreenParams<NotificationsStackParamList>;
@@ -36,10 +37,26 @@ export type MainTabParamList = {
 };
 
 type MainTabParamListMap = MainTabParamList;
+type TodayStackParamListMap = TodayStackParamList;
 type HomeStackParamListMap = HomeStackParamList;
 type ChatStackParamListMap = ChatStackParamList;
 type NotificationsStackParamListMap = NotificationsStackParamList;
 type SettingsStackParamListMap = SettingsStackParamList;
+
+/**
+ * Today tab stack: the daily loop hub → one screen per pillar.
+ *
+ * Movement and Relaxation take a task key rather than the task itself so the
+ * screen always reads the live copy out of PlanContext after a tick, instead of
+ * rendering a snapshot captured at navigation time.
+ */
+export type TodayStackParamList = {
+  DailyLoop: undefined;
+  Movement: { taskKey: string };
+  Nutrition: undefined;
+  Relaxation: { taskKey: string };
+  Habits: undefined;
+};
 
 /**
  * Home tab stack: Dashboard → Symptoms, SymptomLogs.
@@ -78,6 +95,7 @@ declare global {
     interface RootParamList extends RootStackParamList {}
     interface AuthParamList extends AuthStackParamList {}
     interface MainTabParamList extends MainTabParamListMap {}
+    interface TodayStackParamList extends TodayStackParamListMap {}
     interface HomeStackParamList extends HomeStackParamListMap {}
     interface ChatStackParamList extends ChatStackParamListMap {}
     interface NotificationsStackParamList extends NotificationsStackParamListMap {}

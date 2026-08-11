@@ -22,9 +22,9 @@ const COPY_EXPIRED = {
 };
 
 const COPY_ENDING_SOON = {
-  heading: 'Your free access ends soon',
+  heading: 'Your subscription ends soon',
   subheading:
-    'Manage your subscription on menolisa.com so you can keep using the app without losing your progress.',
+    "Your plan won't renew. Reactivate on menolisa.com to keep using the app without losing your progress.",
 };
 
 const URGENCY_EXPIRED = 'Access ended. Continue on menolisa.com.';
@@ -41,11 +41,11 @@ const REMIND_LATER_LABEL = 'Remind me later';
 const SKIP_LABEL = 'Skip';
 
 type Variant = 'card' | 'fullScreen';
-export type TrialPaywallState = 'expired' | 'ending_soon';
+export type AccessPaywallState = 'expired' | 'ending_soon';
 
 type AccessEndedViewProps = {
   variant: Variant;
-  trialState?: TrialPaywallState;
+  accessState?: AccessPaywallState;
   daysLeft?: number;
   onPress?: () => void;
   onRemindLater?: () => void;
@@ -56,16 +56,16 @@ type AccessEndedViewProps = {
 
 export function AccessEndedView({
   variant,
-  trialState = 'expired',
+  accessState = 'expired',
   daysLeft = 0,
   onPress,
   onRemindLater,
   onSkip,
   reduceMotion = false,
 }: AccessEndedViewProps) {
-  const copy = trialState === 'ending_soon' ? COPY_ENDING_SOON : COPY_EXPIRED;
+  const copy = accessState === 'ending_soon' ? COPY_ENDING_SOON : COPY_EXPIRED;
   const urgencyLine =
-    trialState === 'expired' ? URGENCY_EXPIRED : getUrgencyEndingSoon(daysLeft);
+    accessState === 'expired' ? URGENCY_EXPIRED : getUrgencyEndingSoon(daysLeft);
 
   const handlePress = () => {
     if (onPress) {

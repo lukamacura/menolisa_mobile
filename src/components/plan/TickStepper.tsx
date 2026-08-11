@@ -1,0 +1,194 @@
+import React from 'react';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { colors, spacing, radii, typography, minTouchTarget } from '../../theme/tokens';
+
+/**
+ * Pips get cramped fast. Three per row is comfortable at 44dp; eight is 30dp,
+ * which is under the minimum touch target and wrong for this audience — so
+ * anything above this threshold gets a minus/plus stepper instead.
+ */
+const MAX_PIPS = 4;
+
+type TickStepperProps = {
+  count: number;
+  /** Ticks a full period takes. */
+  target: number;
+  /** Ticks the control should offer. Only water differs from target (6 → 8). */
+  max: number;
+  /** Called with the NEW TOTAL, not a delta. 0 clears the day. */
+  onChange: (next: number) => void;
+  /** Announced by screen readers alongside the numbers. */
+  label: string;
+};
+
+export function TickStepper({ count, target, max, onChange, label }: TickStepperProps) {
+  const done = count >= target;
+
+  if (target === 1 && max === 1) {
+    return (
+      <Pressable
+        onPress={() => onChange(done ? 0 : 1)}
+        hitSlop={8}
+        style={[styles.check, done && styles.checkDone]}
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: done }}
+        accessibilityLabel={label}
+      >
+        {done && <Ionicons name="checkmark" size={20} color={colors.textInverse} />}
+      </Pressable>
+    );
+  }
+
+  if (max <= MAX_PIPS) {
+    return (
+      <View
+        style={styles.pips}
+        accessibilityRole="adjustable"
+        accessibilityLabel={label}
+        accessibilityValue={{ min: 0, max, now: count }}
+      >
+        {Array.from({ length: max }, (_, index) => index + 1).map((pip) => {
+          const filled = pip <= count;
+          return (
+            <Pressable
+              key={pip}
+              // Tapping the last filled pip steps back down, so a mistap is one
+              // tap to fix rather than a trip to zero and back.
+              onPress={() => onChange(pip === count ? pip - 1 : pip)}
+              hitSlop={6}
+              style={[styles.pip, filled && styles.pipFilled]}
+              accessibilityLabel={`${label}, ${pip} of ${max}`}
+            >
+              {filled && <Ionicons name="checkmark" size={16} color={colors.textInverse} />}
+            </Pressable>
+          );
+        })}
+      </View>
+    );
+  }
+
+  return (
+    <View
+      style={styles.stepper}
+      accessibilityRole="adjustable"
+      accessibilityLabel={label}
+      accessibilityValue={{ min: 0, max, now: count }}
+    >
+      <Pressable
+        onPress={() => onChange(Math.max(0, count - 1))}
+        disabled={count === 0}
+        hitSlop={6}
+        style={[styles.stepButton, count === 0 && styles.stepButtonDisabled]}
+        accessibilityRole="button"
+        accessibilityLabel={`One fewer ${label}`}
+      >
+        <Ionicons
+          name="remove"
+          size={18}
+          color={count === 0 ? colors.textMuted : colors.primaryDark}
+        />
+      </Pressable>
+
+      <View style={styles.readout}>
+        <Text style={[styles.readoutValue, done && styles.readoutValueDone]}>
+          {Math.min(count, target)}
+          <Text style={styles.readoutTarget}>/{target}</Text>
+        </Text>
+        {/* Water's target is 6 but it offers 8. Past target the extras read as a
+            bonus rather than as a bar she has failed to reach. */}
+        {count > target && <Text style={styles.bonus}>+{count - target}</Text>}
+      </View>
+
+      <Pressable
+        onPress={() => onChange(Math.min(max, count + 1))}
+        disabled={count >= max}
+        hitSlop={6}
+        style={[styles.stepButton, count >= max && styles.stepButtonDisabled]}
+        accessibilityRole="button"
+        accessibilityLabel={`One more ${label}`}
+      >
+        <Ionicons
+          name="add"
+          size={18}
+          color={count >= max ? colors.textMuted : colors.primaryDark}
+        />
+      </Pressable>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  check: {
+    width: 32,
+    height: 32,
+    borderRadius: radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surfaceElevated,
+  },
+  checkDone: {
+    backgroundColor: colors.success,
+    borderColor: colors.success,
+  },
+  pips: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  pip: {
+    width: 30,
+    height: 30,
+    borderRadius: radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surfaceElevated,
+  },
+  pipFilled: {
+    backgroundColor: colors.success,
+    borderColor: colors.success,
+  },
+  stepper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  stepButton: {
+    width: minTouchTarget - 8,
+    height: minTouchTarget - 8,
+    borderRadius: radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceElevated,
+  },
+  stepButtonDisabled: {
+    backgroundColor: colors.background,
+    borderColor: colors.border,
+  },
+  readout: {
+    minWidth: 52,
+    alignItems: 'center',
+  },
+  readoutValue: {
+    ...typography.presets.heading3,
+    color: colors.text,
+  },
+  readoutValueDone: {
+    color: colors.success,
+  },
+  readoutTarget: {
+    ...typography.presets.caption,
+    color: colors.textMuted,
+  },
+  bonus: {
+    ...typography.presets.caption,
+    color: colors.primaryDark,
+    marginTop: -2,
+  },
+});

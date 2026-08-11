@@ -1,156 +1,71 @@
-import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '../lib/supabase';
+import { useCallback, useMemo } from 'react';
+import { useAuth } from '../context/AuthContext';
 import { apiFetchWithAuth } from '../lib/api';
+import type { AccountState, AccountStatusValue } from '../lib/accountStatus';
 
-const MS = { DAY: 86_400_000 };
+/**
+ * Subscription state for UI, derived from GET /api/account/status via AuthContext.
+ *
+ * This used to query `user_trials` directly for `trial_start`/`trial_end`/`trial_days`.
+ * Those columns were dropped when the free trial was removed, which made the whole
+ * select fail (Postgres 42703) for every user — the hook then reported "0 days left,
+ * not a subscriber" to paying customers and popped an expiry paywall at them.
+ *
+ * The server is the only thing that knows the access rules (disputes, dunning,
+ * canceled-but-still-paid-for). Read them from it; never re-derive them here.
+ */
 
-/** account_status from user_trials: paid = subscriber, expired, trial, etc. */
-export type AccountStatus = 'paid' | 'expired' | 'trial' | string | null;
-
-/** Which provider manages the active subscription. null = trial / no subscription. */
-export type SubscriptionProvider = 'apple' | 'stripe' | 'google' | null;
+export type { AccountStatusValue as AccountStatus };
 
 export type TrialStatus = {
+  /** True when access has ended. Mirrors the server's decision — do not re-derive. */
   expired: boolean;
   loading: boolean;
   error: string | null;
-  /** Days until trial end; 0 or negative when expired */
-  daysLeft: number;
-  /** Trial end date, or null if no trial; for paid = subscription_ends_at */
+  /** Days until access ends. Null when there is no end date — never treat that as 0. */
+  daysLeft: number | null;
+  /** Access boundary: renewal date, or last day of access when canceling. */
   end: Date | null;
-  /** Subscriber (paid) vs trial vs expired */
-  accountStatus: AccountStatus;
-  /** True when subscription is set to cancel (show "Access until" not "Renews") */
+  accountStatus: AccountStatusValue | null;
+  /** True when the subscription will not renew — show "Access until", not "Renews". */
   subscriptionCanceled: boolean;
-  /** Which provider manages this subscription (apple = manage in iOS Settings, stripe = manage on web). */
-  provider: SubscriptionProvider;
-  /** Call to refetch trial/subscription state (e.g. after checkout success) */
+  /** Server access state: active | canceling | past_due | ended | disputed. */
+  state: AccountState | null;
+  /** True for Apple/Google-managed subscriptions — manage in the store, not on the web. */
+  isThirdPartyProvider: boolean;
+  /** Refetch status. Reconciles with Stripe first when this is a Stripe-managed plan. */
   refetch: () => Promise<void>;
 };
 
 export function useTrialStatus(): TrialStatus {
-  const [status, setStatus] = useState<Omit<TrialStatus, 'refetch'>>({
-    expired: false,
-    loading: true,
-    error: null,
-    daysLeft: 0,
-    end: null,
-    accountStatus: null,
-    subscriptionCanceled: false,
-    provider: null,
-  });
-
-  const fetchTrial = useCallback(async (userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('user_trials')
-        .select('trial_start, trial_end, trial_days, account_status, subscription_ends_at, subscription_canceled, provider')
-        .eq('user_id', userId)
-        .single();
-
-      if (error) {
-        if (error.code === 'PGRST116') {
-          return { expired: false, daysLeft: 0, end: null, accountStatus: null, subscriptionCanceled: false, provider: null };
-        }
-        return { expired: false, daysLeft: 0, end: null, accountStatus: null, subscriptionCanceled: false, provider: null };
-      }
-
-      const accountStatus = (data?.account_status as AccountStatus) ?? null;
-      const subscriptionCanceled = !!data?.subscription_canceled;
-      const provider = (data?.provider as SubscriptionProvider) ?? null;
-
-      if (accountStatus === 'paid') {
-        const subEnd = data?.subscription_ends_at ? new Date(data.subscription_ends_at).getTime() : null;
-        const endMs = subEnd ?? Date.now() + 365 * MS.DAY;
-        const expired = data?.account_status === 'expired' || (subEnd != null && Date.now() >= subEnd);
-        const daysLeft = expired ? 0 : Math.max(0, Math.ceil((endMs - Date.now()) / MS.DAY));
-        const end = new Date(endMs);
-        return { expired, daysLeft, end, accountStatus, subscriptionCanceled, provider };
-      }
-
-      const trialDays = data?.trial_days ?? 3;
-      const start = data?.trial_start ? new Date(data.trial_start).getTime() : Date.now();
-      const endMs = data?.trial_end
-        ? new Date(data.trial_end).getTime()
-        : start + trialDays * MS.DAY;
-      const expired =
-        data?.account_status === 'expired' || Date.now() >= endMs;
-      const daysLeft = expired ? 0 : Math.max(0, Math.ceil((endMs - Date.now()) / MS.DAY));
-      const end = new Date(endMs);
-      return { expired, daysLeft, end, accountStatus, subscriptionCanceled: false, provider };
-    } catch {
-      return { expired: false, daysLeft: 0, end: null, accountStatus: null, subscriptionCanceled: false, provider: null };
-    }
-  }, []);
-
-  useEffect(() => {
-    let mounted = true;
-
-    (async () => {
-      try {
-        const { data } = await supabase.auth.getUser();
-        const userId = data.user?.id;
-        if (!userId) {
-          if (mounted) setStatus({ expired: false, loading: false, error: null, daysLeft: 0, end: null, accountStatus: null, subscriptionCanceled: false, provider: null });
-          return;
-        }
-        let result = await fetchTrial(userId);
-        // Only sync from Stripe if this is a Stripe-managed subscription.
-        // Apple subscriptions reconcile via Server Notifications V2, not Stripe.
-        if (result.accountStatus === 'paid' && result.provider !== 'apple') {
-          try {
-            await apiFetchWithAuth('/api/stripe/sync-subscription', { method: 'POST' });
-            result = await fetchTrial(userId);
-          } catch {
-            // ignore sync errors
-          }
-        }
-        if (mounted) setStatus({ expired: result.expired, loading: false, error: null, daysLeft: result.daysLeft, end: result.end, accountStatus: result.accountStatus, subscriptionCanceled: result.subscriptionCanceled, provider: result.provider });
-      } catch (e) {
-        if (mounted) {
-          setStatus({
-            expired: false,
-            loading: false,
-            error: e instanceof Error ? e.message : 'Unknown error',
-            daysLeft: 0,
-            end: null,
-            accountStatus: null,
-            subscriptionCanceled: false,
-            provider: null,
-          });
-        }
-      }
-    })();
-
-    return () => {
-      mounted = false;
-    };
-  }, [fetchTrial]);
+  const { accountStatus, accountStatusLoading, refetchAccountStatus } = useAuth();
 
   const refetch = useCallback(async () => {
-    try {
-      const { data } = await supabase.auth.getUser();
-      const userId = data.user?.id;
-      if (!userId) return;
-      setStatus((s) => ({ ...s, loading: true }));
-      let result = await fetchTrial(userId);
-      if (result.accountStatus === 'paid' && result.provider !== 'apple') {
-        try {
-          await apiFetchWithAuth('/api/stripe/sync-subscription', { method: 'POST' });
-          result = await fetchTrial(userId);
-        } catch {
-          // ignore sync errors
-        }
+    // Recover from a missed Stripe webhook before re-reading status. Apple/Google
+    // subscriptions reconcile through their own server notifications, not Stripe.
+    if (accountStatus?.account_status === 'paid' && !accountStatus.is_third_party_provider) {
+      try {
+        await apiFetchWithAuth('/api/stripe/sync-subscription', { method: 'POST' });
+      } catch {
+        // Sync is best-effort; the status read below is what matters.
       }
-      setStatus({ expired: result.expired, loading: false, error: null, daysLeft: result.daysLeft, end: result.end, accountStatus: result.accountStatus, subscriptionCanceled: result.subscriptionCanceled, provider: result.provider });
-    } catch (e) {
-      setStatus((s) => ({
-        ...s,
-        loading: false,
-        error: e instanceof Error ? e.message : 'Unknown error',
-      }));
     }
-  }, [fetchTrial]);
+    await refetchAccountStatus();
+  }, [accountStatus?.account_status, accountStatus?.is_third_party_provider, refetchAccountStatus]);
 
-  return { ...status, refetch };
+  return useMemo(
+    () => ({
+      expired: accountStatus ? !accountStatus.has_access : false,
+      loading: accountStatusLoading || accountStatus === null,
+      error: null,
+      daysLeft: accountStatus?.days_left ?? null,
+      end: accountStatus?.ends_at ? new Date(accountStatus.ends_at) : null,
+      accountStatus: accountStatus?.account_status ?? null,
+      subscriptionCanceled: accountStatus?.subscription_canceled ?? false,
+      state: accountStatus?.state ?? null,
+      isThirdPartyProvider: accountStatus?.is_third_party_provider ?? false,
+      refetch,
+    }),
+    [accountStatus, accountStatusLoading, refetch],
+  );
 }

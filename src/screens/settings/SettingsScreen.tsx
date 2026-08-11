@@ -9,7 +9,6 @@ import {
   Alert,
   ScrollView,
   Platform,
-  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,11 +20,9 @@ import { deleteAccount, getWebAppUrl, openAccountBillingEntry } from '../../lib/
 import { useTrialStatus } from '../../hooks/useTrialStatus';
 import { colors, spacing, radii, typography } from '../../theme/tokens';
 import { StaggeredZoomIn, useReduceMotion } from '../../components/StaggeredZoomIn';
-import { AccessEndedView } from '../../components/AccessEndedView';
 
 type SettingsStackParamList = {
   Settings: undefined;
-  InviteFriends: undefined;
   NotificationPrefs: undefined;
 };
 type NavProp = NativeStackNavigationProp<SettingsStackParamList, 'Settings'>;
@@ -37,7 +34,6 @@ export function SettingsScreen() {
   const trialStatus = useTrialStatus();
   const reduceMotion = useReduceMotion();
   const [actionLoading, setActionLoading] = useState<'delete' | null>(null);
-  const [showIapPaywall, setShowIapPaywall] = useState(false);
 
   useEffect(() => {
     if (refetchTrialRef) refetchTrialRef.current = trialStatus.refetch;
@@ -93,11 +89,9 @@ export function SettingsScreen() {
     ]);
   }, [runDeleteAccount]);
 
+  // Same on every platform: IAP is gone, Stripe on the web is the only billing path.
+  // This must never open the paywall — it is reached by subscribers with active access.
   const handleOpenAccountWeb = useCallback(async () => {
-    if (Platform.OS === 'ios') {
-      setShowIapPaywall(true);
-      return;
-    }
     try {
       await openAccountBillingEntry();
     } catch (e) {
@@ -118,19 +112,29 @@ export function SettingsScreen() {
 
   const getStatusLabel = () => {
     if (trialStatus.loading) return 'Loading…';
-    if (trialStatus.accountStatus === 'paid') {
-      if (trialStatus.end) {
-        const dateStr = trialStatus.end.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-        return trialStatus.subscriptionCanceled
-          ? `Subscriber • Access until ${dateStr}`
-          : `Subscriber • Renews ${dateStr}`;
-      }
-      return 'Subscriber • Active';
+
+    const dateStr = trialStatus.end
+      ? trialStatus.end.toLocaleDateString(undefined, {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+        })
+      : null;
+
+    switch (trialStatus.state) {
+      case 'active':
+        return dateStr ? `Subscriber • Renews ${dateStr}` : 'Subscriber • Active';
+      case 'canceling':
+        return dateStr ? `Subscriber • Access until ${dateStr}` : 'Subscriber • Canceling';
+      case 'past_due':
+        return 'Payment failed • Update your card on menolisa.com';
+      case 'disputed':
+        return 'Access paused • Contact support';
+      case 'ended':
+        return 'No active subscription';
+      default:
+        return 'No active subscription';
     }
-    if (trialStatus.expired) return 'Trial ended';
-    if (trialStatus.daysLeft >= 0)
-      return `Trial • ${trialStatus.daysLeft === 0 ? 'Ends today' : `${trialStatus.daysLeft} day${trialStatus.daysLeft === 1 ? '' : 's'} left`}`;
-    return 'Trial';
   };
 
   return (
@@ -156,46 +160,20 @@ export function SettingsScreen() {
               style={[styles.row, styles.manageAccountRow]}
               onPress={handleOpenAccountWeb}
             >
-              <Ionicons
-                name={Platform.OS === 'ios' ? 'card-outline' : 'globe-outline'}
-                size={22}
-                color={colors.success}
-              />
+              <Ionicons name="globe-outline" size={22} color={colors.success} />
               <View style={styles.rowTextWrap}>
-                <Text style={styles.manageAccountRowLabel}>
-                  {Platform.OS === 'ios' ? 'Manage subscription' : 'Manage account'}
-                </Text>
+                <Text style={styles.manageAccountRowLabel}>Manage subscription</Text>
                 <Text style={styles.manageAccountRowSubtext}>
-                  {Platform.OS === 'ios'
-                    ? 'View plans and subscribe'
-                    : 'Plan and subscription options on the website'}
+                  Plan and subscription options on the website
                 </Text>
               </View>
-              <Ionicons
-                name={Platform.OS === 'ios' ? 'chevron-forward' : 'open-outline'}
-                size={18}
-                color={colors.success}
-              />
+              <Ionicons name="open-outline" size={18} color={colors.success} />
             </TouchableOpacity>
           </StaggeredZoomIn>
         </View>
 
         <View style={styles.section}>
           <StaggeredZoomIn delayIndex={2} reduceMotion={reduceMotion}>
-            <TouchableOpacity
-              activeOpacity={1}
-              style={[styles.row, styles.referralRow]}
-              onPress={() => navigation.navigate('InviteFriends')}
-            >
-              <Ionicons name="gift-outline" size={22} color={colors.orange} />
-              <View style={styles.rowTextWrap}>
-                <Text style={styles.referralRowLabel}>Invite friends</Text>
-                <Text style={styles.referralRowSubtext}>You get 50% off · Friends get 3 days free</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={colors.orange} />
-            </TouchableOpacity>
-          </StaggeredZoomIn>
-          <StaggeredZoomIn delayIndex={3} reduceMotion={reduceMotion}>
             <TouchableOpacity
               activeOpacity={1}
               style={[styles.row, styles.blueRow]}
@@ -206,7 +184,7 @@ export function SettingsScreen() {
               <Ionicons name="chevron-forward" size={20} color={colors.blue} />
             </TouchableOpacity>
           </StaggeredZoomIn>
-          <StaggeredZoomIn delayIndex={4} reduceMotion={reduceMotion}>
+          <StaggeredZoomIn delayIndex={3} reduceMotion={reduceMotion}>
             <TouchableOpacity
               activeOpacity={1}
               style={[styles.row, styles.goldRow]}
@@ -217,7 +195,7 @@ export function SettingsScreen() {
               <Ionicons name="open-outline" size={18} color={colors.navy} />
             </TouchableOpacity>
           </StaggeredZoomIn>
-          <StaggeredZoomIn delayIndex={5} reduceMotion={reduceMotion}>
+          <StaggeredZoomIn delayIndex={4} reduceMotion={reduceMotion}>
             <TouchableOpacity
               activeOpacity={1}
               style={[styles.row, styles.goldRow]}
@@ -228,7 +206,7 @@ export function SettingsScreen() {
               <Ionicons name="open-outline" size={18} color={colors.navy} />
             </TouchableOpacity>
           </StaggeredZoomIn>
-          <StaggeredZoomIn delayIndex={6} reduceMotion={reduceMotion}>
+          <StaggeredZoomIn delayIndex={5} reduceMotion={reduceMotion}>
             <TouchableOpacity
               activeOpacity={1}
               style={[styles.row, styles.logoutRow]}
@@ -238,7 +216,7 @@ export function SettingsScreen() {
               <Text style={styles.logoutLabel}>Log out</Text>
             </TouchableOpacity>
           </StaggeredZoomIn>
-          <StaggeredZoomIn delayIndex={7} reduceMotion={reduceMotion}>
+          <StaggeredZoomIn delayIndex={6} reduceMotion={reduceMotion}>
             <TouchableOpacity
               activeOpacity={1}
               style={[styles.row, styles.deleteAccountRow]}
@@ -259,24 +237,12 @@ export function SettingsScreen() {
           </StaggeredZoomIn>
         </View>
 
-        <StaggeredZoomIn delayIndex={8} reduceMotion={reduceMotion}>
+        <StaggeredZoomIn delayIndex={7} reduceMotion={reduceMotion}>
           <Text style={styles.disclaimer}>
             MenoLisa is for informational purposes only and is not a substitute for professional medical advice, diagnosis, or treatment. Always consult a qualified healthcare provider.
           </Text>
         </StaggeredZoomIn>
       </ScrollView>
-      {Platform.OS === 'ios' && (
-        <Modal visible={showIapPaywall} animationType="slide" presentationStyle="fullScreen">
-          <AccessEndedView
-            variant="fullScreen"
-            onSkip={() => setShowIapPaywall(false)}
-            onSubscriptionSuccess={() => {
-              setShowIapPaywall(false);
-              trialStatus.refetch().catch(() => {});
-            }}
-          />
-        </Modal>
-      )}
     </SafeAreaView>
   );
 }
@@ -353,21 +319,6 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   manageAccountRowSubtext: {
-    fontSize: 12,
-    fontFamily: typography.family.regular,
-    color: colors.textMuted,
-    marginTop: 2,
-  },
-  referralRow: {
-    borderColor: 'rgba(255, 179, 138, 0.50)',
-    backgroundColor: colors.orangeLight,
-  },
-  referralRowLabel: {
-    fontSize: 16,
-    fontFamily: typography.family.medium,
-    color: colors.text,
-  },
-  referralRowSubtext: {
     fontSize: 12,
     fontFamily: typography.family.regular,
     color: colors.textMuted,

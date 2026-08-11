@@ -20,7 +20,7 @@ export const colors = {
   moodSectionWaveMid: 'rgba(255, 179, 138, 0.32)',
   lavender: '#8B7CF6',
   plumSoft: '#EAE8F5',
-  /** Referral / Invite friends – visible orange */
+  /** Accent orange. Unused since the referral screen was removed — kept as a palette slot. */
   orange: '#E85D04',
   orangeLight: 'rgba(232, 93, 4, 0.12)',
 

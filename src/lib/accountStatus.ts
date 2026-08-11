@@ -1,18 +1,55 @@
-import { apiFetchWithAuth } from './api';
+import { apiFetchWithAuth, ACCOUNT_STATUS_ENDPOINT } from './api';
 import { logger } from './logger';
 
-export type AccountStatusValue = 'trial' | 'paid' | 'pending_payment' | 'expired';
+/** `account_status` column on user_trials. There is no trial — one plan, paid at checkout. */
+export type AccountStatusValue = 'paid' | 'pending_payment' | 'expired';
 
+/**
+ * Access state as decided by the server (`lib/getAccountState.ts` on the web app).
+ * `active`, `canceling` and `past_due` all keep access; `canceling` keeps it until `ends_at`.
+ */
+export type AccountState = 'active' | 'canceling' | 'past_due' | 'ended' | 'disputed';
+
+export type AccountDecision = 'allow' | 'paywall' | 'no-onboarding';
+
+/** Response shape of GET /api/account/status. */
 export type AccountStatus = {
   expired: boolean;
-  account_status: AccountStatusValue;
+  decision: AccountDecision;
+  state: AccountState;
+  /** Access boundary. For a canceling subscription this is the last day she keeps access. */
+  ends_at: string | null;
+  /** Whole days until `ends_at`, floored at 0. Null when there is no end date. */
+  days_left: number | null;
+  previously_paid: boolean;
+  /** True for Apple/Google-managed subscriptions — manage in the store, not on the web. */
+  is_third_party_provider: boolean;
+  has_access: boolean;
+  account_status: AccountStatusValue | null;
   subscription_ends_at: string | null;
-  trial_end: string | null;
+  subscription_canceled: boolean;
+  payment_failed_at: string | null;
+  has_onboarding: boolean;
 };
 
-const STATUS_ENDPOINT = '/api/account/status';
-const FALLBACK_GATED_ENDPOINT = '/api/notifications/unread-count';
 const STATUS_TIMEOUT_MS = 10_000;
+
+/** Deny-by-default status. Used when the status call fails — never leave access ambiguous. */
+export const DENIED_ACCOUNT_STATUS: AccountStatus = {
+  expired: true,
+  decision: 'paywall',
+  state: 'ended',
+  ends_at: null,
+  days_left: null,
+  previously_paid: false,
+  is_third_party_provider: false,
+  has_access: false,
+  account_status: 'expired',
+  subscription_ends_at: null,
+  subscription_canceled: false,
+  payment_failed_at: null,
+  has_onboarding: false,
+};
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -36,58 +73,22 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 
 /**
  * Fetch the canonical account/subscription status from the web API.
- * The web API runs the same checkTrialExpired() rules used by every gated
- * route, so this is the single source of truth for whether the user can
- * access the dashboard.
  *
- * If /api/account/status is not yet deployed (404), we fall back to probing
- * a known gated endpoint and infer expiry from a 403 response.
+ * This is the single source of truth for access. Do not re-derive it from a
+ * direct `user_trials` query — the client cannot see disputes, dunning or the
+ * fail-closed rules, and a schema change silently breaks the read.
  */
 export async function fetchAccountStatus(): Promise<AccountStatus> {
-  try {
-    const data = await withTimeout(
-      apiFetchWithAuth(STATUS_ENDPOINT, { method: 'GET' }),
-      STATUS_TIMEOUT_MS,
-      'fetchAccountStatus',
-    );
-    if (data && typeof data === 'object' && 'account_status' in data) {
-      return data as AccountStatus;
-    }
-    return inferFromGatedEndpoint();
-  } catch (err) {
-    const status = (err as { status?: number })?.status;
-    const message = err instanceof Error ? err.message : '';
-    if (status === 404 || /not found/i.test(message)) {
-      return inferFromGatedEndpoint();
-    }
-    logger.warn('fetchAccountStatus failed:', err);
-    throw err;
-  }
-}
+  const data = await withTimeout(
+    apiFetchWithAuth(ACCOUNT_STATUS_ENDPOINT, { method: 'GET' }),
+    STATUS_TIMEOUT_MS,
+    'fetchAccountStatus',
+  );
 
-async function inferFromGatedEndpoint(): Promise<AccountStatus> {
-  try {
-    await withTimeout(
-      apiFetchWithAuth(FALLBACK_GATED_ENDPOINT, { method: 'GET' }),
-      STATUS_TIMEOUT_MS,
-      'inferFromGatedEndpoint',
-    );
-    return {
-      expired: false,
-      account_status: 'paid',
-      subscription_ends_at: null,
-      trial_end: null,
-    };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : '';
-    if (/trial expired|expired/i.test(message)) {
-      return {
-        expired: true,
-        account_status: 'expired',
-        subscription_ends_at: null,
-        trial_end: null,
-      };
-    }
-    throw err;
+  if (!data || typeof data !== 'object' || !('state' in data)) {
+    logger.warn('fetchAccountStatus: unexpected response shape', data);
+    throw new Error('Unexpected account status response');
   }
+
+  return data as AccountStatus;
 }

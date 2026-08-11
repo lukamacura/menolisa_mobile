@@ -398,9 +398,13 @@ export function DashboardScreen() {
     loadData();
   }, [loadData]);
 
+  // Only nag when access really is about to stop — i.e. she cancelled and the paid
+  // period runs out within two days. An auto-renewing subscriber is never warned.
   const showEndingSoonPaywall =
     !trialStatus.expired &&
     !trialStatus.loading &&
+    trialStatus.state === 'canceling' &&
+    trialStatus.daysLeft !== null &&
     trialStatus.daysLeft <= 2 &&
     trialStatus.daysLeft >= 0 &&
     !endingSoonPaywallDismissed;
@@ -445,7 +449,7 @@ export function DashboardScreen() {
         >
           <AccessEndedView
             variant="fullScreen"
-            trialState="expired"
+            accessState="expired"
             onPress={handleOpenAccountWeb}
             onSubscriptionSuccess={() => trialStatus.refetch().catch(() => {})}
             reduceMotion={reduceMotion}
@@ -461,8 +465,9 @@ export function DashboardScreen() {
         >
           <AccessEndedView
             variant="fullScreen"
-            trialState="ending_soon"
-            daysLeft={trialStatus.daysLeft}
+            accessState="ending_soon"
+            // Non-null: showEndingSoonPaywall requires it.
+            daysLeft={trialStatus.daysLeft ?? 0}
             onPress={handleOpenAccountWeb}
             onSkip={() => setEndingSoonPaywallDismissed(true)}
             onSubscriptionSuccess={() => trialStatus.refetch().catch(() => {})}
@@ -981,7 +986,7 @@ const styles = StyleSheet.create({
     color: colors.danger,
   },
 
-  // --- Trial expired banner styles (kept for AccessEndedView context) ---
+  // --- Access-ended banner styles (kept for AccessEndedView context) ---
   trialExpiredBanner: {
     backgroundColor: colors.dangerBg,
     padding: spacing.md,

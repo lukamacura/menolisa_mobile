@@ -174,22 +174,6 @@ export function NotificationPrefsSkeleton() {
   );
 }
 
-/** Invite friends: single card with icon, title, subtext, 2 buttons. */
-export function InviteFriendsSkeleton() {
-  return (
-    <View style={styles.inviteCard}>
-      <Skeleton width={56} height={56} borderRadius={radii.md} style={{ marginBottom: spacing.md }} />
-      <Skeleton width="80%" height={18} style={{ marginBottom: spacing.sm }} />
-      <Skeleton width="100%" height={14} style={{ marginBottom: 6 }} />
-      <Skeleton width="100%" height={14} style={{ marginBottom: spacing.xl }} />
-      <View style={styles.inviteActions}>
-        <Skeleton width={100} height={40} borderRadius={radii.md} />
-        <Skeleton width={80} height={40} borderRadius={radii.md} />
-      </View>
-    </View>
-  );
-}
-
 /** What Lisa Noticed: bento row + hero tile + short copy (matches WhatLisaNoticedCard layout). */
 export function WhatLisaNoticedCardSkeleton() {
   return (
@@ -248,7 +232,80 @@ export function WhatLisaNoticedCardSkeleton() {
   );
 }
 
+/** Daily loop hub: week header (date row, title, focus, week dots) + 4 segment cards. */
+export function DailyLoopSkeleton() {
+  return (
+    <View>
+      <View style={styles.loopHeader}>
+        <View style={styles.skeletonRow}>
+          <Skeleton width={150} height={16} borderRadius={radii.sm} />
+          <Skeleton width={96} height={22} borderRadius={radii.pill} />
+        </View>
+        <Skeleton width="65%" height={28} borderRadius={radii.sm} style={{ marginTop: spacing.sm }} />
+        <Skeleton width="85%" height={14} borderRadius={radii.sm} style={{ marginTop: 6 }} />
+        <Skeleton width={140} height={10} borderRadius={radii.pill} style={{ marginTop: spacing.md }} />
+      </View>
+      <View style={styles.loopSegments}>
+        {[1, 2, 3, 4].map((i) => (
+          <View key={i} style={styles.loopSegmentCard}>
+            <Skeleton width={42} height={42} borderRadius={radii.pill} />
+            <View style={{ flex: 1 }}>
+              <Skeleton width="45%" height={18} borderRadius={radii.sm} style={{ marginBottom: 6 }} />
+              <Skeleton width="75%" height={14} borderRadius={radii.sm} />
+            </View>
+            <Skeleton width={44} height={44} borderRadius={radii.pill} />
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+/** Any pillar detail screen: a title, a supporting line, and a handful of rows. */
+export function PlanDetailSkeleton() {
+  return (
+    <View>
+      <Skeleton width="60%" height={24} borderRadius={radii.sm} style={{ marginBottom: 8 }} />
+      <Skeleton width="90%" height={14} borderRadius={radii.sm} style={{ marginBottom: spacing.lg }} />
+      {[1, 2, 3, 4, 5].map((i) => (
+        <View key={i} style={styles.loopDetailRow}>
+          <Skeleton width={34} height={34} borderRadius={radii.pill} />
+          <Skeleton width="55%" height={16} borderRadius={radii.sm} style={{ flex: 1 }} />
+          <Skeleton width={64} height={30} borderRadius={radii.pill} />
+        </View>
+      ))}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  loopHeader: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.lg,
+  },
+  loopSegments: {
+    paddingHorizontal: spacing.lg,
+  },
+  loopSegmentCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    minHeight: minTouchTarget + spacing.xl,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+    borderRadius: radii.lg,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  loopDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
   scrollContent: { paddingBottom: 0 },
   heroSection: {
     backgroundColor: colors.navy,
@@ -421,20 +478,6 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.border,
-  },
-  inviteCard: {
-    backgroundColor: colors.card,
-    borderRadius: radii.lg,
-    borderWidth: 2,
-    borderColor: 'rgba(255, 179, 138, 0.565)',
-    padding: spacing.xl,
-    alignItems: 'center',
-  },
-  inviteActions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    justifyContent: 'center',
   },
   skeletonRow: {
     flexDirection: 'row',

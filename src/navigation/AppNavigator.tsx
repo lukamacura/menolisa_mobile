@@ -149,7 +149,8 @@ export function AppNavigator() {
   // While accountStatus is null right after login, hold on the loading screen so we
   // don't flash MainTabs to a user who turns out to be expired.
   const isAuthed = !!user;
-  const hasAccess = !!accountStatus && !accountStatus.expired;
+  // Trust the server's own access boolean rather than re-deriving it client-side.
+  const hasAccess = !!accountStatus && accountStatus.has_access;
   const awaitingStatus = isAuthed && accountStatus === null;
 
   let stackKey: 'auth' | 'main' | 'gated' | 'pending';

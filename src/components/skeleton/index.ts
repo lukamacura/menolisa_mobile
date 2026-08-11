@@ -6,6 +6,7 @@ export {
   SymptomLogsSkeleton,
   SymptomsSkeleton,
   NotificationPrefsSkeleton,
-  InviteFriendsSkeleton,
   WhatLisaNoticedCardSkeleton,
+  DailyLoopSkeleton,
+  PlanDetailSkeleton,
 } from './SkeletonPresets';

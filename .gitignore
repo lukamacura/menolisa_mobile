@@ -37,10 +37,8 @@ ehthumbs.db
 npm-debug.log*
 
 # local env files (never commit secrets)
-.env
-.env*.local
-.env.development
-.env.production
+# Catch-all: the previous list missed anything else, e.g. .env.backup-*
+.env*
 !.env.example
 
 # typescript
@@ -49,6 +47,3 @@ npm-debug.log*
 # generated native folders
 /ios
 /android
-
-# Local explanatory / planning docs (not committed)
-/docs/
