@@ -1,9 +1,9 @@
 import React, { useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import LottieView from 'lottie-react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radii, typography, minTouchTarget, shadows } from '../theme/tokens';
 import { playRewardCue, prepareRewardSounds } from '../lib/rewardSound';
+import { ConfettiBurst } from './rewards/ConfettiBurst';
 
 export type GratitudeMetaChip = {
   icon: keyof typeof Ionicons.glyphMap;
@@ -19,8 +19,13 @@ export type GratitudeSuccessPanelProps = {
 };
 
 /**
- * Same gratitude layout as symptom log success (trophy Lottie, badge, chips).
- * Reused for streak milestones and edit-log success.
+ * The gratitude layout for finishing something off-plan — a symptom log, a
+ * session, a relaxation track.
+ *
+ * Wears the same reward language as a ticked nutrition or movement row: the
+ * green check well and a confetti fall, no separate trophy animation. One
+ * vocabulary for "you finished a thing" is what makes the badge modal feel like
+ * the rarer, bigger event it is.
  */
 export function GratitudeSuccessPanel({
   title,
@@ -45,24 +50,15 @@ export function GratitudeSuccessPanel({
 
   return (
     <View style={styles.successOverlay}>
+      {!reduceMotion ? <ConfettiBurst visible /> : null}
       <View style={styles.successCard}>
         <View style={styles.successBadge}>
           <Ionicons name="sparkles" size={16} color={colors.primaryDark} />
           <Text style={styles.successBadgeText}>Nice work</Text>
         </View>
-        {!reduceMotion ? (
-          <LottieView
-            source={require('../../assets/Trophy.json')}
-            autoPlay
-            loop={false}
-            style={styles.successLottie}
-            resizeMode="contain"
-          />
-        ) : (
-          <View style={styles.successLottiePlaceholder} accessibilityLabel="Success">
-            <Ionicons name="trophy" size={64} color={colors.primary} />
-          </View>
-        )}
+        <View style={styles.successIconWell} accessibilityLabel="Success">
+          <Ionicons name="checkmark" size={52} color={colors.textInverse} />
+        </View>
         <Text style={styles.successTitle}>{title}</Text>
         <Text style={styles.successSubtitle}>{subtitle}</Text>
         {metaChips != null && metaChips.length > 0 ? (
@@ -114,17 +110,14 @@ const styles = StyleSheet.create({
     ...typography.presets.label,
     color: colors.primaryDark,
   },
-  successLottie: {
-    width: 170,
-    height: 170,
-    marginBottom: spacing.md,
-  },
-  successLottiePlaceholder: {
-    width: 170,
-    height: 170,
+  successIconWell: {
+    width: 96,
+    height: 96,
+    borderRadius: radii.pill,
     marginBottom: spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: colors.success,
   },
   successTitle: {
     ...typography.presets.heading2,

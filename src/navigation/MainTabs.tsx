@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, Platform } from 'react-native';
+import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -11,11 +11,13 @@ import { NotificationPromptModal } from '../components/NotificationPromptModal';
 import { colors, typography } from '../theme/tokens';
 import { PlanProvider } from '../context/PlanContext';
 import { RewardsProvider } from '../context/RewardsContext';
+import { NotificationsProvider, useNotifications } from '../context/NotificationsContext';
 import { RewardCelebrations } from '../components/rewards/RewardCelebrations';
 import { CompletionReward } from '../components/rewards/CompletionReward';
 import { RewardsScreen } from '../screens/rewards/RewardsScreen';
 import { DailyLoopScreen } from '../screens/today/DailyLoopScreen';
 import { MovementScreen } from '../screens/today/MovementScreen';
+import { MovementSessionScreen } from '../screens/today/MovementSessionScreen';
 import { NutritionScreen } from '../screens/today/NutritionScreen';
 import { RelaxationScreen } from '../screens/today/RelaxationScreen';
 import { HabitsScreen } from '../screens/today/HabitsScreen';
@@ -51,6 +53,14 @@ function TodayStackScreen() {
         component={MovementScreen}
         options={{ ...pushedScreenHeader, headerTitle: 'Movement' }}
       />
+      {/* No header and no back-swipe: the session owns the screen while she is
+          working, and its own close button is the way out — so that leaving can
+          offer to log what she already did instead of silently discarding it. */}
+      <TodayStack.Screen
+        name="MovementSession"
+        component={MovementSessionScreen}
+        options={{ headerShown: false, gestureEnabled: false }}
+      />
       <TodayStack.Screen
         name="Nutrition"
         component={NutritionScreen}
@@ -82,15 +92,6 @@ function TodayStackScreen() {
         options={{ ...pushedScreenHeader, headerTitle: 'Symptom history' }}
       />
     </TodayStack.Navigator>
-  );
-}
-
-function PlaceholderTabScreen({ title }: { title: string }) {
-  return (
-    <View style={tabStyles.container}>
-      <Text style={tabStyles.text}>{title}</Text>
-      <Text style={tabStyles.subtext}>Screen coming soon...</Text>
-    </View>
   );
 }
 
@@ -137,7 +138,6 @@ export function MainTabs() {
   const { user } = useAuth();
   const { permissionStatus, requestPermissionAndRegister } = useRegisterPushToken(user?.id);
   const [showNotificationPrompt, setShowNotificationPrompt] = useState(false);
-  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     if (!user || permissionStatus !== 'undetermined') return;
@@ -157,20 +157,39 @@ export function MainTabs() {
     setShowNotificationPrompt(false);
   }, []);
 
-  // Tab bar extends into bottom safe area (no gap); content is inset so labels stay fully visible
-  const bottomInset = Math.max(insets.bottom, 12);
-  const contentBottomPadding = bottomInset + 6; // extra space so descenders (e.g. "g") aren't clipped
-
   return (
     <PlanProvider>
     {/* Inside PlanProvider: rewards share the plan's local date, and watch it
         for ticks so a badge earned by checking a box announces itself. */}
     <RewardsProvider>
+    {/* Outside the navigator so the tab bar can read the unread count. */}
+    <NotificationsProvider>
     <NotificationPromptModal
       visible={showNotificationPrompt}
       onEnable={handleNotificationEnable}
       onNotNow={handleNotificationNotNow}
     />
+    <AppTabs />
+    {/* Both last, so a reward sits above the tab bar and every screen.
+        CompletionReward fires on each finished task and passes touches through;
+        RewardCelebrations is the rarer badge/level modal that does interrupt. */}
+    <CompletionReward />
+    <RewardCelebrations />
+    </NotificationsProvider>
+    </RewardsProvider>
+    </PlanProvider>
+  );
+}
+
+function AppTabs() {
+  const insets = useSafeAreaInsets();
+  const { unreadCount } = useNotifications();
+
+  // Tab bar extends into bottom safe area (no gap); content is inset so labels stay fully visible
+  const bottomInset = Math.max(insets.bottom, 12);
+  const contentBottomPadding = bottomInset + 6; // extra space so descenders (e.g. "g") aren't clipped
+
+  return (
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
@@ -228,6 +247,16 @@ export function MainTabs() {
           // push routing and every getParent().navigate('NotificationsTab') call
           // site still work.
           title: 'Alerts',
+          // Without this the alerts are invisible: they land in a tab she has
+          // no reason to open, and the push is the only chance she gets to
+          // notice one. Capped at 9+ so a long absence can't widen the item.
+          tabBarBadge: unreadCount > 0 ? (unreadCount > 9 ? '9+' : unreadCount) : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: colors.primary,
+            color: colors.background,
+            fontFamily: typography.display.semibold,
+            fontSize: 11,
+          },
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="notifications" size={size} color={color} />
           ),
@@ -244,33 +273,5 @@ export function MainTabs() {
         }}
       />
     </Tab.Navigator>
-    {/* Both last, so a reward sits above the tab bar and every screen.
-        CompletionReward fires on each finished task and passes touches through;
-        RewardCelebrations is the rarer badge/level modal that does interrupt. */}
-    <CompletionReward />
-    <RewardCelebrations />
-    </RewardsProvider>
-    </PlanProvider>
   );
 }
-
-const tabStyles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 20,
-  },
-  text: {
-    fontSize: 24,
-    fontFamily: typography.family.bold,
-    color: colors.text,
-    marginBottom: 10,
-  },
-  subtext: {
-    fontSize: 16,
-    fontFamily: typography.family.regular,
-    color: colors.textMuted,
-  },
-});

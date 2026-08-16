@@ -1,12 +1,19 @@
 import React, { useCallback } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import type { RouteProp } from '@react-navigation/native';
-import { useRoute } from '@react-navigation/native';
+import { useRoute, useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radii, typography, minTouchTarget, shadows } from '../../theme/tokens';
 import type { TodayStackParamList } from '../../navigation/types';
 import { usePlan, tasksForPillar } from '../../context/PlanContext';
-import { isPlanFinished, isTaskComplete, taskProgress, taskProgressLabel } from '../../lib/planFormat';
+import {
+  isPlanFinished,
+  isTaskComplete,
+  sessionSeconds,
+  taskProgress,
+  taskProgressLabel,
+} from '../../lib/planFormat';
 import type { PlanTask } from '../../lib/planTypes';
 import { PlanScreenLayout } from '../../components/plan/PlanScreenLayout';
 import { ExerciseCard } from '../../components/plan/ExerciseCard';
@@ -15,6 +22,7 @@ import { StaggeredZoomIn, useReduceMotion } from '../../components/StaggeredZoom
 
 export function MovementScreen() {
   const route = useRoute<RouteProp<TodayStackParamList, 'Movement'>>();
+  const navigation = useNavigation<NativeStackNavigationProp<TodayStackParamList, 'Movement'>>();
   const reduceMotion = useReduceMotion();
   const { plan, currentWeek, tick } = usePlan();
 
@@ -29,6 +37,15 @@ export function MovementScreen() {
     if (!task) return;
     tick(task.key, task.doneToday + 1).catch(() => {});
   }, [task, tick]);
+
+  const startSession = useCallback(() => {
+    if (!task) return;
+    navigation.navigate('MovementSession', { taskKey: task.key });
+  }, [navigation, task]);
+
+  const sessionMinutes = task?.exercises?.length
+    ? Math.max(1, Math.round(sessionSeconds(task.exercises) / 60))
+    : 0;
 
   if (!task) {
     return (
@@ -53,7 +70,10 @@ export function MovementScreen() {
       </StaggeredZoomIn>
 
       <StaggeredZoomIn delayIndex={1} reduceMotion={reduceMotion}>
-        <Text style={styles.sectionTitle}>This session</Text>
+        <View style={styles.sectionHead}>
+          <Text style={styles.sectionTitle}>This session</Text>
+          {sessionMinutes > 0 && <Text style={styles.sectionMeta}>about {sessionMinutes} min</Text>}
+        </View>
         {task.exercises?.map((exercise) => (
           <ExerciseCard key={exercise.id} exercise={exercise} />
         ))}
@@ -62,20 +82,34 @@ export function MovementScreen() {
       <StaggeredZoomIn delayIndex={2} reduceMotion={reduceMotion}>
         <AnimatedPressable
           containerStyle={styles.buttonWrap}
-          style={[styles.button, complete && styles.buttonComplete]}
+          style={styles.button}
+          onPress={startSession}
+          accessibilityRole="button"
+          accessibilityLabel="Start the guided session"
+        >
+          <Ionicons name="play" size={20} color={colors.textInverse} />
+          <Text style={styles.buttonText}>Start session</Text>
+        </AnimatedPressable>
+
+        {/* She may well have done this at the gym, or in a class, with the phone
+            in a locker. Guiding her is the offer; logging it must never depend
+            on having taken the offer. */}
+        <AnimatedPressable
+          containerStyle={styles.manualWrap}
+          style={styles.manual}
           onPress={markSession}
           accessibilityRole="button"
-          accessibilityLabel="Mark this session complete"
+          accessibilityLabel="Log this session without the timer"
         >
           <Ionicons
             name={complete ? 'checkmark-circle' : 'checkmark'}
-            size={20}
-            color={colors.textInverse}
+            size={16}
+            color={complete ? colors.success : colors.textMuted}
           />
-          <Text style={styles.buttonText}>
+          <Text style={styles.manualText}>
             {/* Hitting the target doesn't lock her out — an extra session is a
                 good day, not an error. */}
-            {complete ? 'Log another session' : 'Mark session complete'}
+            {complete ? 'Log another session' : 'I already did this'}
           </Text>
         </AnimatedPressable>
       </StaggeredZoomIn>
@@ -134,10 +168,19 @@ const styles = StyleSheet.create({
     color: colors.primaryDark,
     marginTop: spacing.xs,
   },
+  sectionHead: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    marginBottom: spacing.xs,
+  },
   sectionTitle: {
     ...typography.presets.label,
     color: colors.textMuted,
-    marginBottom: spacing.xs,
+  },
+  sectionMeta: {
+    ...typography.presets.caption,
+    color: colors.textMuted,
   },
   buttonWrap: {
     marginTop: spacing.lg,
@@ -152,13 +195,24 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     ...shadows.buttonPrimary,
   },
-  buttonComplete: {
-    backgroundColor: colors.success,
-    shadowColor: colors.success,
-  },
   buttonText: {
     ...typography.presets.button,
     color: colors.textInverse,
+  },
+  manualWrap: {
+    marginTop: spacing.sm,
+  },
+  manual: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    minHeight: minTouchTarget,
+    borderRadius: radii.xl,
+  },
+  manualText: {
+    ...typography.presets.buttonSmall,
+    color: colors.textMuted,
   },
   empty: {
     ...typography.presets.body,

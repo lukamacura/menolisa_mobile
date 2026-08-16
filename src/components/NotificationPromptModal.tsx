@@ -31,8 +31,9 @@ export function NotificationPromptModal({ visible, onEnable, onNotNow }: Props) 
           </View>
           <Text style={styles.title}>Enable notifications?</Text>
           <Text style={styles.message}>
-            Get weekly insights from Lisa and gentle reminders to log symptoms.
-            You can change this anytime in Settings.
+            A morning nudge when your plan is ready, a word if your streak is about
+            to break, and a weekly summary from Lisa. You can change this anytime in
+            Settings.
             {Platform.OS === 'android'
               ? '\n\nAfter you tap Enable, Android will show its own confirmation — that step is required to turn notifications on.'
               : ''}

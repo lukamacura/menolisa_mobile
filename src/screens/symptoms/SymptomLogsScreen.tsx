@@ -22,8 +22,6 @@ import { SymptomLogsSkeleton, ContentTransition } from '../../components/skeleto
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { apiFetchWithAuth, API_CONFIG, deleteSymptomLog } from '../../lib/api';
-import { useTrialStatus } from '../../hooks/useTrialStatus';
-import { AccessEndedView } from '../../components/AccessEndedView';
 import { getSymptomIllustration } from '../../lib/symptomIllustration';
 import { getTriggersForSymptom, type TimeSelection } from '../../lib/symptomTrackerConstants';
 import { colors, spacing, radii, typography, minTouchTarget, shadows } from '../../theme/tokens';
@@ -104,7 +102,6 @@ type GroupedLog = { dateKey: string; dateLabel: string; logs: SymptomLog[] };
 
 export function SymptomLogsScreen() {
   const reduceMotion = useReduceMotion();
-  const trialStatus = useTrialStatus();
   const insets = useSafeAreaInsets();
   const [logs, setLogs] = useState<SymptomLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -321,14 +318,6 @@ export function SymptomLogsScreen() {
   const editSymptomTriggers = getTriggersForSymptom(logToEdit?.symptoms?.name ?? '');
   const editHasTriggers = editSymptomTriggers.length > 0;
   const editTotalSteps = editHasTriggers ? 4 : 3;
-
-  if (trialStatus.expired) {
-    return (
-      <SafeAreaView style={styles.container} edges={['top']}>
-        <AccessEndedView variant="fullScreen" />
-      </SafeAreaView>
-    );
-  }
 
   if (loading && !refreshing) {
     return (

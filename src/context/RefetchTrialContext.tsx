@@ -1,8 +1,9 @@
-import React, { createContext, useRef, type RefObject } from 'react';
+import { createContext, type RefObject } from 'react';
 
 /**
- * Ref used to trigger a trial/subscription refetch after the user returns from the web dashboard.
- * Set by a component that uses useTrialStatus (e.g. Dashboard, Settings); called by the deep link handler (e.g. menolisa://settings).
+ * Ref used to re-check subscription access after the user returns from the web.
+ * Set by AppNavigator from AuthContext's refetch; called by the deep link handler
+ * (e.g. menolisa://settings) and by Settings.
  */
 export type RefetchTrialRef = RefObject<(() => Promise<void>) | null>;
 

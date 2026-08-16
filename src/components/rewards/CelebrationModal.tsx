@@ -1,12 +1,10 @@
 import React, { useEffect } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import LottieView from 'lottie-react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, minTouchTarget, radii, shadows, spacing, typography } from '../../theme/tokens';
 import { badgeVisual, tierLabel, tierName } from '../../lib/rewardVisuals';
 import { playRewardCue, prepareRewardSounds } from '../../lib/rewardSound';
 import type { Celebration } from '../../context/RewardsContext';
-import { useReduceMotion } from '../StaggeredZoomIn';
 import { BadgeMedal } from './BadgeMedal';
 import { ConfettiBurst } from './ConfettiBurst';
 
@@ -27,8 +25,6 @@ type CelebrationModalProps = {
  * than a stack.
  */
 export function CelebrationModal({ celebration, onDismiss }: CelebrationModalProps) {
-  const reduceMotion = useReduceMotion();
-
   // Decoded up front, on the same mount that will later play them: the first
   // play of a cold player lags far enough behind the confetti to look broken.
   useEffect(prepareRewardSounds, []);
@@ -86,19 +82,15 @@ export function CelebrationModal({ celebration, onDismiss }: CelebrationModalPro
           </View>
 
           {isLevel ? (
-            reduceMotion ? (
-              <View style={styles.artPlaceholder}>
-                <Ionicons name="trophy" size={72} color={colors.primary} />
+            // The level wears the same round medal as a badge, with its number
+            // in place of an icon — the confetti behind is the animation, so
+            // there is no separate art here to fall out of step with the grid.
+            <View style={styles.artPlaceholder}>
+              <View style={[styles.levelMedal, { borderColor: tint, backgroundColor: hexToSoft(tint) }]}>
+                <Text style={[styles.levelNumber, { color: tint }]}>{celebration.level.level}</Text>
+                <Text style={[styles.levelCaption, { color: tint }]}>Level</Text>
               </View>
-            ) : (
-              <LottieView
-                source={require('../../../assets/Trophy.json')}
-                autoPlay
-                loop={false}
-                style={styles.art}
-                resizeMode="contain"
-              />
-            )
+            </View>
           ) : (
             <View style={styles.artPlaceholder}>
               <BadgeMedal
@@ -191,17 +183,28 @@ const styles = StyleSheet.create({
   eyebrowText: {
     ...typography.presets.label,
   },
-  art: {
-    width: 160,
-    height: 160,
-    marginBottom: spacing.sm,
-  },
   artPlaceholder: {
     width: 160,
     height: 160,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.sm,
+  },
+  levelMedal: {
+    width: 132,
+    height: 132,
+    borderRadius: radii.pill,
+    borderWidth: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  levelNumber: {
+    ...typography.presets.heading1,
+    fontSize: 48,
+    lineHeight: 54,
+  },
+  levelCaption: {
+    ...typography.presets.label,
   },
   title: {
     ...typography.presets.heading1,

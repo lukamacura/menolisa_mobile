@@ -3,7 +3,7 @@ import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../theme/tokens';
-import { badgeVisual, LOCKED_VISUAL } from '../../lib/rewardVisuals';
+import { badgeTint, badgeVisual, LOCKED_VISUAL } from '../../lib/rewardVisuals';
 
 type BadgeMedalProps = {
   familyId: string;
@@ -24,7 +24,10 @@ type BadgeMedalProps = {
 export function BadgeMedal({ familyId, unlocked, progress, size = 64, style }: BadgeMedalProps) {
   const visual = badgeVisual(familyId);
   const tint = unlocked ? visual.tint : LOCKED_VISUAL.tint;
-  const fill = unlocked ? visual.tintSoft : LOCKED_VISUAL.tintSoft;
+  // Fill and rim are the badge's own hue, so the medal reads as coloured from
+  // across the grid rather than as an icon on white.
+  const fill = badgeTint(tint, unlocked ? 0.16 : 0.08);
+  const track = unlocked ? badgeTint(tint, 0.26) : colors.border;
 
   const strokeWidth = Math.max(3, Math.round(size * 0.06));
   const radius = (size - strokeWidth) / 2;
@@ -39,7 +42,7 @@ export function BadgeMedal({ familyId, unlocked, progress, size = 64, style }: B
           cx={center}
           cy={center}
           r={radius}
-          stroke={colors.border}
+          stroke={track}
           strokeWidth={strokeWidth}
           fill={fill}
         />

@@ -11,11 +11,16 @@ import { BadgeDetailSheet } from '../../components/rewards/BadgeDetailSheet';
 import { StaggeredZoomIn, useReduceMotion } from '../../components/StaggeredZoomIn';
 
 /**
- * Everything she has earned: level, streak, lifetime stats and every badge.
+ * Everything she has earned: level, streak and every badge.
  *
  * Earned badges come first and locked ones after, rather than one flat grid.
  * The wall of things she has already done is the reason to open this screen;
  * burying it among eighteen grey medals makes the screen feel like a to-do list.
+ *
+ * The badges are the screen. There is deliberately no lifetime-stats table
+ * between the chips and the grid — seven counted rows of "nutrition rows" and
+ * "habit ticks" read as a spreadsheet and push the medals below the fold, and
+ * every number in it is already the reason one of those medals exists.
  */
 export function RewardsScreen() {
   const { status, rewards, refresh } = useRewards();
@@ -56,8 +61,10 @@ export function RewardsScreen() {
     );
   }
 
-  const { level, streak, xp, stats } = rewards;
-  const tierCount = rewards.earned.length;
+  const { level, streak, xp } = rewards;
+  // The medals she can see, not `rewards.earned` — that is every tier flattened,
+  // so a family she has taken twice would make the chip read one higher than the grid.
+  const badgeCount = earned.length;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -103,29 +110,14 @@ export function RewardsScreen() {
             <StatChip
               icon="medal"
               tint={colors.lavender}
-              value={String(tierCount)}
-              label={tierCount === 1 ? 'badge' : 'badges'}
+              value={String(badgeCount)}
+              label={badgeCount === 1 ? 'badge' : 'badges'}
             />
           </View>
         </StaggeredZoomIn>
 
-        <StaggeredZoomIn delayIndex={2} reduceMotion={reduceMotion}>
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Your record</Text>
-            <View style={styles.statGrid}>
-              <StatCell label="Days shown up" value={formatCount(stats.activeDays)} />
-              <StatCell label="Goal days hit" value={formatCount(stats.goalDays)} />
-              <StatCell label="Movement sessions" value={formatCount(stats.movementSessions)} />
-              <StatCell label="Relaxation practices" value={formatCount(stats.relaxationSessions)} />
-              <StatCell label="Nutrition rows" value={formatCount(stats.nutritionRows)} />
-              <StatCell label="Habit ticks" value={formatCount(stats.habitTicks)} />
-              <StatCell label="Symptoms logged" value={formatCount(stats.symptomLogs)} />
-            </View>
-          </View>
-        </StaggeredZoomIn>
-
         {earned.length > 0 && (
-          <StaggeredZoomIn delayIndex={3} reduceMotion={reduceMotion}>
+          <StaggeredZoomIn delayIndex={2} reduceMotion={reduceMotion}>
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Earned</Text>
               <View style={styles.grid}>
@@ -142,7 +134,7 @@ export function RewardsScreen() {
         )}
 
         {locked.length > 0 && (
-          <StaggeredZoomIn delayIndex={4} reduceMotion={reduceMotion}>
+          <StaggeredZoomIn delayIndex={3} reduceMotion={reduceMotion}>
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Still to come</Text>
               <View style={styles.grid}>
@@ -180,15 +172,6 @@ function StatChip({
       <Ionicons name={icon} size={20} color={tint} />
       <Text style={styles.chipValue}>{value}</Text>
       <Text style={styles.chipLabel}>{label}</Text>
-    </View>
-  );
-}
-
-function StatCell({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.statCell}>
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
     </View>
   );
 }
@@ -272,36 +255,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.textMuted,
     textAlign: 'center',
-  },
-  card: {
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.md,
-    padding: spacing.lg,
-    borderRadius: radii.xl,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  cardTitle: {
-    ...typography.presets.heading3,
-    color: colors.text,
-    marginBottom: spacing.md,
-  },
-  statGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    rowGap: spacing.md,
-  },
-  statCell: {
-    width: '50%',
-  },
-  statValue: {
-    ...typography.presets.heading3,
-    color: colors.text,
-  },
-  statLabel: {
-    ...typography.presets.caption,
-    color: colors.textMuted,
   },
   section: {
     paddingHorizontal: spacing.lg,

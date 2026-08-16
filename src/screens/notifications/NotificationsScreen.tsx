@@ -5,16 +5,30 @@ import {
   StyleSheet,
   FlatList,
   TouchableOpacity,
-  ScrollView,
   RefreshControl,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { apiFetchWithAuth, API_CONFIG, openAccountBillingEntry } from '../../lib/api';
+import { useNotifications } from '../../context/NotificationsContext';
 import { colors, spacing, radii, typography, shadows } from '../../theme/tokens';
 import { StaggeredZoomIn, useReduceMotion } from '../../components/StaggeredZoomIn';
 import { ListSkeleton, ContentTransition } from '../../components/skeleton';
+
+/**
+ * `metadata.alert_kind` is set by the server's alert catalog (web:
+ * lib/alerts/catalog.ts). It is the precise reason the alert was sent, where
+ * `type` is only the broad family, so the icon is chosen from it when present.
+ */
+type AlertKind =
+  | 'daily_nudge'
+  | 'streak_risk'
+  | 'week_start'
+  | 'weekly_recap'
+  | 'renewal'
+  | 'access_ending'
+  | 'payment_failed';
 
 type NotificationItem = {
   id: string;
@@ -26,80 +40,90 @@ type NotificationItem = {
   seen: boolean;
   dismissed: boolean;
   created_at: string;
+  metadata?: { alert_kind?: AlertKind; screen?: string } | null;
 };
 
-/** Map notification type to icon and colors (UX: clear, logical, consistent with app) */
-function getNotificationStyle(type: string | null): {
-  icon: string;
-  iconColor: string;
-  bgColor: string;
-} {
-  const t = (type || '').toLowerCase();
-  switch (t) {
+type NotificationStyle = { icon: string; iconColor: string; bgColor: string };
+
+const PRIMARY_SOFT: NotificationStyle = {
+  icon: 'notifications-outline',
+  iconColor: colors.primary,
+  bgColor: colors.notificationIconPrimarySoft,
+};
+
+/** One icon per alert, so the list is scannable without reading a word of it. */
+const ALERT_STYLES: Record<AlertKind, NotificationStyle> = {
+  daily_nudge: { ...PRIMARY_SOFT, icon: 'sunny-outline' },
+  streak_risk: { ...PRIMARY_SOFT, icon: 'flame-outline' },
+  week_start: { icon: 'calendar-outline', iconColor: colors.navy, bgColor: colors.plumSoft },
+  weekly_recap: { icon: 'analytics-outline', iconColor: colors.navy, bgColor: colors.plumSoft },
+  renewal: { icon: 'card-outline', iconColor: colors.success, bgColor: colors.successBg },
+  access_ending: { ...PRIMARY_SOFT, icon: 'time-outline' },
+  payment_failed: { icon: 'alert-circle-outline', iconColor: colors.danger, bgColor: colors.dangerBg },
+};
+
+/** Fallbacks for anything not written by the alert catalog. */
+function getTypeStyle(type: string | null): NotificationStyle {
+  switch ((type || '').toLowerCase()) {
     case 'reminder':
-      return {
-        icon: 'alarm-outline',
-        iconColor: colors.primary,
-        bgColor: colors.notificationIconPrimarySoft,
-      };
+      return { ...PRIMARY_SOFT, icon: 'alarm-outline' };
     case 'weekly_insights':
-      return { icon: 'analytics-outline', iconColor: colors.navy, bgColor: colors.plumSoft };
+      return ALERT_STYLES.weekly_recap;
+    case 'trial':
+      return { ...PRIMARY_SOFT, icon: 'card-outline' };
     case 'lisa_message':
-      return {
-        icon: 'chatbubble-ellipses-outline',
-        iconColor: colors.primary,
-        bgColor: colors.notificationIconPrimarySoft,
-      };
+      return { ...PRIMARY_SOFT, icon: 'chatbubble-ellipses-outline' };
     case 'achievement':
       return {
         icon: 'trophy-outline',
         iconColor: colors.gold,
         bgColor: colors.notificationIconGoldSoft,
       };
-    case 'trial':
-      return {
-        icon: 'time-outline',
-        iconColor: colors.primary,
-        bgColor: colors.notificationIconPrimarySoft,
-      };
     case 'welcome':
-      return {
-        icon: 'hand-left-outline',
-        iconColor: colors.primary,
-        bgColor: colors.notificationIconPrimarySoft,
-      };
+      return { ...PRIMARY_SOFT, icon: 'hand-left-outline' };
     case 'success':
-      return { icon: 'checkmark-circle-outline', iconColor: colors.success, bgColor: colors.successBg };
-    case 'symptom_logged':
-      return { icon: 'checkmark-circle-outline', iconColor: colors.success, bgColor: colors.successBg };
+      return {
+        icon: 'checkmark-circle-outline',
+        iconColor: colors.success,
+        bgColor: colors.successBg,
+      };
     case 'error':
       return { icon: 'alert-circle-outline', iconColor: colors.danger, bgColor: colors.dangerBg };
     default:
-      return { icon: 'notifications-outline', iconColor: colors.textMuted, bgColor: colors.surfaceElevated };
+      return {
+        icon: 'notifications-outline',
+        iconColor: colors.textMuted,
+        bgColor: colors.surfaceElevated,
+      };
   }
 }
 
-/** Display title when notification has no title; same copy intent as in-app/push */
+function getNotificationStyle(item: NotificationItem): NotificationStyle {
+  const kind = item.metadata?.alert_kind;
+  if (kind && kind in ALERT_STYLES) return ALERT_STYLES[kind];
+  return getTypeStyle(item.type);
+}
+
+/**
+ * Alerts always carry their own title — the catalog has no untitled copy. This
+ * only covers rows written by hand or by an older build.
+ */
 function getDisplayTitle(item: NotificationItem): string {
   if (item.title && item.title.trim()) return item.title;
-  const t = (item.type || '').toLowerCase();
-  switch (t) {
+  switch ((item.type || '').toLowerCase()) {
     case 'trial':
-      return 'Trial';
+      return 'Your subscription';
     case 'reminder':
       return 'Reminder';
     case 'weekly_insights':
-      return 'What Lisa noticed';
+      // Same words as the switch in Notification preferences that controls it.
+      return 'Weekly summary from Lisa';
     case 'lisa_message':
       return 'Message from Lisa';
     case 'achievement':
       return 'Achievement';
     case 'welcome':
       return 'Welcome';
-    case 'success':
-      return 'Success';
-    case 'symptom_logged':
-      return 'Symptom logged';
     case 'error':
       return 'Notice';
     default:
@@ -107,34 +131,57 @@ function getDisplayTitle(item: NotificationItem): string {
   }
 }
 
+/** Alerts about money open the billing page; everything else stays in the app. */
+function opensBilling(item: NotificationItem): boolean {
+  const kind = item.metadata?.alert_kind;
+  if (kind) return kind === 'renewal' || kind === 'access_ending' || kind === 'payment_failed';
+  return item.type === 'trial';
+}
+
 export function NotificationsScreen() {
   const reduceMotion = useReduceMotion();
+  const { markAllSeen } = useNotifications();
   const [items, setItems] = useState<NotificationItem[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * Which rows were unread when she opened the tab.
+   *
+   * Opening marks everything read, so `item.seen` goes true underneath her. The
+   * highlight has to survive that visit or the alerts she came to look at lose
+   * their marking as she is reading them — it clears on her next visit instead.
+   */
+  const [newIds, setNewIds] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     try {
       setError(null);
-      const [notifRes, countRes] = await Promise.all([
-        apiFetchWithAuth(`${API_CONFIG.endpoints.notifications}?limit=50`),
-        apiFetchWithAuth(API_CONFIG.endpoints.notificationsUnreadCount),
-      ]);
-      setItems(notifRes?.data ?? []);
-      setUnreadCount(countRes?.count ?? 0);
+      const res = await apiFetchWithAuth(`${API_CONFIG.endpoints.notifications}?limit=50`);
+      const rows: NotificationItem[] = res?.data ?? [];
+      setItems(rows);
+
+      const unread = rows.filter((row) => !row.seen).map((row) => row.id);
+      if (unread.length > 0) {
+        setNewIds((current) => new Set([...current, ...unread]));
+        // Opening the tab is reading them. The badge is what tells her something
+        // arrived, so leaving it up after she has looked makes it meaningless.
+        markAllSeen().catch(() => {});
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load notifications');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [markAllSeen]);
 
   useFocusEffect(
     useCallback(() => {
       load();
+      // Leaving is what ends the visit, so the highlights are dropped here
+      // rather than on the next arrival — which would race the fetch.
+      return () => setNewIds(new Set());
     }, [load])
   );
 
@@ -142,18 +189,6 @@ export function NotificationsScreen() {
     setRefreshing(true);
     load();
   }, [load]);
-
-  const markAllRead = async () => {
-    try {
-      await apiFetchWithAuth(API_CONFIG.endpoints.notifications, {
-        method: 'PUT',
-        body: JSON.stringify({ markAllRead: true }),
-      });
-      load();
-    } catch {
-      // ignore
-    }
-  };
 
   if (loading && !refreshing) {
     return (
@@ -168,12 +203,7 @@ export function NotificationsScreen() {
       <ContentTransition>
       <StaggeredZoomIn delayIndex={0} reduceMotion={reduceMotion}>
         <View style={styles.header}>
-          <Text style={styles.title}>Notifications</Text>
-          {unreadCount > 0 && (
-            <TouchableOpacity activeOpacity={0.8} onPress={markAllRead} style={styles.markReadTouchable}>
-              <Text style={styles.markRead}>Mark all read</Text>
-            </TouchableOpacity>
-          )}
+          <Text style={styles.title}>Alerts</Text>
         </View>
       </StaggeredZoomIn>
       {error && (
@@ -197,20 +227,21 @@ export function NotificationsScreen() {
             <View style={styles.emptyIconWrap}>
               <Ionicons name="notifications-off-outline" size={40} color={colors.textMuted} />
             </View>
-            <Text style={styles.emptyTitle}>No notifications yet</Text>
-            <Text style={styles.emptyText}>When Lisa or the app sends you updates, they’ll show here.</Text>
+            <Text style={styles.emptyTitle}>Nothing yet</Text>
+            <Text style={styles.emptyText}>
+              Reminders, your weekly summary and anything about your plan will show up here.
+            </Text>
           </View>
         }
         renderItem={({ item }) => {
-          const style = getNotificationStyle(item.type);
-          const isTrial = item.type === 'trial';
-          const onPress = isTrial
+          const style = getNotificationStyle(item);
+          const onPress = opensBilling(item)
             ? () => openAccountBillingEntry().catch(() => {})
             : undefined;
           const Wrapper = onPress ? TouchableOpacity : View;
           const wrapperProps = onPress ? { activeOpacity: 0.7, onPress } : {};
           return (
-            <Wrapper style={[styles.card, !item.seen && styles.cardUnread]} {...wrapperProps}>
+            <Wrapper style={[styles.card, newIds.has(item.id) && styles.cardUnread]} {...wrapperProps}>
               <View style={[styles.iconWrap, { backgroundColor: style.bgColor }]}>
                 <Ionicons name={style.icon as any} size={22} color={style.iconColor} />
               </View>
@@ -261,15 +292,6 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontFamily: typography.family.bold,
     color: colors.text,
-  },
-  markReadTouchable: {
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.sm,
-  },
-  markRead: {
-    fontSize: 14,
-    fontFamily: typography.family.semibold,
-    color: colors.primary,
   },
   errorBanner: {
     flexDirection: 'row',

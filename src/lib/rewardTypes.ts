@@ -110,9 +110,3 @@ export function parseTierId(tierId: string): { familyId: string; target: number 
   if (!Number.isFinite(target)) return null;
   return { familyId: tierId.slice(0, dot), target };
 }
-
-/** 0-1 toward the daily XP goal, clamped — she can earn well past it. */
-export function goalProgress(payload: RewardsPayload): number {
-  if (payload.xp.goal <= 0) return 0;
-  return Math.min(1, Math.max(0, payload.xp.today / payload.xp.goal));
-}

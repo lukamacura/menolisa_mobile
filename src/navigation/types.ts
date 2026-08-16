@@ -1,28 +1,27 @@
 import type { NavigatorScreenParams } from '@react-navigation/native';
 
 /**
- * Root stack: auth stack vs main app (tabs).
+ * Root stack. AppNavigator renders exactly one of these branches at a time —
+ * the auth screens, the paywall, or the tabs — so every screen it can register
+ * is listed here flat.
  */
 export type RootStackParamList = {
-  Auth: undefined;
+  Landing: undefined;
+  Login: undefined;
+  AccountNotFound: { email: string };
   Main: undefined;
+  SubscriptionRequired: undefined;
 };
 
 /**
- * Auth stack (Landing, Login, Register).
+ * Auth stack. There is no Register screen: the funnel takes the card before an
+ * account is worth anything, so signing up happens on menolisa.com and the app
+ * only ever opens that URL.
  */
 export type AuthStackParamList = {
   Landing: undefined;
   Login: undefined;
-  Register: undefined;
   AccountNotFound: { email: string };
-};
-
-/**
- * Main app = single screen that hosts the tab navigator.
- */
-export type MainStackParamList = {
-  MainTabs: undefined;
 };
 
 /**
@@ -53,6 +52,8 @@ type SettingsStackParamListMap = SettingsStackParamList;
 export type TodayStackParamList = {
   DailyLoop: undefined;
   Movement: { taskKey: string };
+  /** The guided timer for one movement session. Same key, so it reads the live task too. */
+  MovementSession: { taskKey: string };
   Nutrition: undefined;
   Relaxation: { taskKey: string };
   Habits: undefined;

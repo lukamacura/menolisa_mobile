@@ -117,7 +117,14 @@ export function AppNavigator() {
     return () => subscription.remove();
   }, []);
 
-  // Push notification response: open dashboard (trial) or deep link to Notifications tab
+  // Where a tapped push lands.
+  //
+  // The payload is written by the server's alert catalog (web:
+  // lib/alerts/catalog.ts): `action: 'upgrade'` for anything about money, which
+  // is managed on the web, and otherwise `screen` naming a tab. An alert that
+  // opens nowhere is worse than no alert — she acts on it and the app ignores
+  // her — so an unrecognised payload still opens the Alerts tab, where the same
+  // words are waiting as a row she can read.
   useEffect(() => {
     if (Platform.OS === 'web' || !user) return;
     const Notifications = getNativeExpoNotifications();
@@ -125,14 +132,22 @@ export function AppNavigator() {
 
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
       const data = response.notification.request.content.data as Record<string, string> | undefined;
-      if (!data) return;
-      if (data.action === 'upgrade') {
+
+      if (data?.action === 'upgrade') {
         openAccountBillingEntry().catch((e) => logger.warn('Open account page failed', e));
         return;
       }
-      if (data.screen === 'Notifications' && navigationRef.isReady()) {
-        (navigationRef as unknown as { navigate: (name: string, params?: { screen: string }) => void }).navigate('Main', { screen: 'NotificationsTab' });
+
+      if (!navigationRef.isReady()) return;
+      const navigate = (navigationRef as unknown as {
+        navigate: (name: string, params?: object) => void;
+      }).navigate;
+
+      if (data?.screen === 'DailyLoop') {
+        navigate('Main', { screen: 'TodayTab', params: { screen: 'DailyLoop' } });
+        return;
       }
+      navigate('Main', { screen: 'NotificationsTab' });
     });
 
     return () => sub.remove();

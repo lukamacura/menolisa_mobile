@@ -1,10 +1,8 @@
 import React, { useCallback, useState } from 'react';
 import {
-  View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  Image,
   ScrollView,
   ActivityIndicator,
   Alert,
@@ -25,14 +23,14 @@ function getCopy(status: AccountStatus | null): Copy {
     return {
       heading: 'Finish setting up your subscription',
       subheading:
-        "You're almost there. Continue on menolisa.com to add your card and unlock your dashboard.",
+        "You're almost there. Continue on menolisa.com to add your card and start your eight-week plan.",
       cta: 'Continue on menolisa.com',
     };
   }
   return {
     heading: 'Your subscription has ended',
     subheading:
-      'Manage your subscription on menolisa.com to keep using MenoLisa and your insights.',
+      'Manage your subscription on menolisa.com to keep your plan, your streak and Lisa.',
     cta: 'Manage on menolisa.com',
   };
 }
@@ -92,15 +90,6 @@ export function SubscriptionRequiredScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.heroWrap}>
-          <Image
-            source={require('../../assets/paywall.png')}
-            style={styles.heroImage}
-            resizeMode="contain"
-            accessibilityLabel="Lisa"
-          />
-        </View>
-
         <Text style={styles.heading}>{copy.heading}</Text>
         <Text style={styles.subheading}>{copy.subheading}</Text>
 
@@ -157,17 +146,6 @@ const styles = StyleSheet.create({
     paddingTop: spacing['2xl'],
     paddingBottom: spacing['2xl'],
     alignItems: 'center',
-  },
-  heroWrap: {
-    width: '100%',
-    height: 220,
-    marginBottom: spacing.xl,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  heroImage: {
-    width: '100%',
-    height: '100%',
   },
   heading: {
     ...typography.presets.heading1,

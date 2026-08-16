@@ -2,11 +2,10 @@ import React, { useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import { useIsFocused } from '@react-navigation/native';
-import { useVideoPlayer, VideoView } from 'expo-video';
 import { colors, spacing, radii, typography } from '../../theme/tokens';
-import { exerciseDose } from '../../lib/planFormat';
+import { exerciseDose, resolveDose } from '../../lib/planFormat';
 import type { PlanExercise } from '../../lib/planTypes';
+import { ExerciseVideo } from './ExerciseVideo';
 
 type ExerciseCardProps = {
   exercise: PlanExercise;
@@ -22,6 +21,7 @@ type ExerciseCardProps = {
 export function ExerciseCard({ exercise }: ExerciseCardProps) {
   const [expanded, setExpanded] = useState(false);
   const dose = exerciseDose(exercise);
+  const rest = resolveDose(exercise)?.restSeconds ?? 0;
   const hasClip = Boolean(exercise.video);
 
   return (
@@ -47,8 +47,13 @@ export function ExerciseCard({ exercise }: ExerciseCardProps) {
           <Text style={styles.name} numberOfLines={2}>
             {exercise.name}
           </Text>
+          {/* Rest rides on the props line rather than taking a column of its
+              own — the dose chip already competes with the name for width, and
+              a third element wraps the row on a small phone. It is worth showing
+              at all because cutting rest short is the most common way strength
+              work quietly stops working. */}
           <Text style={styles.props} numberOfLines={1}>
-            {exercise.props}
+            {rest > 0 ? `${exercise.props} · ${rest} sec rest` : exercise.props}
           </Text>
         </View>
 
@@ -67,36 +72,13 @@ export function ExerciseCard({ exercise }: ExerciseCardProps) {
         )}
       </Pressable>
 
-      {hasClip && expanded && exercise.video && (
-        <ExerciseClip uri={exercise.video} />
+      {/* Mounted only while its card is open — a session of six exercises would
+          otherwise hold six video surfaces at once. */}
+      {hasClip && expanded && (
+        <View style={styles.clipWrap}>
+          <ExerciseVideo exercise={exercise} style={styles.clip} />
+        </View>
       )}
-    </View>
-  );
-}
-
-/**
- * Mounted only while its card is open — a session of six exercises would
- * otherwise hold six video surfaces at once.
- */
-function ExerciseClip({ uri }: { uri: string }) {
-  const isFocused = useIsFocused();
-  const player = useVideoPlayer(uri, (instance) => {
-    instance.loop = true;
-    instance.muted = true;
-    instance.play();
-  });
-
-  if (!isFocused) return null;
-
-  return (
-    <View style={styles.clipWrap}>
-      <VideoView
-        player={player}
-        style={styles.clip}
-        contentFit="cover"
-        nativeControls={false}
-        allowsFullscreen={false}
-      />
     </View>
   );
 }

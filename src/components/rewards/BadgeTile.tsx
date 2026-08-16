@@ -14,11 +14,12 @@ type BadgeTileProps = {
 export function BadgeTile({ achievement, onPress }: BadgeTileProps) {
   const { unlocked, complete, tier, maxTier, name, value, target } = achievement;
 
-  const caption = complete
-    ? 'Complete'
-    : target !== null
-      ? `${formatCount(value)} / ${formatCount(target)}`
-      : '';
+  const progressText = target !== null ? `${formatCount(value)} / ${formatCount(target)}` : '';
+
+  // One status line, not three. Earned badges say how far up the ladder she is;
+  // locked ones say how close she is to the first rung. The rest — tier name,
+  // what the next level takes — is a tap away in the detail sheet.
+  const caption = complete ? 'Complete' : unlocked ? `${tier} / ${maxTier}` : progressText;
 
   return (
     <Pressable
@@ -27,8 +28,8 @@ export function BadgeTile({ achievement, onPress }: BadgeTileProps) {
       accessibilityRole="button"
       accessibilityLabel={
         unlocked
-          ? `${name}, ${tierName(tier, maxTier)}, level ${tier} of ${maxTier}. ${caption}`
-          : `${name}, locked. ${caption}`
+          ? `${name}, ${tierName(tier, maxTier)}, level ${tier} of ${maxTier}. ${progressText}`
+          : `${name}, locked. ${progressText}`
       }
     >
       <BadgeMedal
@@ -40,11 +41,8 @@ export function BadgeTile({ achievement, onPress }: BadgeTileProps) {
       <Text style={[styles.name, !unlocked && styles.nameLocked]} numberOfLines={1}>
         {name}
       </Text>
-      <Text style={styles.tier} numberOfLines={1}>
-        {unlocked ? `${tierName(tier, maxTier)} · ${tier}/${maxTier}` : 'Locked'}
-      </Text>
       {caption ? (
-        <Text style={styles.caption} numberOfLines={1}>
+        <Text style={[styles.caption, !unlocked && styles.captionLocked]} numberOfLines={1}>
           {caption}
         </Text>
       ) : (
@@ -82,17 +80,14 @@ const styles = StyleSheet.create({
   nameLocked: {
     color: colors.textMuted,
   },
-  tier: {
-    ...typography.presets.caption,
-    fontSize: 11,
-    color: colors.textMuted,
-    textAlign: 'center',
-  },
   caption: {
     ...typography.presets.caption,
     fontSize: 11,
-    color: colors.textMuted,
+    color: colors.text,
     textAlign: 'center',
+  },
+  captionLocked: {
+    color: colors.textMuted,
   },
   captionSpacer: {
     height: 18,

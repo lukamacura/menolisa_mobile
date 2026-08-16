@@ -97,40 +97,6 @@ export const API_CONFIG = {
 };
 
 /**
- * Helper function for API calls with error handling
- */
-export const apiFetch = async (
-  endpoint: string,
-  options?: RequestInit
-): Promise<any> => {
-  const url = `${API_CONFIG.baseURL}${endpoint}`;
-  
-  try {
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...options?.headers,
-      },
-    });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({
-        error: `HTTP ${response.status}: ${response.statusText}`,
-      }));
-      throw new ApiError(error.error || `HTTP ${response.status}`, response.status);
-    }
-
-    return response.json();
-  } catch (error) {
-    if (error instanceof Error) {
-      throw error;
-    }
-    throw new Error('Network error: Failed to fetch');
-  }
-};
-
-/**
  * Helper to get full API URL (for backend API calls; may be local in dev).
  */
 export const getApiUrl = (endpoint: string): string => {
@@ -144,14 +110,6 @@ export const getApiUrl = (endpoint: string): string => {
 export function getWebAppUrl(path: string): string {
   const normalized = path.startsWith('/') ? path : `/${path}`;
   return `${WEB_APP_BASE_URL}${normalized}`;
-}
-
-/** Open the MenoLisa web dashboard home (overview). */
-export async function openWebDashboard(): Promise<void> {
-  const url = getWebAppUrl('/dashboard');
-  const canOpen = await Linking.canOpenURL(url);
-  if (!canOpen) throw new Error('Cannot open dashboard URL');
-  await Linking.openURL(url);
 }
 
 /**

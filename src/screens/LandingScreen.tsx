@@ -2,10 +2,9 @@ import React from 'react';
 import {
   View,
   Text,
-  StyleSheet,
-  Dimensions,
-  TouchableOpacity,
   Image,
+  StyleSheet,
+  TouchableOpacity,
   Linking,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -17,10 +16,12 @@ import { StaggeredZoomIn, useReduceMotion } from '../components/StaggeredZoomIn'
 import { getWebAppUrl } from '../lib/api';
 import { logger } from '../lib/logger';
 
-const { width } = Dimensions.get('window');
-
 const CONTENT_MAX_WIDTH = 340;
 const HORIZONTAL_PADDING = spacing.xl;
+const LOGO_WIDTH = 240;
+const LOGO_HEIGHT = 160;
+
+const logoSource = require('../../assets/logo_transparent.png');
 
 type AuthStackNav = { Landing: undefined; Login: undefined };
 
@@ -45,13 +46,13 @@ export function LandingScreenWithButton() {
         {/* Hero */}
         <View style={styles.hero}>
           <StaggeredZoomIn delayIndex={0} reduceMotion={reduceMotion}>
-            <View style={styles.imageWrap}>
-              <Image
-                source={require('../../assets/paywall.png')}
-                style={styles.heroImage}
-                resizeMode="contain"
-              />
-            </View>
+            <Image
+              source={logoSource}
+              style={styles.logo}
+              resizeMode="contain"
+              accessibilityRole="image"
+              accessibilityLabel="MenoLisa"
+            />
           </StaggeredZoomIn>
 
           <StaggeredZoomIn delayIndex={1} reduceMotion={reduceMotion}>
@@ -109,17 +110,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingTop: spacing.xl,
   },
-  imageWrap: {
-    width: width * 0.72,
-    maxWidth: 280,
-    aspectRatio: 1,
-    marginBottom: spacing.xl,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  heroImage: {
-    width: '100%',
-    height: '100%',
+  logo: {
+    width: LOGO_WIDTH,
+    height: LOGO_HEIGHT,
+    marginBottom: spacing.md,
   },
   brandName: {
     fontFamily: typography.display.bold,

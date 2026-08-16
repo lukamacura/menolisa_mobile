@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -7,10 +7,8 @@ import {
   FlatList,
   TextInput,
   TouchableOpacity,
-  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Alert,
   Linking,
   Animated,
   Easing,
@@ -19,12 +17,15 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { useRoute, RouteProp } from '@react-navigation/native';
 import { useHeaderHeight } from '@react-navigation/elements';
 import { supabase } from '../../lib/supabase';
-import { apiFetchWithAuth, API_CONFIG, getApiUrl, openAccountBillingEntry } from '../../lib/api';
-import { useTrialStatus } from '../../hooks/useTrialStatus';
-import { AccessEndedView } from '../../components/AccessEndedView';
+import {
+  apiFetchWithAuth,
+  API_CONFIG,
+  isSubscriptionRequiredError,
+} from '../../lib/api';
 import { MarkdownText } from '../../components/MarkdownText';
 import { CoffeeLoading } from '../../components/CoffeeLoading';
 import { StaggeredZoomIn, useReduceMotion } from '../../components/StaggeredZoomIn';
@@ -43,13 +44,23 @@ type FollowUpLink = {
   label: string;
 };
 
+/** `failed` = the request errored, `stopped` = she tapped stop. Both offer a retry. */
+type SendStatus = 'failed' | 'stopped';
+
 type Message = {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   created_at: string;
   follow_up_links?: FollowUpLink[];
+  status?: SendStatus;
 };
+
+/** The local-only opening line. Never sent back as conversation history. */
+const GREETING_ID = 'greeting';
+
+/** A hung request must not strand her on a spinner forever. */
+const REQUEST_TIMEOUT_MS = 90_000;
 
 const WELCOME_WITH_NAME = [
   'Hi there, (NAME)! How are you doing today?',
@@ -73,13 +84,53 @@ const WELCOME_GENERIC = [
   "Hello! I'm here - what's on your mind?",
 ];
 
+const STRINGS = {
+  loadingConversation: 'Loading your conversation...',
+  emptyTitle: 'Start the conversation',
+  emptySubtitle: "Say hi to Lisa-she's here to listen and help.",
+  placeholder: 'Ask Lisa anything...',
+  lisa: 'Lisa',
+  followUpLabel: 'You might also like:',
+  sendFailed: "Couldn't send",
+  sendStopped: 'Stopped',
+  retry: 'Retry',
+  dismiss: 'Dismiss',
+  symptomLogged: 'Symptom Logged',
+  severityUnknown: 'Unknown',
+  networkError:
+    "Could not reach the server. Check your connection and try again.",
+  timeoutError: 'Lisa is taking too long to answer. Tap retry to ask again.',
+  loadError: 'Failed to load messages',
+  sendError: 'Failed to send',
+  a11ySend: 'Send message',
+  a11yStop: 'Stop generating',
+};
+
+/** Monotonic so two messages created in the same millisecond can never share an id. */
+let messageSeq = 0;
+function nextMessageId(prefix: string): string {
+  messageSeq += 1;
+  return `${prefix}-${Date.now().toString(36)}-${messageSeq}`;
+}
+
+/**
+ * Serialize the thread for the model. Trimming happens on whole turns — slicing
+ * the joined text would hand the model half a sentence under the wrong role label.
+ */
 function buildHistory(messages: Message[], maxChars = 4000): string {
-  const lines = messages.map(
-    (m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${(m.content || '').trim()}`
-  );
-  const text = lines.join('\n');
-  if (text.length <= maxChars) return text;
-  return text.slice(-maxChars);
+  const lines = messages
+    .filter((m) => m.id !== GREETING_ID && !m.status && m.content.trim())
+    .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content.trim()}`);
+
+  const kept: string[] = [];
+  let total = 0;
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    const cost = lines[i].length + 1;
+    if (total + cost > maxChars) break;
+    kept.unshift(lines[i]);
+    total += cost;
+  }
+  return kept.join('\n');
 }
 
 function normalizeMarkdown(src: string): string {
@@ -94,7 +145,22 @@ function normalizeMarkdown(src: string): string {
 const ASSISTANT_EMPTY_FALLBACK =
   'I could not load this reply. Please tap send again.';
 
-/** Matches `/api/langchain-rag` non-streaming `tool_notifications` and SSE `tool_result` for in-chat toasts */
+function isAbortError(err: unknown): boolean {
+  if (typeof err === 'object' && err !== null && 'name' in err) {
+    if ((err as { name?: string }).name === 'AbortError') return true;
+  }
+  const msg = err instanceof Error ? err.message : String(err);
+  return /\baborted?\b/i.test(msg);
+}
+
+function isNetworkError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /failed to fetch|network request failed|network error|load failed|cleartext|connection/i.test(
+    msg
+  );
+}
+
+/** Matches `/api/langchain-rag` `tool_notifications` for in-chat toasts */
 type ChatToolNotification = {
   tool_name: string;
   tool_args?: Record<string, unknown>;
@@ -112,14 +178,14 @@ function applyChatToolNotifications(
     const sevRaw = toolArgs.severity;
     const sev = sevRaw
       ? String(sevRaw).charAt(0).toUpperCase() + String(sevRaw).slice(1)
-      : 'Unknown';
+      : STRINGS.severityUnknown;
     const name = typeof toolArgs.name === 'string' ? toolArgs.name : '';
     let message = [name, `Severity: ${sev}`].filter(Boolean).join(' | ');
     const triggers = toolArgs.triggers;
     if (Array.isArray(triggers) && triggers.length > 0) {
       message += ` | Triggers: ${triggers.map(String).join(', ')}`;
     }
-    if (message) showToolToast('Symptom Logged', message);
+    if (message) showToolToast(STRINGS.symptomLogged, message);
   }
 }
 
@@ -192,58 +258,174 @@ function ConversationLoader() {
           />
         ))}
       </View>
-      <Text style={styles.loadingText}>Loading your conversations...</Text>
+      <Text style={styles.loadingText}>{STRINGS.loadingConversation}</Text>
     </Animated.View>
   );
 }
 
+type MessageBubbleProps = {
+  message: Message;
+  sending: boolean;
+  onFollowUpPress: (subtopic: string) => void;
+  onRetry: (message: Message) => void;
+};
+
+/**
+ * Memoized so a reply landing at the bottom of a long thread does not re-render
+ * every bubble above it.
+ */
+const MessageBubble = React.memo(function MessageBubble({
+  message,
+  sending,
+  onFollowUpPress,
+  onRetry,
+}: MessageBubbleProps) {
+  const isUser = message.role === 'user';
+  const hasContent = !!message.content.trim();
+
+  return (
+    <View style={styles.bubbleWrapper}>
+      {!isUser && <Text style={styles.lisaLabel}>{STRINGS.lisa}</Text>}
+      <View
+        style={[
+          styles.bubble,
+          isUser ? styles.bubbleUser : styles.bubbleAssistant,
+          !isUser &&
+            (Platform.OS === 'ios' || Platform.OS === 'web') &&
+            styles.bubbleAssistantWide,
+          isUser && !!message.status && styles.bubbleUserFailed,
+        ]}
+      >
+        {isUser ? (
+          <Text style={[styles.bubbleText, styles.bubbleTextUser]}>{message.content}</Text>
+        ) : hasContent ? (
+          <MarkdownText textStyle={[styles.bubbleText, styles.bubbleTextAssistant]}>
+            {message.content}
+          </MarkdownText>
+        ) : sending ? (
+          <CoffeeLoading />
+        ) : (
+          <Text
+            style={[
+              styles.bubbleText,
+              styles.bubbleTextAssistant,
+              styles.assistantFallbackText,
+            ]}
+          >
+            {ASSISTANT_EMPTY_FALLBACK}
+          </Text>
+        )}
+      </View>
+
+      {isUser && !!message.status && (
+        <View style={styles.retryRow}>
+          <Ionicons name="alert-circle-outline" size={15} color={colors.danger} />
+          <Text style={styles.retryLabel}>
+            {message.status === 'stopped' ? STRINGS.sendStopped : STRINGS.sendFailed}
+          </Text>
+          <TouchableOpacity
+            activeOpacity={0.7}
+            style={styles.retryButton}
+            onPress={() => onRetry(message)}
+            accessibilityRole="button"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="refresh" size={14} color={colors.primaryDark} />
+            <Text style={styles.retryButtonText}>{STRINGS.retry}</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {!isUser && !!message.follow_up_links?.length && (
+        <View style={styles.followUpRow}>
+          <Text style={styles.followUpLabel}>{STRINGS.followUpLabel}</Text>
+          <View style={styles.followUpChips}>
+            {message.follow_up_links.map((link, linkIdx) => (
+              <TouchableOpacity
+                key={`${link.subtopic}-${linkIdx}`}
+                activeOpacity={0.7}
+                style={[styles.followUpChip, sending && styles.followUpChipDisabled]}
+                onPress={() => onFollowUpPress(link.subtopic)}
+                disabled={sending}
+                accessibilityRole="button"
+              >
+                <Ionicons name="link" size={16} color={colors.primary} />
+                <Text style={styles.followUpChipText}>{link.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      )}
+    </View>
+  );
+});
+
 export function ChatThreadScreen() {
   const route = useRoute<RouteProps>();
   const { sessionId } = route.params;
-  const trialStatus = useTrialStatus();
-  const trialExpired = trialStatus.expired;
   const reduceMotion = useReduceMotion();
   const insets = useSafeAreaInsets();
 
-  // ──────────────────────────────────────────────────────
-  // FIX 1: Get the navigation header height for iOS offset
-  // ──────────────────────────────────────────────────────
+  // useHeaderHeight throws if no header exists; guard it
   let headerHeight = 0;
   try {
-    // useHeaderHeight throws if no header exists; guard it
     headerHeight = useHeaderHeight();
   } catch {
     headerHeight = 0;
   }
 
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState('');
   const SEND_BTN_SIZE = 44;
-  const [inputHeight, setInputHeight] = useState(SEND_BTN_SIZE);
-  const [loading, setLoading] = useState(true);
-  const [sending, setSending] = useState(false);
-  const [streamingContent, setStreamingContent] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [userId, setUserId] = useState<string | null>(null);
-  const flatListRef = useRef<FlatList>(null);
-  const sendIconOpacity = useRef(new Animated.Value(1)).current;
-  const sendSpinnerOpacity = useRef(new Animated.Value(0)).current;
-  const toolToastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [toolToast, setToolToast] = useState<{ title: string; message: string } | null>(null);
-  const [forcePaywall, setForcePaywall] = useState(false);
-
-  // ──────────────────────────────────────────────────────
-  // FIX 5: Track whether user has manually scrolled up
-  // ──────────────────────────────────────────────────────
-  const isNearBottomRef = useRef(true);
-
   const MIN_INPUT_HEIGHT = SEND_BTN_SIZE;
   const MAX_INPUT_HEIGHT = 120;
 
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState('');
+  const [inputHeight, setInputHeight] = useState(SEND_BTN_SIZE);
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [toolToast, setToolToast] = useState<{ title: string; message: string } | null>(null);
+
+  const flatListRef = useRef<FlatList<Message>>(null);
+  const sendIconOpacity = useRef(new Animated.Value(1)).current;
+  const sendSpinnerOpacity = useRef(new Animated.Value(0)).current;
+  const toolToastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /** Mirrors of state so `sendMessage` stays referentially stable across renders. */
+  const messagesRef = useRef<Message[]>(messages);
+  const inputRef = useRef(input);
+  /** Synchronous send lock — `sending` state lands a frame late, so a fast double
+   *  tap (or a chip tap racing the send button) would otherwise fire twice. */
+  const sendingRef = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
+  const mountedRef = useRef(true);
+  /** Auto-scroll only while she is parked at the bottom. */
+  const stickToBottomRef = useRef(true);
+  const didInitialScrollRef = useRef(false);
+
+  messagesRef.current = messages;
+  inputRef.current = input;
+
+  useEffect(() => {
+    mountedRef.current = true;
+    // Deliberately does NOT abort an in-flight reply. The backend only writes the
+    // turn to `conversations` once the request completes, so cancelling on unmount
+    // would lose her answer when she backs out and returns. Every state write is
+    // guarded by mountedRef instead, and the timeout still reclaims the socket.
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   const loadMessages = useCallback(async () => {
+    /** Two awaits deep, she may already have backed out — stop writing state then. */
+    const isCurrent = () => mountedRef.current;
+
     const {
       data: { user },
     } = await supabase.auth.getUser();
+    if (!isCurrent()) return;
     if (!user?.id) {
       setLoading(false);
       return;
@@ -254,12 +436,16 @@ export function ChatThreadScreen() {
       const data = await apiFetchWithAuth(
         `${API_CONFIG.endpoints.chatSessions}?user_id=${encodeURIComponent(user.id)}&session_id=${encodeURIComponent(sessionId)}&limit=50`
       );
-      const loaded: Message[] = (data?.messages ?? []).map((m: { id: string; role: string; content: string; created_at: string }) => ({
-        id: m.id,
-        role: m.role,
-        content: m.role === 'assistant' ? normalizeMarkdown(m.content) : m.content,
-        created_at: m.created_at,
-      }));
+      if (!isCurrent()) return;
+
+      const loaded: Message[] = (data?.messages ?? []).map(
+        (m: { id: string; role: string; content: string; created_at: string }) => ({
+          id: m.id,
+          role: m.role === 'user' ? 'user' : 'assistant',
+          content: m.role === 'assistant' ? normalizeMarkdown(m.content) : m.content,
+          created_at: m.created_at,
+        })
+      );
 
       if (loaded.length === 0) {
         let userName: string | null = null;
@@ -274,13 +460,14 @@ export function ChatThreadScreen() {
             userName = first || profile.name;
           }
         } catch (_) {}
+        if (!isCurrent()) return;
         const idx = Math.floor(Math.random() * WELCOME_WITH_NAME.length);
         const greeting = userName
           ? WELCOME_WITH_NAME[idx].replace('(NAME)', userName)
           : WELCOME_GENERIC[idx];
         setMessages([
           {
-            id: 'greeting',
+            id: GREETING_ID,
             role: 'assistant',
             content: greeting,
             created_at: new Date().toISOString(),
@@ -290,13 +477,14 @@ export function ChatThreadScreen() {
         setMessages(loaded);
       }
     } catch (e) {
-      let msg = e instanceof Error ? e.message : 'Failed to load messages';
-      if (/failed to fetch|network request failed|network error|load failed/i.test(msg)) {
-        msg = "Could not reach the server. Check your network and API URL (e.g. use your computer's IP when testing on a device).";
-      }
-      setError(msg);
+      if (!isCurrent()) return;
+      // A 403 means "no subscription" — AuthContext is already re-syncing the
+      // navigator toward the paywall, so an error banner would only flash.
+      if (isSubscriptionRequiredError(e)) return;
+      const msg = e instanceof Error ? e.message : STRINGS.loadError;
+      setError(isNetworkError(e) ? STRINGS.networkError : msg);
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
   }, [sessionId]);
 
@@ -308,7 +496,7 @@ export function ChatThreadScreen() {
     if (toolToastTimeoutRef.current) clearTimeout(toolToastTimeoutRef.current);
     setToolToast({ title, message });
     toolToastTimeoutRef.current = setTimeout(() => {
-      setToolToast(null);
+      if (mountedRef.current) setToolToast(null);
       toolToastTimeoutRef.current = null;
     }, 4000);
   }, []);
@@ -319,326 +507,150 @@ export function ChatThreadScreen() {
     };
   }, []);
 
-  // ──────────────────────────────────────────────────────
-  // FIX 4: Use keyboardWillShow on iOS (fires before the
-  // keyboard animation begins, so the layout is in sync)
-  // ──────────────────────────────────────────────────────
+  const scrollToEnd = useCallback((animated: boolean) => {
+    requestAnimationFrame(() => {
+      flatListRef.current?.scrollToEnd({ animated });
+    });
+  }, []);
+
+  // keyboardWillShow on iOS fires before the animation begins, so the list is
+  // already at the bottom by the time the keyboard finishes sliding up.
   useEffect(() => {
     const eventName = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const showSub = Keyboard.addListener(eventName, () => {
-      requestAnimationFrame(() => {
-        if (isNearBottomRef.current) {
-          flatListRef.current?.scrollToEnd({ animated: true });
-        }
-      });
+      if (stickToBottomRef.current) scrollToEnd(true);
     });
-    return () => {
-      showSub.remove();
-    };
-  }, []);
+    return () => showSub.remove();
+  }, [scrollToEnd]);
 
   const sendMessage = useCallback(
     async (textOverride?: string) => {
-      const text = (textOverride ?? input).trim();
-      if (!text || !userId || sending) return;
+      const fromComposer = textOverride === undefined;
+      const text = (textOverride ?? inputRef.current).trim();
+      if (!text || !userId || sendingRef.current) return;
 
-      if (trialExpired) {
-        Alert.alert(
-          'Trial ended',
-          "I'm just getting to know your patterns. Continue with Lisa to keep the insights coming.",
-          [
-            { text: 'OK', style: 'cancel' },
-            {
-              text: 'Continue with Lisa',
-              onPress: () => {
-                if (Platform.OS === 'ios') {
-                  setForcePaywall(true);
-                  return;
-                }
-                openAccountBillingEntry().catch(() => {});
-              },
-            },
-          ]
-        );
-        return;
+      sendingRef.current = true;
+      setSending(true);
+      setError(null);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+
+      // Only clear the composer when the text actually came from it — a follow-up
+      // chip must not wipe a half-typed question.
+      if (fromComposer) {
+        setInput('');
+        setInputHeight(MIN_INPUT_HEIGHT);
       }
 
-      setInput('');
-      setInputHeight(SEND_BTN_SIZE);
       const userMsg: Message = {
-        id: `user-${Date.now()}`,
+        id: nextMessageId('user'),
         role: 'user',
         content: text,
         created_at: new Date().toISOString(),
       };
-      setMessages((prev) => [...prev, userMsg]);
-      setSending(true);
-      setStreamingContent('');
-      setError(null);
+      const placeholderId = nextMessageId('assistant');
+      const history = buildHistory(messagesRef.current);
 
-      // Reset scroll-tracking so new messages auto-scroll
-      isNearBottomRef.current = true;
+      setMessages((prev) => [
+        ...prev,
+        userMsg,
+        {
+          id: placeholderId,
+          role: 'assistant',
+          content: '',
+          created_at: new Date().toISOString(),
+        },
+      ]);
+      stickToBottomRef.current = true;
 
-      const placeholderAssistant: Message = {
-        id: `assistant-${Date.now()}`,
-        role: 'assistant',
-        content: '',
-        created_at: new Date().toISOString(),
-      };
-      setMessages((prev) => [...prev, placeholderAssistant]);
+      /** Distinguishes "she tapped stop" from "we gave up waiting". */
+      let timedOut = false;
+      const controller = new AbortController();
+      abortRef.current = controller;
+      const timeoutId = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, REQUEST_TIMEOUT_MS);
 
-      const history = buildHistory([...messages, userMsg]);
-
-      const applyAssistantReply = (content: string, followUpLinks?: FollowUpLink[]) => {
-        const normalized = normalizeMarkdown(content);
-        const safeContent = normalized || ASSISTANT_EMPTY_FALLBACK;
-        setMessages((prev) => {
-          const next = [...prev];
-          const last = next[next.length - 1];
-          if (last?.role === 'assistant') {
-            next[next.length - 1] = { ...last, content: safeContent, follow_up_links: followUpLinks };
-          } else {
-            next.push({
-              id: `assistant-${Date.now()}`,
-              role: 'assistant',
-              content: safeContent,
-              created_at: new Date().toISOString(),
-              follow_up_links: followUpLinks,
-            });
-          }
-          return next;
-        });
-      };
-
-      const isNetworkError = (err: unknown) => {
-        const msg = err instanceof Error ? err.message : String(err);
-        return /failed to fetch|network request failed|network error|load failed|cleartext|connection/i.test(msg);
+      /** Drops the empty reply bubble and flags her message so she can retry. */
+      const markUnsent = (status: SendStatus) => {
+        setMessages((prev) =>
+          prev
+            .filter((m) => m.id !== placeholderId)
+            .map((m) => (m.id === userMsg.id ? { ...m, status } : m))
+        );
       };
 
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.access_token) throw new Error('Not authenticated');
+        const data = await apiFetchWithAuth(API_CONFIG.endpoints.chat, {
+          method: 'POST',
+          // Compressed SSE/JSON breaks chunk framing on iOS; ask for plain bytes.
+          headers: { 'Accept-Encoding': 'identity' },
+          body: JSON.stringify({
+            user_id: userId,
+            sessionId,
+            userInput: text,
+            history,
+            // Streaming stays off: React Native's NSURLSession buffers aggressively
+            // and can drop the final `done` event, leaving the reply empty.
+            stream: false,
+          }),
+          signal: controller.signal,
+        });
+        if (!mountedRef.current) return;
 
-        const url = getApiUrl(API_CONFIG.endpoints.chat);
-        let res: Response;
-        try {
-          res = await fetch(url, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${session.access_token}`,
-              // Prevent gzip/brotli compression - compressed SSE breaks \n\n splitting on iOS
-              'Accept-Encoding': 'identity',
-            },
-            body: JSON.stringify({
-              user_id: userId,
-              sessionId,
-              userInput: text,
-              history,
-              // Disable SSE streaming on iOS: React Native's NSURLSession buffers aggressively
-              // and can drop the final `done` event, leaving fullResponse empty.
-              // Non-streaming returns a single JSON response which is reliable on all platforms.
-              stream: false,
-            }),
-          });
-        } catch (fetchErr) {
-          if (isNetworkError(fetchErr)) {
-            const fallbackRes = await apiFetchWithAuth(API_CONFIG.endpoints.chat, {
-              method: 'POST',
-              body: JSON.stringify({
-                user_id: userId,
-                sessionId,
-                userInput: text,
-                history,
-                stream: false,
-              }),
-            });
-            applyChatToolNotifications(fallbackRes?.tool_notifications as ChatToolNotification[] | undefined, showToolToast);
-            const content = fallbackRes?.content ?? fallbackRes?.message ?? fallbackRes?.reply ?? fallbackRes?.outputs?.output_0 ?? '';
-            const fallbackLinks = fallbackRes?.follow_up_links as FollowUpLink[] | undefined;
-            applyAssistantReply(typeof content === 'string' ? content : JSON.stringify(content), fallbackLinks);
-            return;
-          }
-          throw fetchErr;
-        }
+        applyChatToolNotifications(
+          data?.tool_notifications as ChatToolNotification[] | undefined,
+          showToolToast
+        );
 
-        if (!res.ok) {
-          const errText = await res.text();
-          let errData: { error?: string; message?: string } = {};
-          try {
-            errData = JSON.parse(errText);
-          } catch {}
-          throw new Error(errData?.error || errData?.message || `${res.status} ${res.statusText}`);
-        }
+        const rawContent =
+          typeof data?.content === 'string'
+            ? data.content
+            : typeof data?.message === 'string'
+              ? data.message
+              : typeof data?.reply === 'string'
+                ? data.reply
+                : '';
+        const followUpLinks =
+          Array.isArray(data?.follow_up_links) && data.follow_up_links.length > 0
+            ? (data.follow_up_links as FollowUpLink[])
+            : undefined;
+        const reply = normalizeMarkdown(rawContent) || ASSISTANT_EMPTY_FALLBACK;
 
-        const contentType = res.headers.get('content-type');
-        if (contentType?.includes('text/event-stream') && res.body) {
-          const reader = res.body.getReader();
-          const decoder = new TextDecoder();
-          let buffer = '';
-          let fullResponse = '';
-          let lastFollowUpLinks: FollowUpLink[] | null = null;
-
-          const processSSELine = (line: string) => {
-              if (!line.trim() || !line.startsWith('data: ')) return false;
-              const jsonStr = line.slice(6).trim();
-              if (!jsonStr) return false;
-              try {
-                const data = JSON.parse(jsonStr);
-                if (data.type === 'chunk' && data.content !== undefined) {
-                  fullResponse = data.content;
-                  setStreamingContent(fullResponse);
-                } else if (data.type === 'follow_up_links' && data.links) {
-                  lastFollowUpLinks = data.links;
-                } else if (data.type === 'tool_result' && data.success) {
-                  applyChatToolNotifications(
-                    [
-                      {
-                        tool_name: String(data.tool_name ?? ''),
-                        tool_args: (data.tool_args as Record<string, unknown>) ?? {},
-                        success: true,
-                      },
-                    ],
-                    showToolToast,
-                  );
-                } else if (data.type === 'done') {
-                  return true; // signal caller to finalize
-                } else if (data.type === 'error') {
-                  throw new Error(data.error || 'Streaming error');
-                }
-              } catch (parseErr) {
-                if (jsonStr !== '[DONE]' && !jsonStr.startsWith(':')) {
-                  // ignore malformed lines
-                }
-              }
-              return false;
-            };
-
-          try {
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) {
-                // Flush any bytes still held inside the TextDecoder (iOS can leave
-                // incomplete multibyte sequences buffered until the stream closes).
-                buffer += decoder.decode();
-                break;
-              }
-              buffer += decoder.decode(value, { stream: true });
-              const parts = buffer.split('\n\n');
-              buffer = parts.pop() || '';
-
-              for (const line of parts) {
-                const isDone = processSSELine(line);
-                if (isDone) {
-                  const reply = normalizeMarkdown(fullResponse) || ASSISTANT_EMPTY_FALLBACK;
-                  setMessages((prev) => {
-                    const next = [...prev];
-                    const last = next[next.length - 1];
-                    if (last?.role === 'assistant') {
-                      next[next.length - 1] = {
-                        ...last,
-                        content: reply,
-                        follow_up_links: lastFollowUpLinks ?? undefined,
-                      };
-                    }
-                    return next;
-                  });
-                  setStreamingContent('');
-                  setSending(false);
-                  return;
-                }
-              }
-            }
-
-            // Process any remaining bytes in the buffer that didn't end with \n\n.
-            // On iOS the network stack may close the TCP connection before the server
-            // flushes the final \n\n, leaving the last SSE event (often the 'done'
-            // event or the final chunk) stranded in the buffer.
-            if (buffer.trim()) {
-              for (const line of buffer.split('\n')) {
-                processSSELine(line);
-              }
-            }
-
-            if (fullResponse) {
-              const reply = normalizeMarkdown(fullResponse) || ASSISTANT_EMPTY_FALLBACK;
-              setMessages((prev) => {
-                const next = [...prev];
-                const last = next[next.length - 1];
-                if (last?.role === 'assistant') {
-                  next[next.length - 1] = {
-                    ...last,
-                    content: reply,
-                    follow_up_links: lastFollowUpLinks ?? undefined,
-                  };
-                }
-                return next;
-              });
-            }
-          } finally {
-            setStreamingContent('');
-            setSending(false);
-          }
-        } else {
-          const raw = await res.text();
-          let data: {
-            content?: string;
-            message?: string;
-            reply?: string;
-            outputs?: { output_0?: string };
-            tool_notifications?: ChatToolNotification[];
-            follow_up_links?: FollowUpLink[];
-          } = {};
-          try {
-            data = JSON.parse(raw);
-          } catch {}
-          applyChatToolNotifications(data.tool_notifications, showToolToast);
-          const content =
-            data?.content ??
-            data?.message ??
-            data?.reply ??
-            (typeof data?.outputs?.output_0 === 'string' ? data.outputs.output_0 : '') ??
-            '';
-          const followUpLinks =
-            Array.isArray(data.follow_up_links) && data.follow_up_links.length > 0
-              ? data.follow_up_links
-              : undefined;
-          const safeContent = normalizeMarkdown(content) || ASSISTANT_EMPTY_FALLBACK;
-          setMessages((prev) => {
-            const next = [...prev];
-            const last = next[next.length - 1];
-            if (last?.role === 'assistant' && !last.content) {
-              next[next.length - 1] = {
-                ...last,
-                content: safeContent,
-                follow_up_links: followUpLinks,
-              };
-            } else {
-              next.push({
-                id: `assistant-${Date.now()}`,
-                role: 'assistant',
-                content: safeContent,
-                created_at: new Date().toISOString(),
-                follow_up_links: followUpLinks,
-              });
-            }
-            return next;
-          });
-        }
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === placeholderId
+              ? { ...m, content: reply, follow_up_links: followUpLinks }
+              : m
+          )
+        );
       } catch (e) {
-        let msg = e instanceof Error ? e.message : 'Failed to send';
-        if (/failed to fetch|network request failed|network error|load failed/i.test(msg)) {
-          msg = "Could not reach the server. Check your network and that the API URL is correct (e.g. use your computer's IP instead of localhost when testing on a device).";
+        if (!mountedRef.current) return;
+
+        if (isAbortError(e)) {
+          markUnsent(timedOut ? 'failed' : 'stopped');
+          if (timedOut) setError(STRINGS.timeoutError);
+          return;
         }
-        setError(msg);
-        setMessages((prev) => prev.filter((m) => m.id !== userMsg.id && m.id !== placeholderAssistant.id));
-        setInput(text);
+        // 403 = no subscription. The navigator is already moving her to the
+        // paywall; showing an error banner here would just flash and confuse.
+        if (isSubscriptionRequiredError(e)) {
+          setMessages((prev) => prev.filter((m) => m.id !== placeholderId));
+          return;
+        }
+
+        markUnsent('failed');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+        const msg = e instanceof Error ? e.message : STRINGS.sendError;
+        setError(isNetworkError(e) ? STRINGS.networkError : msg);
       } finally {
-        setSending(false);
-        setStreamingContent('');
+        clearTimeout(timeoutId);
+        if (abortRef.current === controller) abortRef.current = null;
+        sendingRef.current = false;
+        if (mountedRef.current) setSending(false);
       }
     },
-    [input, userId, sending, messages, trialExpired, sessionId, showToolToast]
+    [userId, sessionId, showToolToast, MIN_INPUT_HEIGHT]
   );
 
   const onFollowUpPress = useCallback(
@@ -647,6 +659,21 @@ export function ChatThreadScreen() {
     },
     [sendMessage]
   );
+
+  /** Re-send an unsent message: drop the old bubble, then send its text again. */
+  const onRetry = useCallback(
+    (message: Message) => {
+      if (sendingRef.current) return;
+      setMessages((prev) => prev.filter((m) => m.id !== message.id));
+      setError(null);
+      sendMessage(message.content);
+    },
+    [sendMessage]
+  );
+
+  const onStop = useCallback(() => {
+    abortRef.current?.abort();
+  }, []);
 
   useEffect(() => {
     const duration = 220;
@@ -666,6 +693,46 @@ export function ChatThreadScreen() {
     ]).start();
   }, [sending, sendIconOpacity, sendSpinnerOpacity]);
 
+  const onScroll = useCallback(
+    (e: { nativeEvent: { contentOffset: { y: number }; layoutMeasurement: { height: number }; contentSize: { height: number } } }) => {
+      const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent;
+      const distanceFromBottom =
+        contentSize.height - layoutMeasurement.height - contentOffset.y;
+      stickToBottomRef.current = distanceFromBottom < 120;
+    },
+    []
+  );
+
+  const onContentSizeChange = useCallback(() => {
+    if (!stickToBottomRef.current) return;
+    // The very first layout jumps; everything after glides.
+    if (!didInitialScrollRef.current) {
+      didInitialScrollRef.current = true;
+      scrollToEnd(false);
+      return;
+    }
+    scrollToEnd(true);
+  }, [scrollToEnd]);
+
+  const renderItem = useCallback(
+    ({ item }: { item: Message }) => (
+      <MessageBubble
+        message={item}
+        sending={sending}
+        onFollowUpPress={onFollowUpPress}
+        onRetry={onRetry}
+      />
+    ),
+    [sending, onFollowUpPress, onRetry]
+  );
+
+  const keyExtractor = useCallback((item: Message) => item.id, []);
+
+  const composedInputHeight = useMemo(
+    () => Math.max(MIN_INPUT_HEIGHT, Math.min(MAX_INPUT_HEIGHT, inputHeight)),
+    [inputHeight, MIN_INPUT_HEIGHT, MAX_INPUT_HEIGHT]
+  );
+
   if (loading) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
@@ -674,245 +741,178 @@ export function ChatThreadScreen() {
     );
   }
 
-  if (trialExpired || forcePaywall) {
-    return (
-      <SafeAreaView style={styles.container} edges={['top']}>
-        <AccessEndedView
-          variant="fullScreen"
-          reduceMotion={reduceMotion}
-          onSubscriptionSuccess={() => {
-            setForcePaywall(false);
-            trialStatus.refetch().catch(() => {});
-          }}
-        />
-      </SafeAreaView>
-    );
-  }
-
-  const displayMessages = messages.length === 0 && !sending
-    ? []
-    : messages;
-  const isStreaming = sending && displayMessages.some((m) => m.role === 'assistant' && !m.content);
+  const canSend = input.trim().length > 0;
 
   return (
-    // ──────────────────────────────────────────────────────
-    // FIX 2: Add 'bottom' edge so home-indicator inset is
-    // respected on modern iPhones
-    // ──────────────────────────────────────────────────────
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       {toolToast && (
         <View style={[styles.toolToast, { top: insets.top + spacing.sm }]}>
-          <Ionicons name="checkmark-circle" size={20} color={colors.success} style={styles.toolToastIcon} />
+          <Ionicons
+            name="checkmark-circle"
+            size={20}
+            color={colors.success}
+            style={styles.toolToastIcon}
+          />
           <View style={styles.toolToastContent}>
             <Text style={styles.toolToastTitle}>{toolToast.title}</Text>
-            <Text style={styles.toolToastMessage} numberOfLines={2}>{toolToast.message}</Text>
+            <Text style={styles.toolToastMessage} numberOfLines={2}>
+              {toolToast.message}
+            </Text>
           </View>
         </View>
       )}
-      {/* ──────────────────────────────────────────────────
-          FIX 1: Wrap the entire chat area (list + input)
-          inside KeyboardAvoidingView so the FlatList shrinks
-          when the keyboard opens, and use the header height
-          as the vertical offset on iOS.
-          ────────────────────────────────────────────────── */}
+
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? headerHeight : 0}
       >
-        {error && (
-          <View style={styles.errorBanner}>
-            <Text style={styles.errorText}>{error}</Text>
-          </View>
-        )}
         <StaggeredZoomIn delayIndex={0} reduceMotion={reduceMotion} style={styles.flex}>
           <FlatList
             ref={flatListRef}
             style={styles.flex}
-            data={displayMessages}
-            keyExtractor={(item) => item.id}
+            data={messages}
+            keyExtractor={keyExtractor}
+            renderItem={renderItem}
             contentContainerStyle={styles.messageList}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
             removeClippedSubviews={Platform.OS === 'android'}
-            // ──────────────────────────────────────────────
-            // FIX 5: Track scroll position so we only
-            // auto-scroll when the user is near the bottom
-            // ──────────────────────────────────────────────
-            onScroll={(e) => {
-              const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent;
-              const distanceFromBottom =
-                contentSize.height - layoutMeasurement.height - contentOffset.y;
-              isNearBottomRef.current = distanceFromBottom < 120;
-            }}
-            scrollEventThrottle={100}
+            initialNumToRender={12}
+            maxToRenderPerBatch={8}
+            windowSize={11}
+            onScroll={onScroll}
+            scrollEventThrottle={16}
+            onContentSizeChange={onContentSizeChange}
             ListEmptyComponent={
               <View style={styles.empty}>
                 <View style={styles.emptyIconWrap}>
                   <Ionicons name="chatbubble-ellipses" size={36} color={CHAT.emptyIcon} />
                 </View>
-                <Text style={styles.emptyText}>Start the conversation</Text>
-                <Text style={styles.emptySubtext}>Say hi to Lisa-she's here to listen and help.</Text>
+                <Text style={styles.emptyText}>{STRINGS.emptyTitle}</Text>
+                <Text style={styles.emptySubtext}>{STRINGS.emptySubtitle}</Text>
               </View>
             }
-            ListFooterComponent={
-              sending &&
-              displayMessages.length > 0 &&
-              displayMessages[displayMessages.length - 1].role === 'user' ? (
-                <View style={styles.bubbleWrapper}>
-                  <Text style={styles.lisaLabel}>Lisa</Text>
-                  <View style={[styles.bubble, styles.bubbleAssistant]}>
-                    <CoffeeLoading />
-                  </View>
-                </View>
-              ) : null
-            }
-            // ──────────────────────────────────────────────
-            // FIX 5: Only auto-scroll when user hasn't
-            // scrolled away from the bottom
-            // ──────────────────────────────────────────────
-            onContentSizeChange={() => {
-              if (isNearBottomRef.current) {
-                flatListRef.current?.scrollToEnd({ animated: false });
-              }
-            }}
-            renderItem={({ item, index }) => {
-              const isLastAssistant = item.role === 'assistant' && index === displayMessages.length - 1;
-              const showStreaming = isLastAssistant && isStreaming;
-
-              return (
-                <View style={styles.bubbleWrapper}>
-                  {item.role === 'assistant' && (
-                    <Text style={styles.lisaLabel}>Lisa</Text>
-                  )}
-                  <View
-                    style={[
-                      styles.bubble,
-                      item.role === 'user' ? styles.bubbleUser : styles.bubbleAssistant,
-                      item.role === 'assistant' && (Platform.OS === 'ios' || Platform.OS === 'web') && styles.bubbleAssistantWide,
-                    ]}
-                  >
-                    {item.role === 'user' ? (
-                      <Text style={[styles.bubbleText, styles.bubbleTextUser]}>
-                        {item.content}
-                      </Text>
-                    ) : (
-                      <>
-                        {showStreaming && !streamingContent ? (
-                          <CoffeeLoading />
-                        ) : !showStreaming && !item.content?.trim() ? (
-                          <Text style={[styles.bubbleText, styles.bubbleTextAssistant, styles.assistantFallbackText]}>
-                            {ASSISTANT_EMPTY_FALLBACK}
-                          </Text>
-                        ) : (
-                          <>
-                            <MarkdownText
-                              textStyle={[styles.bubbleText, styles.bubbleTextAssistant]}
-                            >
-                              {showStreaming && streamingContent ? streamingContent : item.content || ''}
-                            </MarkdownText>
-                            {showStreaming && streamingContent ? <View style={styles.cursor} /> : null}
-                          </>
-                        )}
-                      </>
-                    )}
-                  </View>
-                  {item.role === 'assistant' && item.follow_up_links && item.follow_up_links.length > 0 && (
-                    <View style={styles.followUpRow}>
-                      <Text style={styles.followUpLabel}>You might also like:</Text>
-                      <View style={styles.followUpChips}>
-                        {item.follow_up_links.map((link: FollowUpLink, linkIdx: number) => (
-                          <TouchableOpacity
-                            key={linkIdx}
-                            activeOpacity={1}
-                            style={styles.followUpChip}
-                            onPress={() => onFollowUpPress(link.subtopic)}
-                            disabled={sending}
-                          >
-                            <Ionicons name="link" size={16} color={colors.primary} />
-                            <Text style={styles.followUpChipText}>{link.label}</Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    </View>
-                  )}
-                </View>
-              );
-            }}
           />
         </StaggeredZoomIn>
 
-        {/* Input area - now INSIDE KAV so it moves with the keyboard */}
+        {/* Error lives above the composer so it never reflows the message list. */}
+        {error && (
+          <TouchableOpacity
+            activeOpacity={0.8}
+            style={styles.errorBanner}
+            onPress={() => setError(null)}
+            accessibilityRole="button"
+            accessibilityLabel={STRINGS.dismiss}
+          >
+            <Ionicons name="alert-circle" size={18} color={colors.danger} />
+            <Text style={styles.errorText}>{error}</Text>
+            <Ionicons name="close" size={16} color={colors.danger} />
+          </TouchableOpacity>
+        )}
+
         <View>
           <Text style={styles.chatDisclaimer}>
-            AI responses are generated by <Text style={styles.chatDisclaimerLink} onPress={() => Linking.openURL('https://openai.com/policies/privacy-policy')} accessibilityRole="link">OpenAI</Text> and are for informational purposes only - not medical advice. Sources:{' '}
-            <Text style={styles.chatDisclaimerLink} onPress={() => Linking.openURL('https://www.nhs.uk/conditions/menopause/')} accessibilityRole="link">NHS</Text>
+            AI responses are generated by{' '}
+            <Text
+              style={styles.chatDisclaimerLink}
+              onPress={() => Linking.openURL('https://openai.com/policies/privacy-policy')}
+              accessibilityRole="link"
+            >
+              OpenAI
+            </Text>{' '}
+            and are for informational purposes only - not medical advice. Sources:{' '}
+            <Text
+              style={styles.chatDisclaimerLink}
+              onPress={() => Linking.openURL('https://www.nhs.uk/conditions/menopause/')}
+              accessibilityRole="link"
+            >
+              NHS
+            </Text>
             {', '}
-            <Text style={styles.chatDisclaimerLink} onPress={() => Linking.openURL('https://www.mayoclinic.org/diseases-conditions/menopause/symptoms-causes/syc-20353397')} accessibilityRole="link">Mayo Clinic</Text>
+            <Text
+              style={styles.chatDisclaimerLink}
+              onPress={() =>
+                Linking.openURL(
+                  'https://www.mayoclinic.org/diseases-conditions/menopause/symptoms-causes/syc-20353397'
+                )
+              }
+              accessibilityRole="link"
+            >
+              Mayo Clinic
+            </Text>
             {', '}
-            <Text style={styles.chatDisclaimerLink} onPress={() => Linking.openURL('https://menopause.org')} accessibilityRole="link">The Menopause Society</Text>
+            <Text
+              style={styles.chatDisclaimerLink}
+              onPress={() => Linking.openURL('https://menopause.org')}
+              accessibilityRole="link"
+            >
+              The Menopause Society
+            </Text>
           </Text>
           <View style={styles.inputRow}>
             <View style={styles.composerContainer}>
               <TextInput
                 style={[
                   styles.input,
-                  {
-                    // ──────────────────────────────────────
-                    // FIX 3: Simplified height - let the
-                    // platform's contentSize be the source
-                    // of truth, clamped to min/max.
-                    // ──────────────────────────────────────
-                    height: Math.max(
-                      MIN_INPUT_HEIGHT,
-                      Math.min(MAX_INPUT_HEIGHT, inputHeight)
-                    ),
-                  },
-                  Platform.OS === 'web' && ({
-                    overflowY: inputHeight > MAX_INPUT_HEIGHT ? 'auto' : 'hidden',
-                    scrollbarWidth: 'none',
-                    msOverflowStyle: 'none',
-                  } as Record<string, unknown>),
+                  { height: composedInputHeight },
+                  Platform.OS === 'web' &&
+                    ({
+                      overflowY: inputHeight > MAX_INPUT_HEIGHT ? 'auto' : 'hidden',
+                      scrollbarWidth: 'none',
+                      msOverflowStyle: 'none',
+                    } as Record<string, unknown>),
                 ]}
                 value={input}
                 onChangeText={setInput}
                 onFocus={() => {
-                  requestAnimationFrame(() => {
-                    flatListRef.current?.scrollToEnd({ animated: true });
-                  });
+                  stickToBottomRef.current = true;
+                  scrollToEnd(true);
                 }}
-                // ──────────────────────────────────────────
-                // FIX 3: Use contentSize.height directly -
-                // iOS already includes internal padding, so
-                // adding extra padding caused the input to
-                // grow taller every keystroke.
-                // ──────────────────────────────────────────
+                // iOS already includes internal padding in contentSize, so adding
+                // extra here would grow the box a little on every keystroke.
                 onContentSizeChange={(e) => {
                   const h = e.nativeEvent.contentSize.height;
                   setInputHeight(Math.max(MIN_INPUT_HEIGHT, Math.min(MAX_INPUT_HEIGHT, h)));
                 }}
-                placeholder="Ask Lisa anything..."
+                placeholder={STRINGS.placeholder}
                 placeholderTextColor={colors.textMuted}
                 multiline
                 maxLength={2000}
-                editable={!sending}
+                // Stays editable while Lisa replies — she can line up her next
+                // thought instead of watching a dead composer.
+                editable
                 scrollEnabled={inputHeight >= MAX_INPUT_HEIGHT}
               />
               <TouchableOpacity
-                activeOpacity={1}
-                style={[styles.sendBtn, (!input.trim() || sending) && styles.sendBtnDisabled]}
-                onPress={() => sendMessage()}
-                disabled={!input.trim() || sending}
+                activeOpacity={0.8}
+                style={[
+                  styles.sendBtn,
+                  !sending && !canSend && styles.sendBtnDisabled,
+                  sending && styles.stopBtn,
+                ]}
+                onPress={sending ? onStop : () => sendMessage()}
+                disabled={!sending && !canSend}
+                accessibilityRole="button"
+                accessibilityLabel={sending ? STRINGS.a11yStop : STRINGS.a11ySend}
               >
                 <Animated.View
-                  style={[StyleSheet.absoluteFillObject, styles.sendBtnContent, { opacity: sendIconOpacity, pointerEvents: 'none' }]}
+                  style={[
+                    StyleSheet.absoluteFillObject,
+                    styles.sendBtnContent,
+                    { opacity: sendIconOpacity, pointerEvents: 'none' },
+                  ]}
                 >
                   <Ionicons name="send" size={22} color={colors.textInverse} />
                 </Animated.View>
                 <Animated.View
-                  style={[StyleSheet.absoluteFillObject, styles.sendBtnContent, { opacity: sendSpinnerOpacity, pointerEvents: 'none' }]}
+                  style={[
+                    StyleSheet.absoluteFillObject,
+                    styles.sendBtnContent,
+                    { opacity: sendSpinnerOpacity, pointerEvents: 'none' },
+                  ]}
                 >
-                  <ActivityIndicator size="small" color={colors.textInverse} />
+                  <Ionicons name="stop" size={18} color={colors.textInverse} />
                 </Animated.View>
               </TouchableOpacity>
             </View>
@@ -1013,20 +1013,24 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
     backgroundColor: CHAT.errorBg,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     marginHorizontal: spacing.md,
-    marginTop: spacing.sm,
+    marginBottom: spacing.xs,
     borderRadius: radii.md,
     borderWidth: 1,
     borderColor: CHAT.errorBorder,
   },
   errorText: {
-    fontSize: 15,
+    flex: 1,
+    fontSize: 14,
     fontFamily: typography.family.regular,
     color: colors.danger,
-    lineHeight: 22,
+    lineHeight: 20,
   },
   messageList: {
     paddingHorizontal: spacing.sm,
@@ -1083,6 +1087,9 @@ const styles = StyleSheet.create({
     backgroundColor: CHAT.userBubble,
     borderBottomRightRadius: 6,
   },
+  bubbleUserFailed: {
+    opacity: 0.6,
+  },
   bubbleAssistant: {
     alignSelf: 'flex-start',
     backgroundColor: CHAT.lisaBubble,
@@ -1117,12 +1124,34 @@ const styles = StyleSheet.create({
   assistantFallbackText: {
     color: colors.textMuted,
   },
-  cursor: {
-    width: 2,
-    height: 20,
-    backgroundColor: colors.primary,
-    marginTop: 2,
-    borderRadius: 1,
+  retryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-end',
+    gap: 6,
+    marginTop: 6,
+    marginRight: 4,
+  },
+  retryLabel: {
+    fontSize: 13,
+    fontFamily: typography.family.regular,
+    color: colors.danger,
+  },
+  retryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    backgroundColor: CHAT.chipBg,
+    borderWidth: 1,
+    borderColor: CHAT.chipBorder,
+  },
+  retryButtonText: {
+    fontSize: 13,
+    fontFamily: typography.family.medium,
+    color: CHAT.chipText,
   },
   followUpRow: {
     marginTop: 12,
@@ -1151,6 +1180,9 @@ const styles = StyleSheet.create({
     borderColor: CHAT.chipBorder,
     gap: 6,
     minHeight: 40,
+  },
+  followUpChipDisabled: {
+    opacity: 0.5,
   },
   followUpChipText: {
     fontSize: 14,
@@ -1223,6 +1255,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
     ...shadows.buttonPrimary,
+  },
+  stopBtn: {
+    backgroundColor: colors.primaryDark,
   },
   sendBtnContent: {
     justifyContent: 'center',

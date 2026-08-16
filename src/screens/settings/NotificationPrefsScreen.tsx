@@ -99,8 +99,17 @@ export function NotificationPrefsScreen() {
               </TouchableOpacity>
             </View>
           ) : null}
+          {/* Each row names the alerts it actually governs. The server sends a
+              morning plan nudge, a streak warning and a week-start note off the
+              first switch alone — an unlabelled "Notifications" toggle left her
+              with no idea what she had agreed to. */}
           <View style={styles.row}>
-            <Text style={styles.rowLabel}>Notifications</Text>
+            <View style={styles.rowTextWrap}>
+              <Text style={styles.rowLabel}>Notifications</Text>
+              <Text style={styles.rowHint}>
+                Your morning plan nudge, streak reminders and the start of each week.
+              </Text>
+            </View>
             <Switch
               value={notificationEnabled}
               onValueChange={(v) => updatePref('notification_enabled', v)}
@@ -110,7 +119,10 @@ export function NotificationPrefsScreen() {
             />
           </View>
           <View style={styles.row}>
-            <Text style={styles.rowLabel}>Weekly summary from Lisa</Text>
+            <View style={styles.rowTextWrap}>
+              <Text style={styles.rowLabel}>Weekly summary from Lisa</Text>
+              <Text style={styles.rowHint}>One recap of the seven days behind you.</Text>
+            </View>
             <Switch
               value={weeklyInsightsEnabled}
               onValueChange={(v) => updatePref('weekly_insights_enabled', v)}
@@ -119,6 +131,11 @@ export function NotificationPrefsScreen() {
               thumbColor={weeklyInsightsEnabled ? colors.primary : colors.textMuted}
             />
           </View>
+          {/* These ignore both switches server-side, so saying so here is the
+              only thing that keeps the screen honest. */}
+          <Text style={styles.footnote}>
+            Alerts about your payment and access are always sent.
+          </Text>
         </View>
       </StaggeredZoomIn>
       </ContentTransition>
@@ -178,9 +195,23 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(58, 191, 163, 0.60)',
   },
+  rowTextWrap: {
+    flex: 1,
+    paddingRight: spacing.md,
+  },
   rowLabel: {
     fontSize: 16,
     fontFamily: typography.family.medium,
     color: colors.text,
+  },
+  rowHint: {
+    ...typography.presets.caption,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  footnote: {
+    ...typography.presets.caption,
+    color: colors.textMuted,
+    marginTop: spacing.xs,
   },
 });

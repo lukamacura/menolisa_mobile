@@ -97,7 +97,7 @@ export function DailyLoopScreen() {
     trialStatus.daysLeft >= 0 &&
     !endingSoonDismissed;
 
-  const paywall = trialStatus.expired ? (
+  const paywall = showEndingSoonPaywall ? (
     <Animated.View
       entering={reduceMotion ? undefined : FadeInDown.duration(motion.duration.base)}
       exiting={reduceMotion ? undefined : FadeOutUp.duration(motion.duration.base)}
@@ -105,28 +105,10 @@ export function DailyLoopScreen() {
       pointerEvents="box-none"
     >
       <AccessEndedView
-        variant="fullScreen"
-        accessState="expired"
-        onPress={handleOpenAccountWeb}
-        onSubscriptionSuccess={() => trialStatus.refetch().catch(() => {})}
-        reduceMotion={reduceMotion}
-      />
-    </Animated.View>
-  ) : showEndingSoonPaywall ? (
-    <Animated.View
-      entering={reduceMotion ? undefined : FadeInDown.duration(motion.duration.base)}
-      exiting={reduceMotion ? undefined : FadeOutUp.duration(motion.duration.base)}
-      style={[StyleSheet.absoluteFillObject, styles.paywallOverlay]}
-      pointerEvents="box-none"
-    >
-      <AccessEndedView
-        variant="fullScreen"
-        accessState="ending_soon"
         // Non-null: showEndingSoonPaywall requires it.
         daysLeft={trialStatus.daysLeft ?? 0}
         onPress={handleOpenAccountWeb}
         onSkip={() => setEndingSoonDismissed(true)}
-        onSubscriptionSuccess={() => trialStatus.refetch().catch(() => {})}
         reduceMotion={reduceMotion}
       />
     </Animated.View>

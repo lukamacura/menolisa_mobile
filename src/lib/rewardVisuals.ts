@@ -11,38 +11,38 @@ import { colors } from '../theme/tokens';
 
 export type BadgeVisual = {
   icon: keyof typeof Ionicons.glyphMap;
-  /** The badge's own colour when unlocked. */
+  /** The badge's own colour when unlocked. Always a 6-digit hex. */
   tint: string;
-  /** A soft fill of the same hue. Always rgba — Android renders 8-digit hex gray. */
-  tintSoft: string;
 };
 
+/**
+ * One hue per badge, walked around the colour wheel rather than picked from the
+ * brand palette. A grid of eighteen medals in four shades of coral reads as one
+ * repeated sticker; distinct hues let her recognise a badge before she reads it.
+ * Warm reds run into pinks, then purples, blues, teals, greens and back to gold.
+ */
 const VISUALS: Record<string, BadgeVisual> = {
-  wildfire: { icon: 'flame', tint: '#F4623A', tintSoft: 'rgba(244, 98, 58, 0.14)' },
-  sage: { icon: 'sparkles', tint: colors.lavender, tintSoft: 'rgba(139, 124, 246, 0.16)' },
-  flawless: { icon: 'checkmark-circle', tint: colors.success, tintSoft: 'rgba(34, 160, 107, 0.14)' },
-  devoted: { icon: 'calendar', tint: colors.primary, tintSoft: 'rgba(244, 124, 151, 0.14)' },
-  strong: { icon: 'barbell', tint: colors.primaryDark, tintSoft: 'rgba(217, 95, 126, 0.14)' },
-  serene: { icon: 'leaf', tint: colors.blue, tintSoft: 'rgba(58, 191, 163, 0.16)' },
-  nourished: { icon: 'nutrition', tint: '#5BA84F', tintSoft: 'rgba(91, 168, 79, 0.14)' },
-  hydrated: { icon: 'water', tint: colors.info, tintSoft: 'rgba(75, 141, 248, 0.14)' },
-  protein: { icon: 'egg', tint: colors.gold, tintSoft: 'rgba(255, 179, 138, 0.26)' },
-  habitual: { icon: 'repeat', tint: '#C77DBB', tintSoft: 'rgba(199, 125, 187, 0.16)' },
-  mindful: { icon: 'happy', tint: colors.warning, tintSoft: 'rgba(217, 138, 31, 0.14)' },
-  attuned: { icon: 'pulse', tint: colors.danger, tintSoft: 'rgba(200, 58, 84, 0.12)' },
-  graduate: { icon: 'ribbon', tint: colors.navy, tintSoft: 'rgba(46, 42, 77, 0.12)' },
-  consistent: { icon: 'trending-up', tint: '#3F8F7A', tintSoft: 'rgba(63, 143, 122, 0.14)' },
-  weekender: { icon: 'sunny', tint: '#E8A33D', tintSoft: 'rgba(232, 163, 61, 0.16)' },
-  century: { icon: 'medal', tint: '#8C6D3F', tintSoft: 'rgba(140, 109, 63, 0.14)' },
-  overachiever: { icon: 'rocket', tint: '#7A5AF5', tintSoft: 'rgba(122, 90, 245, 0.14)' },
-  comeback: { icon: 'refresh-circle', tint: '#2E8FA8', tintSoft: 'rgba(46, 143, 168, 0.14)' },
+  wildfire: { icon: 'flame', tint: '#F4623A' },
+  attuned: { icon: 'pulse', tint: '#E5484D' },
+  devoted: { icon: 'calendar', tint: '#F47C97' },
+  strong: { icon: 'barbell', tint: '#D6336C' },
+  habitual: { icon: 'repeat', tint: '#B455B0' },
+  sage: { icon: 'sparkles', tint: '#8B5CF6' },
+  overachiever: { icon: 'rocket', tint: '#5B4BD6' },
+  graduate: { icon: 'ribbon', tint: '#2E2A4D' },
+  hydrated: { icon: 'water', tint: '#2E9BF0' },
+  comeback: { icon: 'refresh-circle', tint: '#0EA5C9' },
+  serene: { icon: 'leaf', tint: '#17C3B2' },
+  consistent: { icon: 'trending-up', tint: '#0D8A7D' },
+  flawless: { icon: 'checkmark-circle', tint: '#12B76A' },
+  nourished: { icon: 'nutrition', tint: '#7CB342' },
+  mindful: { icon: 'happy', tint: '#F2B705' },
+  century: { icon: 'medal', tint: '#B08A2E' },
+  protein: { icon: 'egg', tint: '#C97B30' },
+  weekender: { icon: 'sunny', tint: '#FF9F1C' },
 };
 
-const FALLBACK: BadgeVisual = {
-  icon: 'trophy',
-  tint: colors.primary,
-  tintSoft: 'rgba(244, 124, 151, 0.14)',
-};
+const FALLBACK: BadgeVisual = { icon: 'trophy', tint: colors.primary };
 
 export function badgeVisual(familyId: string): BadgeVisual {
   return VISUALS[familyId] ?? FALLBACK;
@@ -52,8 +52,19 @@ export function badgeVisual(familyId: string): BadgeVisual {
 export const LOCKED_VISUAL: BadgeVisual = {
   icon: 'lock-closed',
   tint: colors.textMuted,
-  tintSoft: 'rgba(107, 100, 124, 0.10)',
 };
+
+/**
+ * `#RRGGBB` + alpha → `rgba(...)`. Never build an 8-digit hex instead: Android
+ * renders those gray.
+ */
+export function badgeTint(hex: string, alpha: number): string {
+  const value = parseInt(hex.replace('#', ''), 16);
+  const r = (value >> 16) & 255;
+  const g = (value >> 8) & 255;
+  const b = value & 255;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
 
 /**
  * What a tier is called. Duolingo numbers its badge levels; the same idea reads

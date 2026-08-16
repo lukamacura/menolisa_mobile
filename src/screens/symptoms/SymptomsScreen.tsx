@@ -17,8 +17,6 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { apiFetchWithAuth, API_CONFIG } from '../../lib/api';
-import { useTrialStatus } from '../../hooks/useTrialStatus';
-import { AccessEndedView } from '../../components/AccessEndedView';
 import { getTriggersForSymptom, type TimeSelection } from '../../lib/symptomTrackerConstants';
 import { getSymptomIllustration } from '../../lib/symptomIllustration';
 
@@ -55,7 +53,6 @@ export function SymptomsScreen() {
   const navigation = useNavigation<NavProp>();
   const insets = useSafeAreaInsets();
   const reduceMotion = useReduceMotion();
-  const trialStatus = useTrialStatus();
   const [symptoms, setSymptoms] = useState<Symptom[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -265,14 +262,6 @@ export function SymptomsScreen() {
   const symptomTriggers = getTriggersForSymptom(selectedSymptom?.name ?? '');
   const hasTriggers = symptomTriggers.length > 0;
   const totalSteps = hasTriggers ? 4 : 3;
-
-  if (trialStatus.expired) {
-    return (
-      <SafeAreaView style={styles.container} edges={['top']}>
-        <AccessEndedView variant="fullScreen" />
-      </SafeAreaView>
-    );
-  }
 
   if (loading) {
     return (

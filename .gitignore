@@ -18,6 +18,11 @@ expo-env.d.ts
 *.key
 *.mobileprovision
 
+# Google Play service account key used by `eas submit` — a private key that
+# grants upload rights to the Play listing. Never commit it.
+google-play-*.json
+play-service-account*.json
+
 # Metro
 .metro-health-check*
 

@@ -22,17 +22,69 @@ export type PlanWeekState = 'past' | 'current' | 'locked';
 
 export type HabitKind = 'build' | 'resist';
 
+/**
+ * What an exercise's dose is measured in.
+ *
+ * **Every unit is time.** A set is a number of seconds and the session counts
+ * them down; there are no repetitions to keep track of anywhere in the plan.
+ * The unit only says what she is doing with those seconds.
+ *
+ * - `timed`    — sets of work for time, at her own tempo. Most of the catalog.
+ * - `hold`     — an isometric. Same clock, one position.
+ * - `carry`    — a loaded carry, honestly measured in time.
+ * - `duration` — one continuous block: all cardio, plus the mobility flow.
+ *
+ * A unit this build does not know is treated as `timed` everywhere, so a server
+ * that adds one never leaves a session unable to run.
+ */
+export type DoseUnit = 'timed' | 'hold' | 'carry' | 'duration';
+
+/**
+ * The runnable dose for one exercise, as the server resolves it.
+ *
+ * Two sources meet here. The catalog owns `unit`, `perSide` and `restSeconds` —
+ * whether a wall sit is held still or worked through is a fact about the
+ * exercise, the same for every woman and every week, and rest is
+ * safety-adjacent. The generated plan owns the numbers: how many sets, how many
+ * seconds, and how those grow from week 1 to week 8. The server clamps them into
+ * a safe band before they ever reach us, so this can be rendered as given.
+ *
+ * Optional because the app may be running against an API that predates it —
+ * always go through `resolveDose()` in planFormat rather than reading it raw.
+ */
+export type ExerciseDose = {
+  unit: DoseUnit;
+  /** True when the set runs twice, once per side — the seconds are per side. */
+  perSide: boolean;
+  /** Working sets. Always at least 1; `duration` is always exactly 1. */
+  sets: number;
+  /** Seconds per set, per side when `perSide`. `duration` — the whole block. */
+  seconds?: number;
+  /** Between sets. Zero for `duration`. A prescription, not a UI default. */
+  restSeconds: number;
+  /** Total including rest between sets — sum these for the session's length. */
+  estimatedSeconds: number;
+};
+
 /** One exercise inside a movement task, joined against the catalog server-side. */
 export type PlanExercise = {
-  /** Catalog id, e.g. "L01". Strength ids carry sets+reps; cardio ids (prefix "K") carry minutes. */
+  /**
+   * Catalog id, e.g. "L01". The raw stored dose follows in one of two shapes:
+   * `sets`+`seconds` for a set, `minutes` for one continuous block. Prefer
+   * `dose` — these are the unresolved form. `reps` only ever arrives on a plan
+   * stored before the dose became time, and the server converts it for us.
+   */
   id: string;
   sets?: number;
   reps?: number;
+  seconds?: number;
   minutes?: number;
   /** Joined from the catalog — e.g. "Box squat". Never stored on the plan itself. */
   name: string;
   /** Equipment, e.g. "Sturdy chair". */
   props: string;
+  /** Absent on an API older than 2026-08-14. Read it via `resolveDose()`. */
+  dose?: ExerciseDose;
   /** Only with `?media=1` and only for ids the server has clips for. */
   video?: string;
   poster?: string;

@@ -126,8 +126,7 @@ type InlinePart = { type: 'text' | 'bold' | 'italic'; content: string };
 
 function parseInline(text: string): InlinePart[] {
   const parts: InlinePart[] = [];
-  let remaining = text;
-  const boldRegex = /\*\*([^*]+?)\*\*|__([^_]+?)__/g;
+  const boldRegex =/\*\*([^*]+?)\*\*|__([^_]+?)__/g;
   const italicRegex = /\*([^*]+?)\*|_([^_]+?)_/g;
   const matches: Array<{ start: number; end: number; content: string; type: 'bold' | 'italic' }> = [];
 

@@ -1,19 +1,20 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
   TouchableOpacity,
-  Image,
+  RefreshControl,
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { MessageCircleHeart } from 'lucide-react-native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { supabase } from '../../lib/supabase';
-import { apiFetchWithAuth, API_CONFIG } from '../../lib/api';
+import { apiFetchWithAuth, API_CONFIG, isSubscriptionRequiredError } from '../../lib/api';
 import { colors, spacing, radii, typography, shadows } from '../../theme/tokens';
 import { StaggeredZoomIn, useReduceMotion } from '../../components/StaggeredZoomIn';
 import { ListSkeleton, ContentTransition } from '../../components/skeleton';
@@ -41,28 +42,46 @@ export function ChatListScreen() {
   const reduceMotion = useReduceMotion();
   const [sessions, setSessions] = useState<SessionItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [userId, setUserId] = useState<string | null>(null);
+  const mountedRef = useRef(true);
+  /** Synchronous lock — `New chat` taps land faster than React can disable the button. */
+  const creatingRef = useRef(false);
 
-  const loadSessions = useCallback(async () => {
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  /** `silent` refreshes in place: no skeleton flash when returning from a thread. */
+  const loadSessions = useCallback(async (silent = false) => {
     const {
       data: { user },
     } = await supabase.auth.getUser();
+    if (!mountedRef.current) return;
     if (!user?.id) {
       setLoading(false);
       return;
     }
-    setUserId(user.id);
     try {
       setError(null);
       const data = await apiFetchWithAuth(
         `${API_CONFIG.endpoints.chatSessions}?user_id=${encodeURIComponent(user.id)}&limit=20`
       );
+      if (!mountedRef.current) return;
       setSessions(data?.sessions ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load conversations');
+      if (!mountedRef.current) return;
+      // A 403 means "no subscription" — AuthContext routes her to the paywall.
+      if (isSubscriptionRequiredError(e)) return;
+      // A silent background refresh must not replace a good list with an error.
+      if (!silent) {
+        setError(e instanceof Error ? e.message : 'Failed to load conversations');
+      }
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, []);
 
@@ -70,13 +89,29 @@ export function ChatListScreen() {
     loadSessions();
   }, [loadSessions]);
 
-  const startNewChat = async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user?.id) return;
-    const sessionId = uid();
+  // Titles and message counts are written server-side while she chats, so the list
+  // is stale the moment she comes back from a thread.
+  useFocusEffect(
+    useCallback(() => {
+      loadSessions(true);
+    }, [loadSessions])
+  );
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadSessions();
+    if (mountedRef.current) setRefreshing(false);
+  }, [loadSessions]);
+
+  const startNewChat = useCallback(async () => {
+    if (creatingRef.current) return;
+    creatingRef.current = true;
     try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user?.id) return;
+      const sessionId = uid();
       await apiFetchWithAuth(API_CONFIG.endpoints.chatSessions, {
         method: 'POST',
         body: JSON.stringify({
@@ -85,11 +120,15 @@ export function ChatListScreen() {
           title: 'New chat',
         }),
       });
+      if (!mountedRef.current) return;
       navigation.navigate('ChatThread', { sessionId });
     } catch (e) {
+      if (!mountedRef.current || isSubscriptionRequiredError(e)) return;
       setError(e instanceof Error ? e.message : 'Failed to create chat');
+    } finally {
+      creatingRef.current = false;
     }
-  };
+  }, [navigation]);
 
   const deleteSession = useCallback(async (sessionId: string) => {
     try {
@@ -146,12 +185,9 @@ export function ChatListScreen() {
       </StaggeredZoomIn>
       <StaggeredZoomIn delayIndex={1} reduceMotion={reduceMotion}>
         <View style={styles.heroWrap} accessibilityRole="image" accessibilityLabel="Chat illustration">
-          <Image
-            source={require('../../../assets/chat.png')}
-            style={styles.heroImage}
-            resizeMode="contain"
-            accessibilityIgnoresInvertColors
-          />
+          <View style={styles.heroIconWell}>
+            <MessageCircleHeart size={50} color={colors.primary} strokeWidth={2} />
+          </View>
         </View>
       </StaggeredZoomIn>
       {error && (
@@ -166,6 +202,14 @@ export function ChatListScreen() {
         data={sessions}
         keyExtractor={(item) => item.session_id}
         contentContainerStyle={styles.listContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
         ListEmptyComponent={
           <View style={styles.empty}>
             <Text style={styles.emptyText}>No conversations yet.</Text>
@@ -224,11 +268,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     marginBottom: spacing.xs,
   },
-  /** Optical centering: bubble tail sits bottom-left, nudge right so the mark feels centered. */
-  heroImage: {
-    width: 156,
-    height: 156,
-    transform: [{ translateX: 10 }],
+  /** Same icon-well treatment as SegmentCard on Today, scaled to hero size (42/22 ratio). */
+  heroIconWell: {
+    width: 96,
+    height: 96,
+    borderRadius: radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(244, 124, 151, 0.14)',
   },
   newChatBtn: {
     flexDirection: 'row',

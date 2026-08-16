@@ -15,6 +15,12 @@ type ProgressRingProps = {
   color?: string;
   /** Rendered in the middle. Defaults to `value` (or a check once complete). */
   label?: string;
+  /**
+   * Override for the label's font size. The 0.3-of-diameter default is sized for
+   * one or two characters; a countdown face like "12:00" needs to be told to
+   * shrink or it runs past the ring it sits inside.
+   */
+  labelSize?: number;
   style?: StyleProp<ViewStyle>;
 };
 
@@ -31,6 +37,7 @@ export function ProgressRing({
   strokeWidth = 4,
   color = colors.primary,
   label,
+  labelSize,
   style,
 }: ProgressRingProps) {
   const safeTotal = Math.max(1, total);
@@ -80,7 +87,7 @@ export function ProgressRing({
           <Ionicons name="checkmark" size={Math.round(size * 0.42)} color={colors.success} />
         ) : (
           <Text
-            style={[styles.label, { fontSize: Math.round(size * 0.3) }]}
+            style={[styles.label, { fontSize: labelSize ?? Math.round(size * 0.3) }]}
             numberOfLines={1}
             allowFontScaling={false}
           >

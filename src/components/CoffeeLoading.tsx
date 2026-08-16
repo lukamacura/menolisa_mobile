@@ -48,7 +48,8 @@ function getRandomMessageIndex() {
 
 export function CoffeeLoading() {
   const [messageIndex, setMessageIndex] = useState(() => getRandomMessageIndex());
-  const [used, setUsed] = useState<Set<number>>(() => new Set([messageIndex]));
+  // Only ever read through the updater's `prev`, so the value binding is dropped.
+  const [, setUsed] = useState<Set<number>>(() => new Set([messageIndex]));
 
   const messageOpacity = useRef(new Animated.Value(1)).current;
   // Irregular rotation: different keyframes so it doesn't feel mechanical
