@@ -50,7 +50,12 @@ module.exports = {
       associatedDomains: ['applinks:menolisa.com', 'applinks:www.menolisa.com'],
       infoPlist: {
         CFBundleDisplayName: 'MenoLisa',
-        ITSAppManagesNonExemptEncryption: false,
+        // Apple reads `ITSAppUsesNonExemptEncryption`. `ITSAppManagesNonExemptEncryption`
+        // is not a key Apple defines, so it was silently ignored: every upload landed
+        // in App Store Connect with the export-compliance question unanswered, and
+        // TestFlight holds a build hostage until someone answers it by hand. 1.2.0
+        // (build 22) shipped with the wrong name and needed that manual answer.
+        ITSAppUsesNonExemptEncryption: false,
       },
     },
     android: {
