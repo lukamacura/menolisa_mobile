@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { resolveDose } from '../lib/planFormat';
-import type { PlanExercise } from '../lib/planTypes';
+import type { SessionPhase } from '../lib/planTypes';
 import {
   REST_BUMP_SECONDS,
   completedSets,
@@ -27,6 +26,8 @@ export type SessionPlayer = {
   step: SessionStep;
   /** The exercise the current step belongs to. Null once the session is done. */
   current: SessionExercise | null;
+  /** Which part of the session she is in. `main` once it is over. */
+  phase: SessionPhase;
   /** Seconds left on a timed step; null when the step waits on her instead. */
   remaining: number | null;
   /** How long the current timed step runs, for the ring's denominator. */
@@ -39,24 +40,30 @@ export type SessionPlayer = {
   /** Adds time to whatever is on the clock. No-op on an untimed step. */
   addTime: () => void;
   togglePause: () => void;
+  /** Every set the session asks for, warm-up and cool-down included. */
   setsDone: number;
   setsTotal: number;
+  /**
+   * True once every main-work set is behind her — whether she ran them or
+   * skipped them one at a time.
+   *
+   * The session is worth logging from this moment on, and only from this
+   * moment on. A cool-down she walks out of costs her nothing; a warm-up she
+   * quit halfway through is not a session, however far the bar had crept.
+   */
+  mainDone: boolean;
 };
 
+/**
+ * @param items Built by `buildSessionItems()` in planFormat — warm-up, work and
+ *   cool-down already in run order with their doses resolved. Memoise it: the
+ *   clock below re-arms on this array's identity.
+ */
 export function useSessionPlayer(
-  exercises: PlanExercise[],
+  items: SessionExercise[],
   options: { compact?: boolean; startIndex?: number; onFinish?: () => void } = {}
 ): SessionPlayer {
   const { compact = false, startIndex = 0, onFinish } = options;
-
-  const items = useMemo<SessionExercise[]>(
-    () =>
-      exercises.flatMap((exercise) => {
-        const dose = resolveDose(exercise);
-        return dose ? [{ exercise, dose }] : [];
-      }),
-    [exercises]
-  );
 
   const [step, setStep] = useState<SessionStep>(() =>
     items.length
@@ -186,10 +193,22 @@ export function useSessionPlayer(
 
   const setsTotal = useMemo(() => totalSets(items), [items]);
   const setsDone = completedSets(step, items);
+  const mainTotal = useMemo(() => totalSets(items, 'main'), [items]);
+  // False, not true, for a session with no main work at all — a plan that sent
+  // only a mobility flow. There is no "the work is done, only the cool-down is
+  // left" to say about a session that was never anything but bookends, and
+  // leaving one falls back to the ordinary how-far-in-was-she prompt.
+  const mainDone = mainTotal > 0 && completedSets(step, items, 'main') >= mainTotal;
+
+  const current = step.kind === 'done' ? null : items[step.index] ?? null;
 
   return {
     step,
-    current: step.kind === 'done' ? null : items[step.index] ?? null,
+    current,
+    // Falls back to `main` rather than to the session's first phase: this is
+    // read to pick colour and copy, and "the working part" is the safe default
+    // for both when there is no exercise left to ask.
+    phase: current?.phase ?? 'main',
     remaining,
     // The ring's denominator grows with "+ time", so its arc never runs backwards
     // past empty when she takes another twenty seconds.
@@ -201,5 +220,6 @@ export function useSessionPlayer(
     togglePause,
     setsDone,
     setsTotal,
+    mainDone,
   };
 }

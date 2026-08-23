@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import type { RouteProp } from '@react-navigation/native';
 import { useRoute, useNavigation } from '@react-navigation/native';
@@ -8,14 +8,17 @@ import { colors, spacing, radii, typography, minTouchTarget, shadows } from '../
 import type { TodayStackParamList } from '../../navigation/types';
 import { usePlan, tasksForPillar } from '../../context/PlanContext';
 import {
+  buildSessionItems,
   isPlanFinished,
   isTaskComplete,
+  phaseCount,
+  sessionBlocks,
   sessionSeconds,
   taskCadenceHint,
   taskProgress,
   taskRemainingLabel,
 } from '../../lib/planFormat';
-import type { PlanTask } from '../../lib/planTypes';
+import { SESSION_PHASE_LABEL, type PlanTask } from '../../lib/planTypes';
 import { PlanScreenLayout } from '../../components/plan/PlanScreenLayout';
 import { ExerciseCard } from '../../components/plan/ExerciseCard';
 import { ProgressRing } from '../../components/plan/ProgressRing';
@@ -45,9 +48,11 @@ export function MovementScreen() {
     navigation.navigate('MovementSession', { taskKey: task.key });
   }, [navigation, task]);
 
-  const sessionMinutes = task?.exercises?.length
-    ? Math.max(1, Math.round(sessionSeconds(task.exercises) / 60))
-    : 0;
+  // The whole session, bookends included — she is being told how long this
+  // takes, and a warm-up she is asked to do is part of how long it takes.
+  const items = useMemo(() => buildSessionItems(task), [task]);
+  const blocks = useMemo(() => (task ? sessionBlocks(task) : []), [task]);
+  const sessionMinutes = items.length ? Math.max(1, Math.round(sessionSeconds(items) / 60)) : 0;
 
   if (!task) {
     return (
@@ -60,7 +65,13 @@ export function MovementScreen() {
   const progress = taskProgress(task, finished);
   const complete = isTaskComplete(task, finished);
   const cadenceHint = taskCadenceHint(task);
-  const exerciseCount = task.exercises?.length ?? 0;
+  // The working exercises only — the same number the session's own setup screen
+  // shows one tap later. It used to count the bookends too, so a session read as
+  // "11 exercises" here and "4 exercises" there, and neither screen admitted the
+  // other existed. The warm-up and cool-down are named in the list below, which
+  // is where they belong: they are part of how long this takes, not part of what
+  // she is being asked to do.
+  const exerciseCount = phaseCount(items, 'main');
 
   return (
     <PlanScreenLayout>
@@ -98,19 +109,10 @@ export function MovementScreen() {
         </View>
       </StaggeredZoomIn>
 
+      {/* The button that gets her here at all belongs above the fold, next to
+          the summary that just told her what it's for — not stranded below a
+          list of exercises she has to scroll past first. */}
       <StaggeredZoomIn delayIndex={2} reduceMotion={reduceMotion}>
-        <View style={styles.sectionHead}>
-          <Text style={styles.sectionTitle}>
-            {exerciseCount > 0 ? `One session · ${exerciseCount} exercises` : 'This session'}
-          </Text>
-          {sessionMinutes > 0 && <Text style={styles.sectionMeta}>about {sessionMinutes} min</Text>}
-        </View>
-        {task.exercises?.map((exercise) => (
-          <ExerciseCard key={exercise.id} exercise={exercise} />
-        ))}
-      </StaggeredZoomIn>
-
-      <StaggeredZoomIn delayIndex={3} reduceMotion={reduceMotion}>
         <AnimatedPressable
           containerStyle={styles.buttonWrap}
           style={styles.button}
@@ -143,6 +145,35 @@ export function MovementScreen() {
             {complete ? 'Log another session' : 'I already did this'}
           </Text>
         </AnimatedPressable>
+      </StaggeredZoomIn>
+
+      <StaggeredZoomIn delayIndex={3} reduceMotion={reduceMotion}>
+        <View style={styles.sectionHead}>
+          <Text style={styles.sectionTitle}>
+            {exerciseCount > 0
+              ? `One session · ${exerciseCount} ${exerciseCount === 1 ? 'exercise' : 'exercises'}`
+              : 'This session'}
+          </Text>
+          {sessionMinutes > 0 && <Text style={styles.sectionMeta}>about {sessionMinutes} min</Text>}
+        </View>
+
+        {/* Split by phase only when there is more than one — a session that is
+            all main work must keep reading as a plain list, not as a list with
+            a redundant "Main work" rule drawn across the top of it. */}
+        {blocks.map((block) => (
+          <View key={block.phase}>
+            {blocks.length > 1 && (
+              <View style={styles.phaseHead}>
+                <Text style={styles.phaseTitle}>{SESSION_PHASE_LABEL[block.phase]}</Text>
+                <View style={styles.phaseRule} />
+                <Text style={styles.phaseCount}>{block.exercises.length}</Text>
+              </View>
+            )}
+            {block.exercises.map((exercise) => (
+              <ExerciseCard key={`${block.phase}-${exercise.id}`} exercise={exercise} />
+            ))}
+          </View>
+        ))}
       </StaggeredZoomIn>
     </PlanScreenLayout>
   );
@@ -214,8 +245,14 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     backgroundColor: colors.border,
   },
+  /**
+   * Coral, not `success`. These dots sit inches from a `ProgressRing` drawn in
+   * the brand coral and counting the identical thing; two colours for one number
+   * reads as two numbers. Green also has a job on the session screen this button
+   * leads to — it means "you are resting" — and the two must not shake hands.
+   */
   dotDone: {
-    backgroundColor: colors.success,
+    backgroundColor: colors.primary,
   },
   bonus: {
     ...typography.presets.caption,
@@ -226,6 +263,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'baseline',
     justifyContent: 'space-between',
+    marginTop: spacing.xl,
     marginBottom: spacing.xs,
   },
   sectionTitle: {
@@ -236,8 +274,31 @@ const styles = StyleSheet.create({
     ...typography.presets.caption,
     color: colors.textMuted,
   },
+  // The phase rules are quieter than the section head above them: they divide
+  // one list, they do not start a new one.
+  phaseHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  phaseTitle: {
+    ...typography.presets.caption,
+    fontFamily: typography.family.semibold,
+    color: colors.textMuted,
+  },
+  phaseRule: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.border,
+  },
+  phaseCount: {
+    ...typography.presets.caption,
+    color: colors.textMuted,
+  },
   buttonWrap: {
-    marginTop: spacing.lg,
+    marginTop: 0,
   },
   button: {
     flexDirection: 'row',

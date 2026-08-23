@@ -11,10 +11,35 @@
  *    lists the exercise id. It is empty today, so treat clips as optional forever.
  *    The API also sends a `poster` still; the app ignores it and shows no frame
  *    behind the clip — see `ExerciseVideo`.
+ * 4. A movement task's session is `warmup` + `exercises` + `cooldown`, and
+ *    `exercises` stayed meaning the main work only. Both bookends are optional
+ *    and absent today. Never read the three arrays yourself — build a session
+ *    with `buildSessionItems()` and render a list with `sessionBlocks()`.
  */
 
 /** Pillars that appear as plan tasks. Nutrition is never a task — it has its own section. */
 export type PlanPillar = 'movement' | 'relaxation' | 'habit';
+
+/**
+ * Which part of a movement session an exercise belongs to.
+ *
+ * A session runs `warmup` → `main` → `cooldown`, in that order, always. The
+ * phase is not a label on the card — it changes how the session is *run*: the
+ * prep phases take a short card between exercises and a capped rest, and the
+ * runner's traffic light goes quiet in them (see `stageTone` in
+ * MovementSessionScreen). Only `main` sets decide whether the session counts.
+ */
+export type SessionPhase = 'warmup' | 'main' | 'cooldown';
+
+/** Run order. Anything that walks a whole session must walk it in this order. */
+export const SESSION_PHASES: readonly SessionPhase[] = ['warmup', 'main', 'cooldown'];
+
+/** What each phase is called, everywhere she can read it. */
+export const SESSION_PHASE_LABEL: Record<SessionPhase, string> = {
+  warmup: 'Warm-up',
+  main: 'Main work',
+  cooldown: 'Cool-down',
+};
 
 /** How often a task is meant to happen. Read together with `target`. */
 export type PlanCadence = 'daily' | 'weekly' | 'per_day';
@@ -132,8 +157,30 @@ export type PlanTask = {
   doneToday: number;
   /** Sum across this plan-week's 7 days — offset from `startedAt`, not Mon-Sun. */
   doneThisWeek: number;
-  /** Movement tasks only. */
+  /**
+   * Movement tasks only — the working part of the session.
+   *
+   * Deliberately still called `exercises`, and deliberately still *only* the
+   * main work. Everything in this app that asks "how much did she train" reads
+   * this field, and folding a warm-up into it would silently change the answer
+   * in every one of those places with nothing failing to compile.
+   */
   exercises?: PlanExercise[];
+  /**
+   * Movement tasks only — what she does before and after the work.
+   *
+   * Both are optional and both may be absent forever: a server that has not
+   * been taught to write them, a snack cadence too short to warrant one, or a
+   * cardio session that is its own warm-up. Never render an empty section, and
+   * never let the session refuse to run without them — go through
+   * `buildSessionItems()` in planFormat, which handles all three cases.
+   *
+   * They are ordinary `PlanExercise`s with ordinary doses, so the runner needs
+   * no second code path: a warm-up move is one set of `duration` seconds with
+   * no rest, and the player already knows how to run that.
+   */
+  warmup?: PlanExercise[];
+  cooldown?: PlanExercise[];
   /** Relaxation tasks only. Undefined when the key suffix is not a catalog id. */
   relaxation?: RelaxationDetail;
 };

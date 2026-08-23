@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radii, typography } from '../../theme/tokens';
 import { exerciseDose, resolveDose } from '../../lib/planFormat';
 import type { PlanExercise } from '../../lib/planTypes';
-import { ExerciseVideo } from './ExerciseVideo';
+import { ExerciseVideo, CLIP_ASPECT } from './ExerciseVideo';
 
 type ExerciseCardProps = {
   exercise: PlanExercise;
@@ -129,7 +129,7 @@ const styles = StyleSheet.create({
   // to letterbox.
   clip: {
     width: '100%',
-    aspectRatio: 4 / 5,
+    aspectRatio: CLIP_ASPECT,
     borderRadius: radii.sm,
     backgroundColor: colors.surfaceElevated,
   },

@@ -85,7 +85,65 @@ export const colors = {
   readyBg: WARM_YELLOW_SURFACE,
   /** Amber is the one fill white text cannot sit on (2.8:1). Ink instead. */
   onReady: '#1F1B2D',
+
+  /**
+   * Guided-session **phase** states: the warm-up and the cool-down, each held
+   * end to end.
+   *
+   * These are not interval states and must not borrow the three above. The
+   * traffic light answers "am I working or recovering right now", a question
+   * that only exists inside the working part; a warm-up is four minutes of
+   * continuous easy movement with nothing to recover from. Running the bookends
+   * in the interval swatches did two things wrong at once:
+   *
+   * - The warm-up wore `ready`, which is `warning` to the hex. The gentlest
+   *   four minutes of the session opened in the app's caution colour, on a
+   *   screen whose whole promise is that nothing here is an alarm.
+   * - The cool-down wore `recover`, which on the same screen already means
+   *   "rest between sets" and elsewhere in the app means "done". Green was
+   *   carrying three meanings within six inches of each other.
+   *
+   * So the bookends get the two swatches the day already has names for. Dawn is
+   * a deepened `gold` — warm, waking up, unmistakably not a warning. Dusk is a
+   * deepened `lavender` — calm, coming down, and the one hue on this screen
+   * that means nothing else. Both are dark enough to carry the primary button
+   * under white text (4.5:1 and 6.0:1).
+   */
+  warmup: '#B85C38',
+  warmupBg: '#FDEDE4',
+  onWarmup: '#FFFFFF',
+  cooldown: '#6350C8',
+  cooldownBg: '#EFEBFC',
+  onCooldown: '#FFFFFF',
+
+  /**
+   * The guided session's stage — the one dark screen in a light app.
+   *
+   * The runner is full-bleed: the clip is the screen, and everything else
+   * floats on top of it. That makes the ground a real decision rather than a
+   * background. It is dark for three reasons. A moving picture on a near-white
+   * canvas is flattened by it, and the picture is the whole point of the
+   * screen. The five interval colours have to be readable from a mat at arm's
+   * length, and every one of them gains contrast against ink and loses it
+   * against blush. And the app changing colour when the session starts is worth
+   * having on its own: light on the way in, dark while she works, light again
+   * on the way out — she can feel where she is without reading anything.
+   *
+   * Deep plum-navy, a step under brand `navy`, so the stage still belongs to
+   * this app and not to a generic black fitness product. `stageChip` is the
+   * opaque fill for chrome sitting on it — opaque because Android composites
+   * translucent rgba View backgrounds as flat grey, and this screen is nothing
+   * but chrome floating on video.
+   */
+  stage: '#211D38',
+  stageChip: '#3A3459',
+  stageBorder: '#4E4770',
+  onStage: '#FFFFFF',
+  onStageMuted: '#B9B3CC',
 };
+
+/** The stage ground as rgb parts, for the scrims that fade chrome into video. */
+export const stageRgb = '33, 29, 56';
 
 /** Soft gradient used on Landing (and auth/quiz screens for consistency) */
 export const landingGradient = ['#FAF8FB', '#F9F1F7', '#F3ECFA'] as const;

@@ -4,14 +4,16 @@
  */
 
 import { daysBetween } from './planApi';
-import { exerciseSeconds } from './sessionSteps';
+import { exerciseSeconds, type SessionExercise } from './sessionSteps';
 import {
   PLAN_WEEKS,
+  SESSION_PHASES,
   type ExerciseDose,
   type PlanExercise,
   type PlanReady,
   type PlanTask,
   type RelaxationDetail,
+  type SessionPhase,
 } from './planTypes';
 
 /** Day of the plan, 1-based. Day 1 is `startedAt`. */
@@ -129,6 +131,68 @@ export function setInstruction(dose: ExerciseDose): string {
   return `${formatDuration(dose.seconds ?? 0)}${dose.perSide ? ' each side' : ''}`;
 }
 
+// ─── Sessions ────────────────────────────────────────────────────
+
+/** The exercises of one phase, as the plan sent them. Never empty. */
+export type SessionBlock = {
+  phase: SessionPhase;
+  exercises: PlanExercise[];
+};
+
+/** Which array on the task each phase reads from. */
+function phaseExercises(task: PlanTask, phase: SessionPhase): PlanExercise[] {
+  if (phase === 'warmup') return task.warmup ?? [];
+  if (phase === 'cooldown') return task.cooldown ?? [];
+  return task.exercises ?? [];
+}
+
+/**
+ * A movement task's session, split into the phases it actually has.
+ *
+ * Phases with nothing in them are dropped rather than returned empty, so a
+ * caller can map over this and never draw a "Warm-up" header with no warm-up
+ * under it. That is the normal case today and may stay the normal case for
+ * cardio and snacks forever — the plan owes a session neither bookend.
+ */
+export function sessionBlocks(task: PlanTask): SessionBlock[] {
+  return SESSION_PHASES.map((phase) => ({ phase, exercises: phaseExercises(task, phase) })).filter(
+    (block) => block.exercises.length > 0
+  );
+}
+
+/**
+ * Every exercise of a session, in run order, resolved and ready for the player.
+ *
+ * The single place a task becomes a runnable session: warm-up, then work, then
+ * cool-down, each carrying the phase it came from, with anything the server
+ * gave no runnable dose dropped rather than left to stall the clock.
+ *
+ * Callers must go through this rather than reading `task.exercises` and adding
+ * the bookends themselves — the order is a training decision, not a rendering
+ * one, and there should only ever be one copy of it.
+ */
+export function buildSessionItems(task: PlanTask | null | undefined): SessionExercise[] {
+  if (!task) return [];
+  return SESSION_PHASES.flatMap((phase) =>
+    phaseExercises(task, phase).flatMap((exercise) => {
+      const dose = resolveDose(exercise);
+      return dose ? [{ exercise, dose, phase }] : [];
+    })
+  );
+}
+
+/** How many runnable items a session has in one phase. */
+export function phaseCount(items: SessionExercise[], phase: SessionPhase): number {
+  return items.reduce((n, item) => n + (item.phase === phase ? 1 : 0), 0);
+}
+
+/** Where an item sits within its own phase, 1-based — "Warm-up · 2 of 3". */
+export function indexInPhase(items: SessionExercise[], index: number): number {
+  const phase = items[index]?.phase;
+  if (!phase) return 0;
+  return items.slice(0, index + 1).reduce((n, item) => n + (item.phase === phase ? 1 : 0), 0);
+}
+
 /**
  * Roughly how long the whole session runs, in seconds.
  *
@@ -136,19 +200,19 @@ export function setInstruction(dose: ExerciseDose): string {
  * `estimatedSeconds` — the guided session is on a clock from the first step to
  * the last, and the number on the card has to be that clock. Still shown as
  * "about 20 min": she can finish a set early, or take more time on it.
+ *
+ * Takes built items rather than raw exercises because rest depends on the phase
+ * an exercise is running in, and a bare `PlanExercise` no longer knows.
  */
-export function sessionSeconds(exercises: PlanExercise[], compact = false): number {
-  return exercises.reduce((total, exercise) => {
-    const dose = resolveDose(exercise);
-    return total + (dose ? exerciseSeconds(dose, compact) : 0);
-  }, 0);
+export function sessionSeconds(items: SessionExercise[], compact = false): number {
+  return items.reduce((total, item) => total + exerciseSeconds(item, compact), 0);
 }
 
 /** Every distinct piece of equipment the session needs, in the order met. */
-export function sessionProps(exercises: PlanExercise[]): string[] {
+export function sessionProps(items: SessionExercise[]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
-  for (const exercise of exercises) {
+  for (const { exercise } of items) {
     for (const raw of exercise.props.split(',')) {
       const prop = raw.trim();
       // "None" is the catalog's way of saying bodyweight — not a thing to fetch.

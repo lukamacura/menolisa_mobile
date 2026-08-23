@@ -15,7 +15,7 @@
  * slower — but nothing on the screen asks her to keep a count in her head.
  */
 
-import type { ExerciseDose, PlanExercise } from './planTypes';
+import type { ExerciseDose, PlanExercise, SessionPhase } from './planTypes';
 
 /** Between the two sides of a unilateral exercise. Just long enough to switch. */
 export const SWITCH_SECONDS = 10;
@@ -28,6 +28,27 @@ export const SNACK_TRANSITION_SECONDS = 5;
 
 /** Movement snacks run ~5 minutes total. A 90-second rest inside one is absurd. */
 export const SNACK_MAX_REST_SECONDS = 20;
+
+/**
+ * The card between two warm-up moves, or two cool-down moves.
+ *
+ * Shorter than the one before a working set, because it is doing less. Before a
+ * heavy set the card is where she loads the bar and gets set; before a hip
+ * circle it only has to name the move. Twelve seconds of standing still between
+ * every move is how a four-minute warm-up becomes a seven-minute one.
+ */
+export const PREP_TRANSITION_SECONDS = 6;
+
+/**
+ * Rest ceiling inside a warm-up or cool-down.
+ *
+ * The server should be sending zero here — a warm-up you rest in is not warming
+ * anything — but rest is prescribed per exercise in the catalog, and the same
+ * mobility flow may be reused as a main-work block where its rest is real. This
+ * is the same defence `SNACK_MAX_REST_SECONDS` is: the phase, not the catalog
+ * row, decides what a rest is worth.
+ */
+export const PREP_MAX_REST_SECONDS = 15;
 
 /** What "+ time" adds, to whatever is currently on the clock. */
 export const REST_BUMP_SECONDS = 20;
@@ -43,14 +64,27 @@ export type SessionStep =
   | { kind: 'transition'; index: number }
   | { kind: 'done' };
 
+/**
+ * One runnable exercise, with everything the ordering needs to place it.
+ *
+ * `phase` rides on the item rather than on the step for one reason: the step
+ * machine below does not branch on it at all. A warm-up move is an exercise
+ * with a dose, so `nextStep` walks warm-up, work and cool-down with the single
+ * sequence it has always had — the phase only changes how long the pauses
+ * around it are, and what colour and words the screen wears while it runs.
+ */
 export type SessionExercise = {
   exercise: PlanExercise;
   dose: ExerciseDose;
+  phase: SessionPhase;
 };
 
-/** Rest after a set, shortened for the snack cadence. */
-export function restFor(dose: ExerciseDose, compact: boolean): number {
-  return compact ? Math.min(dose.restSeconds, SNACK_MAX_REST_SECONDS) : dose.restSeconds;
+/** Rest after a set, capped by the cadence and by the phase it sits in. */
+export function restFor(item: SessionExercise, compact: boolean): number {
+  const rest = item.dose.restSeconds;
+  if (compact) return Math.min(rest, SNACK_MAX_REST_SECONDS);
+  if (item.phase !== 'main') return Math.min(rest, PREP_MAX_REST_SECONDS);
+  return rest;
 }
 
 /**
@@ -66,14 +100,17 @@ export function stepSeconds(
   compact: boolean
 ): number | null {
   if (step.kind === 'done') return null;
-  if (step.kind === 'transition') return compact ? SNACK_TRANSITION_SECONDS : TRANSITION_SECONDS;
 
-  const dose = items[step.index]?.dose;
-  if (!dose) return null;
+  const item = items[step.index];
+  if (!item) return null;
 
+  if (step.kind === 'transition') {
+    if (compact) return SNACK_TRANSITION_SECONDS;
+    return item.phase === 'main' ? TRANSITION_SECONDS : PREP_TRANSITION_SECONDS;
+  }
   if (step.kind === 'switch') return SWITCH_SECONDS;
-  if (step.kind === 'rest') return restFor(dose, compact);
-  return dose.seconds ?? null;
+  if (step.kind === 'rest') return restFor(item, compact);
+  return item.dose.seconds ?? null;
 }
 
 /**
@@ -116,22 +153,44 @@ export function nextStep(step: SessionStep, items: SessionExercise[]): SessionSt
  * on a clock end to end, so "about 20 min" has to be the clock's answer, not a
  * second opinion.
  */
-export function exerciseSeconds(dose: ExerciseDose, compact = false): number {
+export function exerciseSeconds(item: SessionExercise, compact = false): number {
+  const { dose } = item;
   const work = dose.seconds ?? 0;
   // A unilateral exercise runs the work twice per set, with a switch between.
   const setSeconds = dose.perSide ? work * 2 + SWITCH_SECONDS : work;
-  return dose.sets * setSeconds + Math.max(0, dose.sets - 1) * restFor(dose, compact);
+  return dose.sets * setSeconds + Math.max(0, dose.sets - 1) * restFor(item, compact);
 }
 
-/** Total sets the session asks for, across every exercise. */
-export function totalSets(items: SessionExercise[]): number {
-  return items.reduce((n, item) => n + item.dose.sets, 0);
+/** Whether an item counts toward a phase-filtered tally. No filter counts everything. */
+function counts(item: SessionExercise | undefined, only?: SessionPhase): boolean {
+  return Boolean(item) && (!only || item!.phase === only);
+}
+
+/**
+ * Total sets the session asks for.
+ *
+ * `only` narrows it to one phase. The progress bar wants every set, warm-up
+ * included — she is watching it cross the whole session. The "have you done
+ * enough for this to count" question wants `'main'` and nothing else: a warm-up
+ * and a stretch is not a training session, however many bars it filled.
+ */
+export function totalSets(items: SessionExercise[], only?: SessionPhase): number {
+  return items.reduce((n, item) => n + (counts(item, only) ? item.dose.sets : 0), 0);
 }
 
 /** Sets fully finished at this step, for the progress bar and the "log it?" prompt. */
-export function completedSets(step: SessionStep, items: SessionExercise[]): number {
-  if (step.kind === 'done') return totalSets(items);
-  const before = items.slice(0, step.index).reduce((n, item) => n + item.dose.sets, 0);
+export function completedSets(
+  step: SessionStep,
+  items: SessionExercise[],
+  only?: SessionPhase
+): number {
+  if (step.kind === 'done') return totalSets(items, only);
+  const before = items
+    .slice(0, step.index)
+    .reduce((n, item) => n + (counts(item, only) ? item.dose.sets : 0), 0);
+  // Standing in a phase the caller is not counting: everything before it is
+  // either all of that phase or none of it, and `before` already has it.
+  if (!counts(items[step.index], only)) return before;
   if (step.kind === 'transition') return before;
   // Rest belongs to the set she just finished, so it counts. A switch sits
   // *inside* a set with one side still to go, so it does not.
