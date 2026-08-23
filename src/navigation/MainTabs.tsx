@@ -6,6 +6,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
+import { useMedicalConsentAccepted } from '../context/ConsentContext';
 import { useRegisterPushToken, NOTIFICATION_PROMPT_SHOWN_KEY } from '../hooks/useRegisterPushToken';
 import { NotificationPromptModal } from '../components/NotificationPromptModal';
 import { colors, typography } from '../theme/tokens';
@@ -15,6 +16,9 @@ import { NotificationsProvider, useNotifications } from '../context/Notification
 import { RewardCelebrations } from '../components/rewards/RewardCelebrations';
 import { CompletionReward } from '../components/rewards/CompletionReward';
 import { RewardsScreen } from '../screens/rewards/RewardsScreen';
+import { ProgressScreen } from '../screens/today/ProgressScreen';
+import { PlanRecapScreen } from '../screens/today/PlanRecapScreen';
+import { PlanContinueScreen } from '../screens/today/PlanContinueScreen';
 import { DailyLoopScreen } from '../screens/today/DailyLoopScreen';
 import { MovementScreen } from '../screens/today/MovementScreen';
 import { MovementSessionScreen } from '../screens/today/MovementSessionScreen';
@@ -59,7 +63,14 @@ function TodayStackScreen() {
       <TodayStack.Screen
         name="MovementSession"
         component={MovementSessionScreen}
-        options={{ headerShown: false, gestureEnabled: false }}
+        // Rises over the plan rather than sliding in beside it: this is the one
+        // screen in the app that takes the whole display, and the transition
+        // should say so before she reads a word of it.
+        options={{
+          headerShown: false,
+          gestureEnabled: false,
+          animation: 'slide_from_bottom',
+        }}
       />
       <TodayStack.Screen
         name="Nutrition"
@@ -80,6 +91,38 @@ function TodayStackScreen() {
         name="Rewards"
         component={RewardsScreen}
         options={{ ...pushedScreenHeader, headerTitle: 'Rewards' }}
+      />
+      <TodayStack.Screen
+        name="Progress"
+        component={ProgressScreen}
+        options={{ ...pushedScreenHeader, headerTitle: 'Progress' }}
+      />
+      <TodayStack.Screen
+        name="PlanRecap"
+        component={PlanRecapScreen}
+        options={{
+          ...pushedScreenHeader,
+          headerTitle: 'Your 8 weeks',
+          // No swipe-back and no back button: this is the handoff between two
+          // plans, and its one button is what marks it seen. Letting her slide
+          // out of it would leave the recap owed to her forever, re-opening on
+          // every visit to the daily loop.
+          headerBackVisible: false,
+          gestureEnabled: false,
+        }}
+      />
+      <TodayStack.Screen
+        name="PlanContinue"
+        component={PlanContinueScreen}
+        options={{
+          ...pushedScreenHeader,
+          headerTitle: 'Your plan',
+          // Same reasoning as PlanRecap: its one button is what marks it seen,
+          // so sliding out of it would leave the screen owed to her forever and
+          // re-open it on every visit to the daily loop.
+          headerBackVisible: false,
+          gestureEnabled: false,
+        }}
       />
       <TodayStack.Screen
         name="Symptoms"
@@ -107,7 +150,7 @@ function ChatStackScreen() {
           headerTitle: 'Chat with Lisa',
           headerBackTitle: 'Back',
           headerTintColor: colors.primary,
-          headerStyle: { backgroundColor: '#FDF8FA' },
+          headerStyle: { backgroundColor: colors.chatHeaderBg },
           headerShadowVisible: false,
         }}
       />
@@ -137,14 +180,34 @@ function SettingsStackScreen() {
 export function MainTabs() {
   const { user } = useAuth();
   const { permissionStatus, requestPermissionAndRegister } = useRegisterPushToken(user?.id);
+  const consentAccepted = useMedicalConsentAccepted();
   const [showNotificationPrompt, setShowNotificationPrompt] = useState(false);
 
+  /*
+    Held behind the medical disclaimer.
+
+    These tabs mount underneath that gate on a first launch, so without the
+    `consentAccepted` check both modals opened at once: she accepted the
+    disclaimer and found this one already waiting under it, two consent-shaped
+    interruptions before she had seen a single screen. Worse on Android, where
+    two simultaneous `Modal`s z-order unreliably and the disclaimer could land
+    behind this one. Now they queue — the flag flips the moment she accepts, and
+    this prompt follows.
+  */
   useEffect(() => {
-    if (!user || permissionStatus !== 'undetermined') return;
-    AsyncStorage.getItem(NOTIFICATION_PROMPT_SHOWN_KEY).then((value) => {
-      if (value !== 'true') setShowNotificationPrompt(true);
-    });
-  }, [user, permissionStatus]);
+    if (!user || !consentAccepted || permissionStatus !== 'undetermined') return;
+    let cancelled = false;
+    AsyncStorage.getItem(NOTIFICATION_PROMPT_SHOWN_KEY)
+      .then((value) => {
+        if (!cancelled && value !== 'true') setShowNotificationPrompt(true);
+      })
+      .catch(() => {
+        // Unreadable flag: stay quiet rather than risk re-asking every launch.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user, consentAccepted, permissionStatus]);
 
   const handleNotificationEnable = useCallback(() => {
     requestPermissionAndRegister();
@@ -193,6 +256,10 @@ function AppTabs() {
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
+        // A tab is a place, not a page load. The cross-fade makes switching read
+        // as the same app turning to face something else, which is the whole
+        // premise of the daily loop sitting one tap from the chat.
+        animation: 'fade',
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: 'rgba(255, 255, 255, 0.55)',
         tabBarLabelStyle: {

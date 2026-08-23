@@ -26,6 +26,31 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * The request never got an answer — no signal, captive wifi, server not
+ * listening. Distinct from an ApiError, which means the server did reply.
+ * Callers must not read this as a denial of anything.
+ */
+export class ApiTimeoutError extends Error {
+  constructor(endpoint: string, ms: number) {
+    super(`Request to ${endpoint} timed out after ${ms}ms`);
+    this.name = 'ApiTimeoutError';
+  }
+}
+
+/**
+ * Default ceiling on a request.
+ *
+ * Without one, `fetch` on React Native waits on the OS socket timeout — on the
+ * order of a minute, and on some Android builds effectively forever. Every
+ * screen here renders a spinner until its request settles, so "no timeout"
+ * shows up to her as an app that hangs on a bad connection rather than one that
+ * says it could not load and offers a retry.
+ */
+export const DEFAULT_TIMEOUT_MS = 20_000;
+/** The model needs longer to think than a CRUD route does. */
+export const CHAT_TIMEOUT_MS = 90_000;
+
 /** True when the backend denied access for lack of a subscription — route to the paywall. */
 export function isSubscriptionRequiredError(err: unknown): boolean {
   return err instanceof ApiError && err.status === 403;
@@ -71,19 +96,10 @@ export const API_CONFIG = {
     symptoms: '/api/symptoms',
     chatSessions: '/api/chat-sessions',
     chat: '/api/langchain-rag',
-    /** Save 8-step funnel quiz. Body: { quiz: { age_band, here_for, goals, symptoms, what_tried, how_long, qualifier, name } }. Backend upserts user_profiles. */
-    intake: '/api/intake',
-    saveQuiz: '/api/intake',
-    /** Same as web gate: creates profile + user_trials. Body: { quizAnswers } only — the user id comes from the Bearer token. */
-    saveQuizAuth: '/api/auth/save-quiz',
     notifications: '/api/notifications',
     notificationsUnreadCount: '/api/notifications/unread-count',
     notificationsPreferences: '/api/notifications/preferences',
     notificationsPushToken: '/api/notifications/push-token',
-    userPreferences: '/api/user-preferences',
-    goodDays: '/api/good-days',
-    healthSummary: '/api/health-summary',
-    doctorReport: '/api/doctor-report',
     accountDelete: '/api/account/delete',
     /** The generated 8-week plan, hydrated and scored for one day. Send `?date=&media=1`. */
     plan: '/api/plan',
@@ -91,6 +107,8 @@ export const API_CONFIG = {
     planComplete: '/api/plan/complete',
     /** POST to create one of her own habits, DELETE `?id=` to remove it. */
     planHabits: '/api/plan/habits',
+    /** Her eight weeks scored day by day, for the progress grid. Send `?date=`. Read-only; 404 before a plan exists. */
+    planHistory: '/api/plan/history',
     /** XP, level, streak and every achievement, derived from her logs. Send `?date=`. Read-only. */
     rewards: '/api/rewards',
   },
@@ -182,7 +200,7 @@ export async function openAccountBillingEntry(webPath: string = '/dashboard/acco
  */
 export const apiFetchWithAuth = async (
   endpoint: string,
-  options?: RequestInit
+  options?: RequestInit & { timeoutMs?: number }
 ): Promise<any> => {
   const {
     data: { session },
@@ -193,6 +211,8 @@ export const apiFetchWithAuth = async (
     throw new ApiError('Not authenticated', 401);
   }
 
+  const { timeoutMs = DEFAULT_TIMEOUT_MS, signal: callerSignal, ...rest } = options ?? {};
+
   const url = `${API_CONFIG.baseURL}${endpoint}`;
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
@@ -200,10 +220,36 @@ export const apiFetchWithAuth = async (
     ...(options?.headers as Record<string, string>),
   };
 
-  const response = await fetch(url, {
-    ...options,
-    headers,
-  });
+  // Compose rather than replace: the chat screen aborts its own request when she
+  // navigates away, and that must keep working alongside the timeout.
+  const controller = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+  const abortFromCaller = () => controller.abort();
+  // An already-aborted signal never fires the event, so check before subscribing —
+  // otherwise a request the caller cancelled during `getSession()` still goes out.
+  if (callerSignal?.aborted) controller.abort();
+  else callerSignal?.addEventListener('abort', abortFromCaller);
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...rest,
+      headers,
+      signal: controller.signal,
+    });
+  } catch (err) {
+    // A timeout reads as an abort; say which one it was so callers can tell a
+    // dropped connection from a screen the user deliberately left.
+    if (timedOut) throw new ApiTimeoutError(endpoint, timeoutMs);
+    throw err;
+  } finally {
+    clearTimeout(timer);
+    callerSignal?.removeEventListener('abort', abortFromCaller);
+  }
 
   if (response.status === 401) {
     throw new ApiError('Session expired or unauthorized', 401);

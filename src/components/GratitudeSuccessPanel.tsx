@@ -5,6 +5,15 @@ import { colors, spacing, radii, typography, minTouchTarget, shadows } from '../
 import { playRewardCue, prepareRewardSounds } from '../lib/rewardSound';
 import { ConfettiBurst } from './rewards/ConfettiBurst';
 
+/**
+ * How long the panel stays up before its caller takes the screen back.
+ *
+ * Long enough to read and feel, short enough that she is never left tapping at
+ * a screen with nothing on it — this panel has no controls of its own, so a
+ * caller that forgets to dismiss it strands her.
+ */
+export const GRATITUDE_DISMISS_MS = 1800;
+
 export type GratitudeMetaChip = {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;

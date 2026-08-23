@@ -1,8 +1,30 @@
-import React, { useCallback, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
+import React, { createContext, useCallback, useContext, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  RefreshControl,
+  type LayoutChangeEvent,
+} from 'react-native';
 import { colors, spacing, radii, typography } from '../../theme/tokens';
 import { usePlan } from '../../context/PlanContext';
 import { ContentTransition, PlanDetailSkeleton } from '../skeleton';
+
+/**
+ * The measured height of the scrollable area, in points. Null until the first
+ * layout pass.
+ *
+ * Window height is not a usable stand-in here: the pushed header and the tab bar
+ * eat ~175pt of an 844pt phone, and a screen that must fit without scrolling has
+ * to size itself against what is actually left. Measured rather than estimated
+ * because both of those depend on insets we cannot see from a leaf component.
+ */
+const PlanViewportContext = createContext<number | null>(null);
+
+export function usePlanViewport(): number | null {
+  return useContext(PlanViewportContext);
+}
 
 type PlanScreenLayoutProps = {
   children: React.ReactNode;
@@ -19,6 +41,12 @@ type PlanScreenLayoutProps = {
 export function PlanScreenLayout({ children }: PlanScreenLayoutProps) {
   const { status, plan, error, refresh } = usePlan();
   const [refreshing, setRefreshing] = useState(false);
+  const [viewport, setViewport] = useState<number | null>(null);
+
+  const onLayout = useCallback((event: LayoutChangeEvent) => {
+    const { height } = event.nativeEvent.layout;
+    setViewport((current) => (current === height ? current : height));
+  }, []);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -36,7 +64,7 @@ export function PlanScreenLayout({ children }: PlanScreenLayoutProps) {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={styles.container} onLayout={onLayout}>
       <ContentTransition>
         <ScrollView
           contentContainerStyle={styles.content}
@@ -53,7 +81,7 @@ export function PlanScreenLayout({ children }: PlanScreenLayoutProps) {
               <Text style={styles.errorText}>{error}</Text>
             </View>
           )}
-          {children}
+          <PlanViewportContext.Provider value={viewport}>{children}</PlanViewportContext.Provider>
         </ScrollView>
       </ContentTransition>
     </View>

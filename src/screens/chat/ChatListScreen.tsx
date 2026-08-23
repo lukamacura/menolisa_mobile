@@ -18,6 +18,7 @@ import { apiFetchWithAuth, API_CONFIG, isSubscriptionRequiredError } from '../..
 import { colors, spacing, radii, typography, shadows } from '../../theme/tokens';
 import { StaggeredZoomIn, useReduceMotion } from '../../components/StaggeredZoomIn';
 import { ListSkeleton, ContentTransition } from '../../components/skeleton';
+import { errorMessage } from '../../lib/errorCopy';
 
 type ChatStackParamList = {
   ChatList: undefined;
@@ -78,7 +79,7 @@ export function ChatListScreen() {
       if (isSubscriptionRequiredError(e)) return;
       // A silent background refresh must not replace a good list with an error.
       if (!silent) {
-        setError(e instanceof Error ? e.message : 'Failed to load conversations');
+        setError(errorMessage(e, 'We could not load your conversations.'));
       }
     } finally {
       if (mountedRef.current) setLoading(false);
@@ -124,7 +125,7 @@ export function ChatListScreen() {
       navigation.navigate('ChatThread', { sessionId });
     } catch (e) {
       if (!mountedRef.current || isSubscriptionRequiredError(e)) return;
-      setError(e instanceof Error ? e.message : 'Failed to create chat');
+      setError(errorMessage(e, 'We could not start a new chat.'));
     } finally {
       creatingRef.current = false;
     }
@@ -138,7 +139,7 @@ export function ChatListScreen() {
       );
       setSessions((prev) => prev.filter((s) => s.session_id !== sessionId));
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to delete conversation');
+      setError(errorMessage(e, 'We could not delete that conversation.'));
     }
   }, []);
 
@@ -178,7 +179,7 @@ export function ChatListScreen() {
         <View style={styles.header}>
           <Text style={styles.title}>Chat with Lisa</Text>
           <TouchableOpacity activeOpacity={1} style={styles.newChatBtn} onPress={startNewChat}>
-            <Ionicons name="add" size={24} color="#fff" />
+            <Ionicons name="add" size={24} color={colors.textInverse} />
             <Text style={styles.newChatBtnText}>New chat</Text>
           </TouchableOpacity>
         </View>

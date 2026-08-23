@@ -30,14 +30,14 @@ export type AuthStackParamList = {
 export type MainTabParamList = {
   TodayTab: NavigatorScreenParams<TodayStackParamList>;
   ChatTab: NavigatorScreenParams<ChatStackParamList>;
-  NotificationsTab: NavigatorScreenParams<NotificationsStackParamList>;
+  /** A bare screen, not a stack — MainTabs registers NotificationsScreen directly. */
+  NotificationsTab: undefined;
   SettingsTab: NavigatorScreenParams<SettingsStackParamList>;
 };
 
 type MainTabParamListMap = MainTabParamList;
 type TodayStackParamListMap = TodayStackParamList;
 type ChatStackParamListMap = ChatStackParamList;
-type NotificationsStackParamListMap = NotificationsStackParamList;
 type SettingsStackParamListMap = SettingsStackParamList;
 
 /**
@@ -59,6 +59,24 @@ export type TodayStackParamList = {
   Habits: undefined;
   /** XP, level, streak and every badge. Reads RewardsContext — takes no params. */
   Rewards: undefined;
+  /**
+   * The eight-week grid. Both params are one-shot hints about where to land,
+   * not state: `focusDate` scrolls to that day's week and opens its sheet,
+   * `focusWeek` just scrolls. Omit both to open at the top.
+   */
+  Progress: { focusWeek?: number; focusDate?: string } | undefined;
+  /**
+   * The one-time recap of a cycle she has just finished. `cycle` is the
+   * FINISHED one, not the one she is starting — DailyLoop opens this when the
+   * plan comes back on a higher cycle than the recap marker has seen.
+   */
+  PlanRecap: { cycle: number };
+  /**
+   * The three days before her card is charged again. Takes no params — the
+   * renewal date and her name both come from `GET /api/account/status`, so a
+   * push that opens it cold has nothing to pass in.
+   */
+  PlanContinue: undefined;
   Symptoms: undefined;
   SymptomLogs: undefined;
 };
@@ -69,13 +87,6 @@ export type TodayStackParamList = {
 export type ChatStackParamList = {
   ChatList: undefined;
   ChatThread: { sessionId: string };
-};
-
-/**
- * Notifications tab stack (single screen for now).
- */
-export type NotificationsStackParamList = {
-  Notifications: undefined;
 };
 
 /**
@@ -93,7 +104,6 @@ declare global {
     interface MainTabParamList extends MainTabParamListMap {}
     interface TodayStackParamList extends TodayStackParamListMap {}
     interface ChatStackParamList extends ChatStackParamListMap {}
-    interface NotificationsStackParamList extends NotificationsStackParamListMap {}
     interface SettingsStackParamList extends SettingsStackParamListMap {}
   }
 }

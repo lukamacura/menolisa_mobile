@@ -25,7 +25,14 @@ export type SegmentCardProps = {
    */
   value?: number;
   total?: number;
-  onPress: () => void;
+  /** Holds the ring's first sweep back so it fills as the card lands, not behind it. */
+  sweepDelayMs?: number;
+  /**
+   * Omit when there is nowhere to go — a week with no movement scheduled, say.
+   * The card then renders inert, with no chevron and no press feedback, rather
+   * than promising a screen that has nothing more to tell her.
+   */
+  onPress?: () => void;
 };
 
 export function SegmentCard({
@@ -36,19 +43,14 @@ export function SegmentCard({
   subtitle,
   value,
   total,
+  sweepDelayMs,
   onPress,
 }: SegmentCardProps) {
   const showRing = value !== undefined && total !== undefined;
   const complete = showRing && total! > 0 && value! >= total!;
 
-  return (
-    <AnimatedPressable
-      containerStyle={styles.pressable}
-      style={styles.card}
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={`${title}. ${subtitle}`}
-    >
+  const body = (
+    <>
       <View style={[styles.iconWell, { backgroundColor: tintSoft }]}>
         <Ionicons name={icon} size={22} color={tint} />
       </View>
@@ -69,10 +71,33 @@ export function SegmentCard({
           size={44}
           color={tint}
           label={complete ? undefined : `${value}/${Math.max(1, total!)}`}
+          sweepDelayMs={sweepDelayMs}
         />
       )}
 
-      <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+      {onPress && <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />}
+    </>
+  );
+
+  if (!onPress) {
+    return (
+      <View style={styles.pressable}>
+        <View style={[styles.card, styles.cardInert]} accessibilityLabel={`${title}. ${subtitle}`}>
+          {body}
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <AnimatedPressable
+      containerStyle={styles.pressable}
+      style={styles.card}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${title}. ${subtitle}`}
+    >
+      {body}
     </AnimatedPressable>
   );
 }
@@ -80,6 +105,9 @@ export function SegmentCard({
 const styles = StyleSheet.create({
   pressable: {
     marginBottom: spacing.sm,
+  },
+  cardInert: {
+    opacity: 0.6,
   },
   card: {
     flexDirection: 'row',

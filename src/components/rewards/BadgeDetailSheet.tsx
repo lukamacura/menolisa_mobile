@@ -1,9 +1,10 @@
-import React from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, minTouchTarget, radii, shadows, spacing, typography } from '../../theme/tokens';
 import { badgeVisual, tierLabel, tierName } from '../../lib/rewardVisuals';
 import type { Achievement } from '../../lib/rewardTypes';
+import { BottomSheetModal } from '../BottomSheetModal';
 import { BadgeMedal } from './BadgeMedal';
 import { formatCount } from './BadgeTile';
 
@@ -20,87 +21,91 @@ type BadgeDetailSheetProps = {
  * "7 more" hides the reason to keep going.
  */
 export function BadgeDetailSheet({ achievement, onClose }: BadgeDetailSheetProps) {
-  if (!achievement) return null;
+  // The parent clears its selection the moment Close is tapped. Rendering from
+  // `achievement` directly tore the modal down on that same frame, so the sheet
+  // vanished instead of closing. Holding the last badge here keeps something to
+  // draw while it slides out.
+  const [shown, setShown] = useState<Achievement | null>(achievement);
 
-  const { name, blurb, tier, maxTier, value, target, floor, goal, complete, unlocked } = achievement;
-  const tint = unlocked ? badgeVisual(achievement.id).tint : colors.textMuted;
+  useEffect(() => {
+    if (achievement) setShown(achievement);
+  }, [achievement]);
+
+  const handleClosed = useCallback(() => setShown(null), []);
+
+  if (!shown) return null;
+
+  const { name, blurb, tier, maxTier, value, target, floor, goal, complete, unlocked } = shown;
+  const tint = unlocked ? badgeVisual(shown.id).tint : colors.textMuted;
 
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
-      <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Close">
-        {/* Stops a tap inside the sheet from closing it. */}
-        <Pressable style={styles.sheet} onPress={() => {}}>
-          <View style={styles.grabber} />
+    <BottomSheetModal
+      visible={achievement !== null}
+      onClose={onClose}
+      onClosed={handleClosed}
+      sheetStyle={styles.sheet}
+    >
+      <View style={styles.grabber} />
 
-          <BadgeMedal
-            familyId={achievement.id}
-            unlocked={unlocked}
-            progress={achievement.progress}
-            size={96}
-            style={styles.medal}
-          />
+      <BadgeMedal
+        familyId={shown.id}
+        unlocked={unlocked}
+        progress={shown.progress}
+        size={96}
+        style={styles.medal}
+      />
 
-          <Text style={styles.name}>{name}</Text>
-          <Text style={[styles.tier, { color: tint }]}>
-            {unlocked ? `${tierName(tier, maxTier)} · ${tierLabel(tier, maxTier)}` : 'Not yet earned'}
-          </Text>
-          <Text style={styles.blurb}>{blurb}</Text>
+      <Text style={styles.name}>{name}</Text>
+      <Text style={[styles.tier, { color: tint }]}>
+        {unlocked ? `${tierName(tier, maxTier)} · ${tierLabel(tier, maxTier)}` : 'Not yet earned'}
+      </Text>
+      <Text style={styles.blurb}>{blurb}</Text>
 
-          {complete ? (
-            <View style={styles.completeRow}>
-              <Ionicons name="checkmark-circle" size={18} color={colors.success} />
-              <Text style={styles.completeText}>Every level earned</Text>
-            </View>
-          ) : (
-            <View style={styles.progressBlock}>
-              <View style={styles.progressRow}>
-                <Text style={styles.goal}>{goal}</Text>
-                <Text style={styles.counts}>
-                  {formatCount(value)} / {formatCount(target ?? 0)}
-                </Text>
-              </View>
-              <View style={styles.track}>
-                <View
-                  style={[
-                    styles.fill,
-                    {
-                      width: `${Math.round(achievement.progress * 100)}%`,
-                      backgroundColor: tint,
-                    },
-                  ]}
-                />
-              </View>
-              {floor > 0 ? (
-                <Text style={styles.floorNote}>Last level cleared at {formatCount(floor)}</Text>
-              ) : null}
-            </View>
-          )}
+      {complete ? (
+        <View style={styles.completeRow}>
+          <Ionicons name="checkmark-circle" size={18} color={colors.success} />
+          <Text style={styles.completeText}>Every level earned</Text>
+        </View>
+      ) : (
+        <View style={styles.progressBlock}>
+          <View style={styles.progressRow}>
+            <Text style={styles.goal}>{goal}</Text>
+            <Text style={styles.counts}>
+              {formatCount(value)} / {formatCount(target ?? 0)}
+            </Text>
+          </View>
+          <View style={styles.track}>
+            <View
+              style={[
+                styles.fill,
+                {
+                  width: `${Math.round(shown.progress * 100)}%`,
+                  backgroundColor: tint,
+                },
+              ]}
+            />
+          </View>
+          {floor > 0 ? (
+            <Text style={styles.floorNote}>Last level cleared at {formatCount(floor)}</Text>
+          ) : null}
+        </View>
+      )}
 
-          <Pressable
-            style={styles.button}
-            onPress={onClose}
-            accessibilityRole="button"
-            accessibilityLabel="Close"
-          >
-            <Text style={styles.buttonText}>Close</Text>
-          </Pressable>
-        </Pressable>
+      <Pressable
+        style={styles.button}
+        onPress={onClose}
+        accessibilityRole="button"
+        accessibilityLabel="Close"
+      >
+        <Text style={styles.buttonText}>Close</Text>
       </Pressable>
-    </Modal>
+    </BottomSheetModal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(31, 27, 45, 0.5)',
-  },
   sheet: {
     alignItems: 'center',
-    backgroundColor: colors.card,
-    borderTopLeftRadius: radii.xl,
-    borderTopRightRadius: radii.xl,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
     // Clears the home indicator without needing insets inside a modal.

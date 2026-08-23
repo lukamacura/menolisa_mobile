@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radii, typography, minTouchTarget, shadows } from '../../theme/tokens';
 import { AnimatedPressable } from '../AnimatedPressable';
 import type { HabitKind } from '../../lib/planTypes';
+import { errorMessage } from '../../lib/errorCopy';
 
 /** The server rejects anything longer. */
 const MAX_TITLE = 80;
@@ -55,7 +56,7 @@ export function AddHabitSheet({ visible, onClose, onAdd }: AddHabitSheetProps) {
     } catch (err) {
       // The cap and the length limit both come back as 400s carrying a message
       // worth reading, so show the server's words rather than a generic line.
-      setError(err instanceof Error ? err.message : 'We could not add that habit.');
+      setError(errorMessage(err, 'We could not add that habit.'));
     } finally {
       setSaving(false);
     }

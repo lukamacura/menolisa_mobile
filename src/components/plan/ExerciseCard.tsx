@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radii, typography } from '../../theme/tokens';
 import { exerciseDose, resolveDose } from '../../lib/planFormat';
@@ -15,8 +14,8 @@ type ExerciseCardProps = {
  * One exercise: what it is, what it needs, and how much of it.
  *
  * The clip is progressive enhancement. The server's ready-set is empty today, so
- * `video`/`poster` are absent for every exercise — the card has to read as
- * finished on name, props and dose alone, and it does.
+ * `video` is absent for every exercise — the card has to read as finished on
+ * name, props and dose alone, and it does.
  */
 export function ExerciseCard({ exercise }: ExerciseCardProps) {
   const [expanded, setExpanded] = useState(false);
@@ -35,14 +34,12 @@ export function ExerciseCard({ exercise }: ExerciseCardProps) {
           hasClip ? `${exercise.name}, ${expanded ? 'hide' : 'show'} demonstration` : undefined
         }
       >
-        {exercise.poster ? (
-          <Image source={{ uri: exercise.poster }} style={styles.poster} contentFit="cover" />
-        ) : (
-          <View style={styles.posterFallback}>
-            <Ionicons name="fitness" size={18} color={colors.primary} />
-          </View>
-        )}
-
+        {/* No thumbnail. This slot held a 44pt tinted box with a generic
+            dumbbell glyph in it, standing in for the per-exercise stills that
+            were never shot. The same glyph on every row carried no information
+            at all — it just pushed the name in by 56pt and made a plain list
+            look like a list of things that had failed to load. The name leads
+            the row instead. */}
         <View style={styles.text}>
           <Text style={styles.name} numberOfLines={2}>
             {exercise.name}
@@ -98,20 +95,6 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     padding: spacing.sm,
   },
-  poster: {
-    width: 44,
-    height: 44,
-    borderRadius: radii.sm,
-    backgroundColor: colors.surfaceElevated,
-  },
-  posterFallback: {
-    width: 44,
-    height: 44,
-    borderRadius: radii.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(244, 124, 151, 0.12)',
-  },
   text: {
     flex: 1,
     minWidth: 0,
@@ -141,9 +124,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingBottom: spacing.sm,
   },
+  // Matched to the clips' own 4:5 rather than a fixed height, so the expanded
+  // card frames the movement exactly — at this one ratio `contain` has nothing
+  // to letterbox.
   clip: {
     width: '100%',
-    height: 180,
+    aspectRatio: 4 / 5,
     borderRadius: radii.sm,
     backgroundColor: colors.surfaceElevated,
   },

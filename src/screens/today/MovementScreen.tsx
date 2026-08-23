@@ -11,12 +11,14 @@ import {
   isPlanFinished,
   isTaskComplete,
   sessionSeconds,
+  taskCadenceHint,
   taskProgress,
-  taskProgressLabel,
+  taskRemainingLabel,
 } from '../../lib/planFormat';
 import type { PlanTask } from '../../lib/planTypes';
 import { PlanScreenLayout } from '../../components/plan/PlanScreenLayout';
 import { ExerciseCard } from '../../components/plan/ExerciseCard';
+import { ProgressRing } from '../../components/plan/ProgressRing';
 import { AnimatedPressable } from '../../components/AnimatedPressable';
 import { StaggeredZoomIn, useReduceMotion } from '../../components/StaggeredZoomIn';
 
@@ -57,6 +59,8 @@ export function MovementScreen() {
 
   const progress = taskProgress(task, finished);
   const complete = isTaskComplete(task, finished);
+  const cadenceHint = taskCadenceHint(task);
+  const exerciseCount = task.exercises?.length ?? 0;
 
   return (
     <PlanScreenLayout>
@@ -64,14 +68,41 @@ export function MovementScreen() {
         <View style={styles.header}>
           <Text style={styles.title}>{task.title}</Text>
           <Text style={styles.why}>{task.why}</Text>
-          <SessionDots task={task} value={progress.value} total={progress.total} />
-          <Text style={styles.progress}>{taskProgressLabel(task, finished)}</Text>
         </View>
       </StaggeredZoomIn>
 
+      {/* The nutrition screen has always opened with the same three facts — how
+          much is asked of you, how much is done, and what's left. Movement used
+          to open with a progress line alone, which tells her where she is but
+          never what she was asked for; on day one of a week those read the same
+          and mean opposite things. */}
       <StaggeredZoomIn delayIndex={1} reduceMotion={reduceMotion}>
+        <View style={styles.summary}>
+          <ProgressRing
+            value={progress.value}
+            total={progress.total}
+            size={54}
+            color={colors.primary}
+            label={complete ? undefined : `${progress.value}/${Math.max(1, progress.total)}`}
+            sweepDelayMs={140}
+          />
+          <View style={styles.summaryText}>
+            <Text style={styles.summaryTitle}>{taskRemainingLabel(task, finished)}</Text>
+            {cadenceHint && (
+              <Text style={styles.summarySubtitle}>
+                Your plan asks for {cadenceHint.toLowerCase()}
+              </Text>
+            )}
+            <SessionDots task={task} value={progress.value} total={progress.total} />
+          </View>
+        </View>
+      </StaggeredZoomIn>
+
+      <StaggeredZoomIn delayIndex={2} reduceMotion={reduceMotion}>
         <View style={styles.sectionHead}>
-          <Text style={styles.sectionTitle}>This session</Text>
+          <Text style={styles.sectionTitle}>
+            {exerciseCount > 0 ? `One session · ${exerciseCount} exercises` : 'This session'}
+          </Text>
           {sessionMinutes > 0 && <Text style={styles.sectionMeta}>about {sessionMinutes} min</Text>}
         </View>
         {task.exercises?.map((exercise) => (
@@ -79,7 +110,7 @@ export function MovementScreen() {
         ))}
       </StaggeredZoomIn>
 
-      <StaggeredZoomIn delayIndex={2} reduceMotion={reduceMotion}>
+      <StaggeredZoomIn delayIndex={3} reduceMotion={reduceMotion}>
         <AnimatedPressable
           containerStyle={styles.buttonWrap}
           style={styles.button}
@@ -117,9 +148,14 @@ export function MovementScreen() {
   );
 }
 
-/** One dot per session the week asks for, filled as she does them. */
+/**
+ * One dot per session the period asks for, filled as she does them.
+ *
+ * Drawn for a per-day cadence too — movement snacks are four short bursts a day
+ * and the count matters there more than anywhere, not less.
+ */
 function SessionDots({ task, value, total }: { task: PlanTask; value: number; total: number }) {
-  if (task.cadence !== 'weekly' || total <= 1) return null;
+  if (total <= 1 || (task.cadence !== 'weekly' && task.cadence !== 'per_day')) return null;
   return (
     <View style={styles.dots}>
       {Array.from({ length: total }, (_, index) => index).map((index) => (
@@ -132,7 +168,7 @@ function SessionDots({ task, value, total }: { task: PlanTask; value: number; to
 
 const styles = StyleSheet.create({
   header: {
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
   },
   title: {
     ...typography.presets.heading2,
@@ -143,11 +179,34 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     marginTop: 2,
   },
+  summary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+    borderRadius: radii.lg,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  summaryText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  summaryTitle: {
+    ...typography.presets.heading3,
+    color: colors.text,
+  },
+  summarySubtitle: {
+    ...typography.presets.caption,
+    color: colors.textMuted,
+  },
   dots: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginTop: spacing.sm,
+    marginTop: spacing.xs,
   },
   dot: {
     width: 26,
@@ -162,11 +221,6 @@ const styles = StyleSheet.create({
     ...typography.presets.caption,
     color: colors.primaryDark,
     marginLeft: 2,
-  },
-  progress: {
-    ...typography.presets.caption,
-    color: colors.primaryDark,
-    marginTop: spacing.xs,
   },
   sectionHead: {
     flexDirection: 'row',

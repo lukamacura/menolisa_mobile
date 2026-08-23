@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetchWithAuth, API_CONFIG } from '../lib/api';
 
 type SymptomLogRow = { logged_at?: string };
@@ -14,10 +14,19 @@ type SymptomLogRow = { logged_at?: string };
  */
 export function useSymptomsToday() {
   const [count, setCount] = useState<number | null>(null);
+  const mounted = useRef(true);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
       const res = await apiFetchWithAuth(`${API_CONFIG.endpoints.symptomLogs}?days=1`);
+      if (!mounted.current) return;
       const logs: SymptomLogRow[] = res?.data ?? [];
       const todayStart = new Date();
       todayStart.setHours(0, 0, 0, 0);
@@ -25,7 +34,7 @@ export function useSymptomsToday() {
         logs.filter((log) => log.logged_at && new Date(log.logged_at) >= todayStart).length
       );
     } catch {
-      setCount(null);
+      if (mounted.current) setCount(null);
     }
   }, []);
 

@@ -1,8 +1,9 @@
 import React from 'react';
-import { View, Text, Modal, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radii, typography, minTouchTarget } from '../../theme/tokens';
+import { BottomSheetModal } from '../BottomSheetModal';
 import { StreakChip } from './StreakChip';
 
 type WhySheetProps = {
@@ -37,59 +38,50 @@ export function WhySheet({
   const insets = useSafeAreaInsets();
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable style={styles.overlay} onPress={onClose} accessibilityLabel="Close">
+    <BottomSheetModal
+      visible={visible}
+      onClose={onClose}
+      backdropColor="rgba(0, 0, 0, 0.4)"
+      sheetStyle={[styles.sheet, { paddingBottom: Math.max(spacing.xl, insets.bottom) }]}
+    >
+      <View style={styles.grabber} />
+
+      <View style={styles.header}>
+        <Text style={styles.title}>{title}</Text>
         <Pressable
-          style={[styles.sheet, { paddingBottom: Math.max(spacing.xl, insets.bottom) }]}
-          onPress={(event) => event.stopPropagation()}
+          onPress={onClose}
+          hitSlop={10}
+          style={styles.close}
+          accessibilityRole="button"
+          accessibilityLabel="Close"
         >
-          <View style={styles.grabber} />
-
-          <View style={styles.header}>
-            <Text style={styles.title}>{title}</Text>
-            <Pressable
-              onPress={onClose}
-              hitSlop={10}
-              style={styles.close}
-              accessibilityRole="button"
-              accessibilityLabel="Close"
-            >
-              <Ionicons name="close" size={20} color={colors.textMuted} />
-            </Pressable>
-          </View>
-
-          {(cadenceLabel || (streak !== undefined && streak > 0)) && (
-            <View style={styles.meta}>
-              {cadenceLabel ? (
-                <View style={styles.cadenceChip}>
-                  <Text style={styles.cadenceText}>{cadenceLabel}</Text>
-                </View>
-              ) : null}
-              {streak !== undefined && bestStreak !== undefined && (
-                <StreakChip streak={streak} bestStreak={bestStreak} />
-              )}
-            </View>
-          )}
-
-          <ScrollView style={styles.body} showsVerticalScrollIndicator={false}>
-            <Text style={styles.why}>{why}</Text>
-          </ScrollView>
+          <Ionicons name="close" size={20} color={colors.textMuted} />
         </Pressable>
-      </Pressable>
-    </Modal>
+      </View>
+
+      {(cadenceLabel || (streak !== undefined && streak > 0)) && (
+        <View style={styles.meta}>
+          {cadenceLabel ? (
+            <View style={styles.cadenceChip}>
+              <Text style={styles.cadenceText}>{cadenceLabel}</Text>
+            </View>
+          ) : null}
+          {streak !== undefined && bestStreak !== undefined && (
+            <StreakChip streak={streak} bestStreak={bestStreak} />
+          )}
+        </View>
+      )}
+
+      <ScrollView style={styles.body} showsVerticalScrollIndicator={false}>
+        <Text style={styles.why}>{why}</Text>
+      </ScrollView>
+    </BottomSheetModal>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
-    justifyContent: 'flex-end',
-  },
   sheet: {
     backgroundColor: colors.background,
-    borderTopLeftRadius: radii.xl,
-    borderTopRightRadius: radii.xl,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
     maxHeight: '70%',

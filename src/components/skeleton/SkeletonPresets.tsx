@@ -151,7 +151,126 @@ export function PlanDetailSkeleton() {
   );
 }
 
+/**
+ * Progress screen: the hero card and the eight-week grid.
+ *
+ * Shaped against the real cards rather than generic blocks — same margins, same
+ * radii, same ring size, same seven columns — so the swap from skeleton to
+ * content moves nothing on screen. `cellWidth` comes from the screen so the
+ * placeholder columns land exactly where the real day rings will.
+ */
+export function ProgressSkeleton({ cellWidth }: { cellWidth: number }) {
+  const dot = Math.min(cellWidth - 4, 44);
+
+  return (
+    <View>
+      <View style={styles.progressHero}>
+        <View style={styles.progressHeroTop}>
+          <Skeleton width={112} height={112} borderRadius={56} />
+          <View style={{ flex: 1 }}>
+            <Skeleton width="70%" height={22} borderRadius={radii.sm} style={{ marginBottom: 8 }} />
+            <Skeleton width="90%" height={14} borderRadius={radii.sm} />
+          </View>
+        </View>
+        <View style={styles.progressDivider} />
+        <View style={styles.progressLegend}>
+          {[1, 2, 3].map((i) => (
+            <View key={i} style={styles.progressLegendRow}>
+              <Skeleton width={16} height={16} borderRadius={radii.sm} />
+              <View style={{ flex: 1 }}>
+                <Skeleton width="55%" height={11} borderRadius={radii.sm} style={{ marginBottom: 4 }} />
+                <Skeleton width="100%" height={6} borderRadius={radii.pill} />
+              </View>
+              <Skeleton width={32} height={11} borderRadius={radii.sm} />
+            </View>
+          ))}
+        </View>
+      </View>
+
+      <View style={styles.progressGrid}>
+        <View style={styles.progressWeekdays}>
+          {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+            <View key={i} style={{ width: cellWidth, alignItems: 'center' }}>
+              <Skeleton width={8} height={11} borderRadius={radii.sm} />
+            </View>
+          ))}
+        </View>
+
+        {[1, 2, 3, 4, 5, 6, 7, 8].map((week) => (
+          <View key={week} style={styles.progressWeek}>
+            <View style={styles.progressWeekHeader}>
+              <Skeleton width={54} height={11} borderRadius={radii.sm} />
+              <Skeleton width="45%" height={11} borderRadius={radii.sm} style={{ flex: 1 }} />
+              <Skeleton width={28} height={11} borderRadius={radii.sm} />
+            </View>
+            <View style={styles.progressDays}>
+              {[1, 2, 3, 4, 5, 6, 7].map((day) => (
+                <View key={day} style={{ width: cellWidth, alignItems: 'center' }}>
+                  <Skeleton width={dot} height={dot} borderRadius={dot / 2} />
+                </View>
+              ))}
+            </View>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  progressHero: {
+    margin: spacing.lg,
+    marginBottom: spacing.md,
+    padding: spacing.lg,
+    borderRadius: radii.xl,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: spacing.md,
+  },
+  progressHeroTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  progressDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+  },
+  progressLegend: {
+    gap: spacing.sm,
+  },
+  progressLegendRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  progressGrid: {
+    marginHorizontal: spacing.lg,
+    padding: spacing.md,
+    borderRadius: radii.xl,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  progressWeekdays: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: spacing.xs,
+  },
+  progressWeek: {
+    marginBottom: spacing.md,
+  },
+  progressWeekHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginBottom: 6,
+  },
+  progressDays: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
   listWrap: { flex: 1 },
   listHeader: {
     paddingHorizontal: spacing.lg,

@@ -80,6 +80,31 @@ All design values live in `src/theme/tokens.ts`. Always import from there — ne
 - **Auth**: Supabase Auth with JWT; all user data scoped by `user_id`
 - **AI**: `/api/langchain-rag` on the web app, never from the client directly
 
+### Plans renew — there is no week 9
+The plan is an 8-week **cycle**, not a one-off. 56 days after `startedAt`, the
+first `GET /api/plan` of that day scores what she actually did, hands those
+percentages to the LLM, and writes her the next cycle. `cycle` arrives on both
+the `ready` and `generating` states and is carried by `PlanContext`.
+
+- **Old cycles are never deleted.** `GET /api/plan/history?cycle=<n>` reads any
+  of them; `history.cycles` lists them for the switcher on `ProgressScreen`.
+- **Never render a reset to week 1 without `PlanRecapScreen` in front of it.**
+  A plan that silently starts over reads as a bug; the recap is what makes it
+  read as earned. `usePlanCycleRecap()` owns the show-once marker.
+- The adherence numbers are for sizing the next plan only — **they are banned
+  from every title, focus and `why`.** She is not shown a report card.
+
+Three days before the card is charged, `PlanContinueScreen` shows her what she
+did and why not to stop — once per renewal, never to someone who has cancelled.
+It names the renewal date and links to billing on purpose: a "don't stop" screen
+that hides the charge is a dark pattern. `usePlanRenewalPrompt()` owns the
+marker; `useSeenMarker` is the shared store both once-only screens sit on.
+
+Her first name comes from `first_name` on `GET /api/account/status` and is
+often null — never write a sentence that breaks without it.
+
+See `docs/mobile-app-changes.md` §12-13 in `../menolisa_web` for the contract.
+
 ### Access control — read this before adding a paid feature
 `GET /api/account/status` is the **single source of truth** for whether the user has
 access. `AuthContext` fetches it, `AppNavigator` gates on its `has_access`, and

@@ -9,7 +9,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Linking from 'expo-linking';
 import { getNativeExpoNotifications } from '../lib/expoNotificationsGate';
 import { useAuth } from '../context/AuthContext';
-import { RefetchTrialContext } from '../context/RefetchTrialContext';
+import { MedicalConsentProvider } from '../context/ConsentContext';
 import { openAccountBillingEntry } from '../lib/api';
 import { logger } from '../lib/logger';
 import { LandingScreenWithButton } from '../screens/LandingScreen';
@@ -36,19 +36,24 @@ function LoadingScreen() {
 const DISCLAIMER_KEY = '@menolisa:consent_v2_accepted';
 
 export function AppNavigator() {
-  const { user, loading, accountStatus, refetchAccountStatus } = useAuth();
-  const refetchTrialRef = useRef<(() => Promise<void>) | null>(null);
-  const [disclaimerVisible, setDisclaimerVisible] = useState(false);
+  const { user, loading, accountStatus, reconcileAccountStatus } = useAuth();
+  /**
+   * `null` while the stored flag is still being read — neither "show the gate"
+   * nor "consent is done". Anything downstream that waits on consent has to sit
+   * out that gap rather than treat an unread flag as acceptance.
+   */
+  const [disclaimerAccepted, setDisclaimerAccepted] = useState<boolean | null>(null);
+  const disclaimerVisible = disclaimerAccepted === false;
 
-  // Keep RefetchTrialContext consumers in sync with AuthContext's accountStatus refetch.
-  useEffect(() => {
-    refetchTrialRef.current = refetchAccountStatus;
-    return () => {
-      if (refetchTrialRef.current === refetchAccountStatus) {
-        refetchTrialRef.current = null;
-      }
-    };
-  }, [refetchAccountStatus]);
+  /**
+   * Read through a ref so the deep-link listener can stay mounted for the life
+   * of the app. This used to route through a shared `RefetchTrialContext` ref
+   * that SettingsScreen also wrote to — and nulled on unmount, so once she had
+   * opened Settings the return-from-checkout refresh silently did nothing for
+   * the rest of the session.
+   */
+  const reconcileRef = useRef(reconcileAccountStatus);
+  reconcileRef.current = reconcileAccountStatus;
 
   // Notification runtime hardening: foreground behavior + Android channel.
   useEffect(() => {
@@ -71,21 +76,19 @@ export function AppNavigator() {
         name: 'Default',
         importance: Notifications.AndroidImportance.HIGH,
         vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#ff8da1',
+        lightColor: colors.primary,
       }).catch((err) => logger.warn('Failed to set notification channel', err));
     }
   }, []);
 
   // Show medical disclaimer on first launch
   useEffect(() => {
-    AsyncStorage.getItem(DISCLAIMER_KEY).then((value) => {
-      if (!value) {
-        setDisclaimerVisible(true);
-      }
-    }).catch(() => {
-      // If AsyncStorage fails, show the modal as a safe fallback
-      setDisclaimerVisible(true);
-    });
+    AsyncStorage.getItem(DISCLAIMER_KEY)
+      .then((value) => setDisclaimerAccepted(!!value))
+      .catch(() => {
+        // If AsyncStorage fails, show the modal as a safe fallback
+        setDisclaimerAccepted(false);
+      });
   }, []);
 
   const handleDisclaimerAccept = async () => {
@@ -94,7 +97,7 @@ export function AppNavigator() {
     } catch {
       // Non-fatal: modal will be hidden regardless
     }
-    setDisclaimerVisible(false);
+    setDisclaimerAccepted(true);
   };
 
   // Handle return-from-web deep links: refresh subscription status when the user
@@ -105,7 +108,10 @@ export function AppNavigator() {
     const handleDeepLink = (event: { url: string }) => {
       const url = event.url;
       if (url.startsWith('menolisa://settings') || url.startsWith('menolisa://account')) {
-        refetchTrialRef.current?.().catch(() => {});
+        // She is coming back from the web, most likely from checkout or the
+        // billing portal — the one moment a missed Stripe webhook is worth a
+        // round trip to rule out.
+        reconcileRef.current().catch(() => {});
       }
     };
 
@@ -130,27 +136,74 @@ export function AppNavigator() {
     const Notifications = getNativeExpoNotifications();
     if (!Notifications) return;
 
-    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
-      const data = response.notification.request.content.data as Record<string, string> | undefined;
+    let cancelled = false;
+
+    const route = (response: {
+      notification: { request: { identifier: string; content: { data?: unknown } } };
+    }) => {
+      const data = response.notification.request.content.data as
+        | Record<string, string>
+        | undefined;
 
       if (data?.action === 'upgrade') {
         openAccountBillingEntry().catch((e) => logger.warn('Open account page failed', e));
         return;
       }
 
-      if (!navigationRef.isReady()) return;
       const navigate = (navigationRef as unknown as {
         navigate: (name: string, params?: object) => void;
       }).navigate;
 
-      if (data?.screen === 'DailyLoop') {
-        navigate('Main', { screen: 'TodayTab', params: { screen: 'DailyLoop' } });
-        return;
-      }
-      navigate('Main', { screen: 'NotificationsTab' });
-    });
+      const go = () => {
+        if (cancelled || !navigationRef.isReady()) return;
+        if (data?.screen === 'DailyLoop') {
+          navigate('Main', { screen: 'TodayTab', params: { screen: 'DailyLoop' } });
+          return;
+        }
+        if (data?.screen === 'PlanContinue') {
+          navigate('Main', { screen: 'TodayTab', params: { screen: 'PlanContinue' } });
+          return;
+        }
+        navigate('Main', { screen: 'NotificationsTab' });
+      };
 
-    return () => sub.remove();
+      // On a cold start the navigator is still mounting when this resolves, and
+      // navigating into a tree that does not exist yet is silently dropped.
+      if (navigationRef.isReady()) go();
+      else setTimeout(go, 300);
+    };
+
+    /**
+     * The tap that launched the app.
+     *
+     * The listener below only sees taps that arrive while it is mounted, so a
+     * push tapped from a killed app — the common case, since that is what a
+     * reminder is for — opened the app on the default tab and dropped whatever
+     * she tapped it for. Deduped by notification id against the listener, which
+     * may also deliver the same response.
+     */
+    const handled = new Set<string>();
+    const routeOnce = (response: {
+      notification: { request: { identifier: string; content: { data?: unknown } } };
+    }) => {
+      const id = response.notification.request.identifier;
+      if (handled.has(id)) return;
+      handled.add(id);
+      route(response);
+    };
+
+    Notifications.getLastNotificationResponseAsync()
+      .then((response) => {
+        if (!cancelled && response) routeOnce(response);
+      })
+      .catch((e) => logger.warn('Reading launch notification failed', e));
+
+    const sub = Notifications.addNotificationResponseReceivedListener(routeOnce);
+
+    return () => {
+      cancelled = true;
+      sub.remove();
+    };
   }, [user]);
 
   if (loading) {
@@ -168,33 +221,24 @@ export function AppNavigator() {
   const hasAccess = !!accountStatus && accountStatus.has_access;
   const awaitingStatus = isAuthed && accountStatus === null;
 
-  let stackKey: 'auth' | 'main' | 'gated' | 'pending';
-  let initialRoute: 'Landing' | 'Main' | 'SubscriptionRequired';
-  if (!isAuthed) {
-    stackKey = 'auth';
-    initialRoute = 'Landing';
-  } else if (awaitingStatus) {
-    stackKey = 'pending';
-    initialRoute = 'SubscriptionRequired';
-  } else if (hasAccess) {
-    stackKey = 'main';
-    initialRoute = 'Main';
-  } else {
-    stackKey = 'gated';
-    initialRoute = 'SubscriptionRequired';
-  }
-
+  // Hold the loading screen rather than flashing MainTabs at someone who turns
+  // out to be expired.
   if (awaitingStatus) {
     return <LoadingScreen />;
   }
 
+  // Remounts the navigator when the branch changes, so no route from the
+  // previous branch survives in the history.
+  const stackKey: 'auth' | 'main' | 'gated' = !isAuthed ? 'auth' : hasAccess ? 'main' : 'gated';
+
   return (
-    <RefetchTrialContext.Provider value={refetchTrialRef}>
+    // Anything inside the navigator that wants to interrupt her — the push
+    // pre-prompt, for one — waits its turn behind the consent gate below.
+    <MedicalConsentProvider accepted={disclaimerAccepted === true}>
       <NavigationContainer ref={navigationRef}>
         <Stack.Navigator
           key={stackKey}
           screenOptions={{ headerShown: false }}
-          initialRouteName={initialRoute}
         >
           {!isAuthed ? (
             <>
@@ -213,7 +257,7 @@ export function AppNavigator() {
         visible={disclaimerVisible}
         onAccept={handleDisclaimerAccept}
       />
-    </RefetchTrialContext.Provider>
+    </MedicalConsentProvider>
   );
 }
 

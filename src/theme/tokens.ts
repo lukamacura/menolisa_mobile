@@ -42,6 +42,10 @@ export const colors = {
   notificationUnreadBg: '#FDF5F8',
   notificationIconPrimarySoft: '#FCE8EF',
   notificationIconGoldSoft: '#FFF1E8',
+  /** Chat thread header — a warmer white than the canvas, so the bar reads as its own surface. */
+  chatHeaderBg: '#FDF8FA',
+  /** A live streak's flame. Deliberately hotter than `gold`, which is a plan tint. */
+  flame: '#F4623A',
   text: '#1F1B2D',
   textMuted: '#6B647C',
   textInverse: '#FFFFFF',
@@ -57,6 +61,30 @@ export const colors = {
   successBg: '#EAF8F1',
   info: '#4B8DF8',
   infoBg: '#EAF1FF',
+
+  /**
+   * Guided-session interval states (the Movement runner): red work, green rest,
+   * amber get-ready. Interval-timer language, because that is what a guided
+   * session is.
+   *
+   * Their own swatches, not `danger`/`success`/`warning`, for two reasons.
+   * Meaning: on a health screen the red that means "you are working" and the red
+   * that means "something is wrong with your account or your body" cannot be the
+   * same colour. And contrast: these three are the only fills in the app that
+   * carry the primary button, so each is dark enough for its `on*` text to clear
+   * 4.5:1 — `success` at #22A06B under white text is 3.3:1 and would have failed
+   * the moment the button started changing colour.
+   */
+  effort: '#D9304A',
+  effortBg: '#FEECEE',
+  onEffort: '#FFFFFF',
+  recover: '#157F52',
+  recoverBg: '#EAF8F1',
+  onRecover: '#FFFFFF',
+  ready: '#D98A1F',
+  readyBg: WARM_YELLOW_SURFACE,
+  /** Amber is the one fill white text cannot sit on (2.8:1). Ink instead. */
+  onReady: '#1F1B2D',
 };
 
 /** Soft gradient used on Landing (and auth/quiz screens for consistency) */

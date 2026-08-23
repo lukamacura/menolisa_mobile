@@ -21,7 +21,11 @@ import { logger } from '../lib/logger';
 import { API_CONFIG } from '../lib/api';
 import type { AuthStackParamList } from '../navigation/types';
 
-const REVIEWER_EMAILS = new Set<string>(['luka.xzy@gmail.com']);
+const REVIEWER_EMAILS = new Set<string>([
+  'luka.xzy@gmail.com',
+  // Seeded test account — see menolisa_web/scripts/seed-renewal-test.ts.
+  'luka.xzy+renewal@gmail.com',
+]);
 import { colors, spacing, radii, typography, shadows, minTouchTarget, landingGradient } from '../theme/tokens';
 import { StaggeredZoomIn, useReduceMotion } from '../components/StaggeredZoomIn';
 

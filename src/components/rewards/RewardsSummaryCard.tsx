@@ -42,7 +42,7 @@ export function RewardsSummaryCard({ rewards, onPress }: RewardsSummaryCardProps
             <Ionicons
               name="flame"
               size={26}
-              color={streak.activeToday ? '#F4623A' : colors.textMuted}
+              color={streak.activeToday ? colors.flame : colors.textMuted}
             />
             <Text style={styles.streakNumber}>{streak.current}</Text>
           </View>

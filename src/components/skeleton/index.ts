@@ -7,4 +7,5 @@ export {
   NotificationPrefsSkeleton,
   DailyLoopSkeleton,
   PlanDetailSkeleton,
+  ProgressSkeleton,
 } from './SkeletonPresets';

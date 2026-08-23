@@ -7,7 +7,6 @@ import {
   REST_BUMP_SECONDS,
   completedSets,
   nextStep,
-  skipToNextExercise,
   stepSeconds,
   totalSets,
   type SessionExercise,
@@ -35,13 +34,11 @@ export type SessionPlayer = {
   paused: boolean;
   /** 0-1 across the whole session, by completed sets. */
   progress: number;
-  /** Advances the current step early — "Done", "I'm ready", "Start now". */
+  /** Advances the current step early — "Skip set", "I'm ready", "Start now". */
   advance: () => void;
   /** Adds time to whatever is on the clock. No-op on an untimed step. */
   addTime: () => void;
   togglePause: () => void;
-  /** Abandons the rest of the current exercise and moves to the next. */
-  skipExercise: () => void;
   setsDone: number;
   setsTotal: number;
 };
@@ -91,11 +88,6 @@ export function useSessionPlayer(
     setPaused(false);
   }, [items]);
 
-  const skipExercise = useCallback(() => {
-    setStep((prev) => skipToNextExercise(prev, items));
-    setPaused(false);
-  }, [items]);
-
   // Offered on the work step too, not just the rest. It is what keeps the clock
   // on a set from being a deadline: a slower morning costs her a tap, never the
   // set.
@@ -108,18 +100,27 @@ export function useSessionPlayer(
     setRemaining((left) => (left === null ? left : left + REST_BUMP_SECONDS));
   }, [baseDuration]);
 
+  /** Mirrors `remaining` so `togglePause` need not depend on a value that moves 4x a second. */
+  const remainingRef = useRef<number | null>(null);
+  remainingRef.current = remaining;
+
   const togglePause = useCallback(() => {
     setPaused((wasPaused) => {
       // Resuming restarts the clock from whatever was left when she paused.
-      endsAt.current = wasPaused ? Date.now() + (remaining ?? 0) * 1000 : null;
+      endsAt.current = wasPaused ? Date.now() + (remainingRef.current ?? 0) * 1000 : null;
       return !wasPaused;
     });
-  }, [remaining]);
+  }, []);
 
   // Arm the clock whenever the step changes to a timed one.
   useEffect(() => {
     lastTick.current = null;
     setBonus(0);
+    // A pause belongs to the set she paused, not to the session. Skipping a set
+    // while paused used to carry the pause into the rest that followed, which
+    // only "pause" on a work step can clear — leaving her on a rest whose clock
+    // never ran down and whose only way out was a tap.
+    setPaused(false);
     if (baseDuration === null) {
       endsAt.current = null;
       setRemaining(null);
@@ -198,7 +199,6 @@ export function useSessionPlayer(
     advance,
     addTime,
     togglePause,
-    skipExercise,
     setsDone,
     setsTotal,
   };

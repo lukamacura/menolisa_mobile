@@ -200,3 +200,48 @@ export function taskProgressLabel(task: PlanTask, finished = false): string {
   }
   return task.doneToday > 0 ? 'Done today' : 'Not yet today';
 }
+
+/**
+ * How often the task asks to be done, in her words — "2 sessions a week",
+ * "4 times a day", "Every day".
+ *
+ * Nutrition rows have carried this line since the beginning ("Every meal", "6 or
+ * more") and it is the reason that screen reads as a list of instructions rather
+ * than a list of counters. A movement task is the one place the number was only
+ * ever implied — "1 of 2 this week" tells her where she is, not what she was
+ * asked for, and on the first day of a week those are the same sentence with
+ * very different meanings.
+ */
+export function taskCadenceHint(task: PlanTask): string | null {
+  const movement = task.pillar === 'movement';
+  const noun = movement ? 'session' : 'time';
+  const period = task.cadence === 'weekly' ? 'week' : 'day';
+
+  if (task.target > 1) return `${task.target} ${noun}s a ${period}`;
+  // Phrased as a count rather than "Every day" so it survives being dropped into
+  // a sentence — "your plan asks for one session a day" reads; "…for every day"
+  // does not. A pillar with no session to count keeps the plain form.
+  if (movement) return `One ${noun} a ${period}`;
+  return period === 'week' ? 'Once a week' : 'Every day';
+}
+
+/**
+ * What is still owed, in the timeframe the cadence implies — "1 more session
+ * this week", "All done this week".
+ *
+ * Deliberately not a fraction. `taskProgressLabel` already carries the count;
+ * this is the line that answers "am I finished?", which is the question she
+ * actually opens the screen with.
+ */
+export function taskRemainingLabel(task: PlanTask, finished = false): string {
+  const { value, total } = taskProgress(task, finished);
+  const weekly = task.cadence === 'weekly' && !finished;
+  const period = weekly ? 'this week' : 'today';
+  const noun = task.pillar === 'movement' ? 'session' : 'time';
+
+  if (value >= total) {
+    return total > 1 ? `All ${total} done ${period}` : `Done ${period}`;
+  }
+  const left = total - value;
+  return `${left} more ${left === 1 ? noun : `${noun}s`} ${period}`;
+}

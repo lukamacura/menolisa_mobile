@@ -1,15 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { apiFetchWithAuth, API_CONFIG } from '../lib/api';
 import { getNativeExpoNotifications } from '../lib/expoNotificationsGate';
+import { getDevicePushToken, registerPushToken } from '../lib/pushToken';
 
 const NOTIFICATION_PROMPT_SHOWN_KEY = 'notification_prompt_shown';
-
-async function registerTokenWithBackend(token: string): Promise<void> {
-  await apiFetchWithAuth(API_CONFIG.endpoints.notificationsPushToken, {
-    method: 'PUT',
-    body: JSON.stringify({ token }),
-  });
-}
 
 export type NotificationPermissionStatus = 'undetermined' | 'granted' | 'denied';
 
@@ -26,14 +19,11 @@ export function useRegisterPushToken(userId: string | undefined): {
   const [permissionStatus, setPermissionStatus] = useState<NotificationPermissionStatus>('undetermined');
 
   const fetchAndRegisterToken = useCallback(async () => {
-    const Notifications = getNativeExpoNotifications();
-    if (!Notifications) return;
-    const tokenData = await Notifications.getExpoPushTokenAsync();
-    const token = tokenData?.data;
+    const token = await getDevicePushToken();
     if (!token) return;
     if (lastTokenRef.current === token) return;
     lastTokenRef.current = token;
-    await registerTokenWithBackend(token);
+    await registerPushToken(token);
   }, []);
 
   const requestPermissionAndRegister = useCallback(async () => {
@@ -85,7 +75,7 @@ export function useRegisterPushToken(userId: string | undefined): {
       const t = e.data;
       if (typeof t === 'string' && t !== lastTokenRef.current) {
         lastTokenRef.current = t;
-        registerTokenWithBackend(t).catch(() => {});
+        registerPushToken(t).catch(() => {});
       }
     });
 

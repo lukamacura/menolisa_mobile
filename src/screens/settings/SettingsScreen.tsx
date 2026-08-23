@@ -1,4 +1,4 @@
-import React, { useCallback, useContext, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -15,11 +15,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAuth } from '../../context/AuthContext';
-import { RefetchTrialContext } from '../../context/RefetchTrialContext';
 import { deleteAccount, getWebAppUrl, openAccountBillingEntry } from '../../lib/api';
 import { useTrialStatus } from '../../hooks/useTrialStatus';
 import { colors, spacing, radii, typography } from '../../theme/tokens';
 import { StaggeredZoomIn, useReduceMotion } from '../../components/StaggeredZoomIn';
+import { errorMessage } from '../../lib/errorCopy';
 
 type SettingsStackParamList = {
   Settings: undefined;
@@ -27,20 +27,46 @@ type SettingsStackParamList = {
 };
 type NavProp = NativeStackNavigationProp<SettingsStackParamList, 'Settings'>;
 
+/**
+ * Where "contact support" actually goes.
+ *
+ * `disputed` and `past_due` both render a status line telling her to reach
+ * support, and for a long time the app had no way to do it — no address, no
+ * link, nothing. Someone locked out of her own account was told to do something
+ * impossible. The mail app is the first choice because it carries her address
+ * with it; the web form is the fallback for a device with no mail client
+ * configured, which is common enough on Android to matter.
+ */
+const SUPPORT_EMAIL = 'menolisahelp@gmail.com';
+const SUPPORT_SUBJECT = 'MenoLisa support request';
+
+/**
+ * The money sentence on the delete dialog.
+ *
+ * `POST /api/account/delete` cancels the Stripe subscription immediately and
+ * asks for no proration — refunds are a manual support decision. So deleting on
+ * day 4 of 56 burns seven and a half weeks she has already paid for, and the
+ * dialog used to say only "your account and all your data". A charge she cannot
+ * see coming is how a cancellation becomes a chargeback; she gets told first.
+ *
+ * Returns null when there is nothing left to forfeit — no live access means no
+ * paid time to lose, and an invented warning is its own kind of dishonest.
+ */
+function billingForfeitWarning(expired: boolean, daysLeft: number | null): string | null {
+  if (expired) return null;
+  if (daysLeft === null || daysLeft <= 0) {
+    return 'Your subscription is cancelled immediately. Unused time is not refunded automatically — contact us first if you want it reviewed.';
+  }
+  const days = daysLeft === 1 ? '1 day' : `${daysLeft} days`;
+  return `Your subscription is cancelled immediately and the ${days} you have already paid for are not refunded automatically. If you want that reviewed, contact us before deleting.`;
+}
+
 export function SettingsScreen() {
   const navigation = useNavigation<NavProp>();
   const { signOut } = useAuth();
-  const refetchTrialRef = useContext(RefetchTrialContext);
   const trialStatus = useTrialStatus();
   const reduceMotion = useReduceMotion();
   const [actionLoading, setActionLoading] = useState<'delete' | null>(null);
-
-  useEffect(() => {
-    if (refetchTrialRef) refetchTrialRef.current = trialStatus.refetch;
-    return () => {
-      if (refetchTrialRef) refetchTrialRef.current = null;
-    };
-  }, [refetchTrialRef, trialStatus.refetch]);
 
   useFocusEffect(
     useCallback(() => {
@@ -48,9 +74,48 @@ export function SettingsScreen() {
     }, [trialStatus.refetch])
   );
 
-  const handleLogout = async () => {
-    await signOut();
-  };
+  /**
+   * Confirmed, because signing back in is not free.
+   *
+   * There is no password — getting back in means waiting on a 6-digit code in
+   * her inbox. This row also sits directly above "Delete account" in the same
+   * red treatment, so a mis-tap while scrolling used to lock her out of her own
+   * symptom history until she could reach her email.
+   */
+  const handleLogout = useCallback(() => {
+    const title = 'Log out?';
+    const message =
+      "You'll need a new 6-digit code sent to your email to sign back in. Your data stays exactly as it is.";
+
+    if (Platform.OS === 'web') {
+      if (window.confirm(`${title}\n\n${message}`)) void signOut();
+      return;
+    }
+
+    Alert.alert(title, message, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Log out', style: 'destructive', onPress: () => void signOut() },
+    ]);
+  }, [signOut]);
+
+  /** Mail first, web form when there is no mail client to answer the intent. */
+  const handleContactSupport = useCallback(async () => {
+    const mailto = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(SUPPORT_SUBJECT)}`;
+    try {
+      const canMail = await Linking.canOpenURL(mailto);
+      if (canMail) {
+        await Linking.openURL(mailto);
+        return;
+      }
+      await Linking.openURL(getWebAppUrl('/contact'));
+    } catch {
+      // Last resort: tell her the address so she can reach us from any device.
+      Alert.alert(
+        'Contact support',
+        `Email us at ${SUPPORT_EMAIL} and we'll get back to you.`
+      );
+    }
+  }, []);
 
   const runDeleteAccount = useCallback(async () => {
     setActionLoading('delete');
@@ -59,7 +124,7 @@ export function SettingsScreen() {
       await signOut();
     } catch (e) {
       setActionLoading(null);
-      const message = e instanceof Error ? e.message : 'Could not delete account. Please try again.';
+      const message = errorMessage(e, 'Could not delete your account. Please try again.');
       if (Platform.OS === 'web') {
         window.alert(message);
       } else {
@@ -70,8 +135,12 @@ export function SettingsScreen() {
 
   const handleDeleteAccount = useCallback(() => {
     const title = 'Delete account';
-    const message =
-      'Are you sure? This will permanently delete your account and all your data. You will need to sign up again to use MenoLisa.';
+    const message = [
+      'This permanently deletes your account and all your data — symptom logs, plan history and chats. You will need to sign up again to use MenoLisa.',
+      billingForfeitWarning(trialStatus.expired, trialStatus.daysLeft),
+    ]
+      .filter(Boolean)
+      .join('\n\n');
 
     if (Platform.OS === 'web') {
       const confirmed = window.confirm(`${title}\n\n${message}`);
@@ -87,7 +156,7 @@ export function SettingsScreen() {
         onPress: runDeleteAccount,
       },
     ]);
-  }, [runDeleteAccount]);
+  }, [runDeleteAccount, trialStatus.expired, trialStatus.daysLeft]);
 
   // Same on every platform: IAP is gone, Stripe on the web is the only billing path.
   // This must never open the paywall — it is reached by subscribers with active access.
@@ -97,7 +166,7 @@ export function SettingsScreen() {
     } catch (e) {
       Alert.alert(
         'Open account',
-        e instanceof Error ? e.message : 'Could not open account options. Please try again.'
+        errorMessage(e, 'Could not open account options. Please try again.')
       );
     }
   }, []);
@@ -173,7 +242,27 @@ export function SettingsScreen() {
         </View>
 
         <View style={styles.section}>
+          {/* First in this group on purpose: the status card above can say
+              "Access paused • Contact support", and the thing it names has to
+              be the next thing she sees — not buried under the legal rows. */}
           <StaggeredZoomIn delayIndex={2} reduceMotion={reduceMotion}>
+            <TouchableOpacity
+              activeOpacity={1}
+              style={[styles.row, styles.supportRow]}
+              onPress={handleContactSupport}
+              accessibilityRole="button"
+              accessibilityLabel="Contact support"
+              accessibilityHint={`Opens an email to ${SUPPORT_EMAIL}`}
+            >
+              <Ionicons name="help-buoy-outline" size={22} color={colors.navy} />
+              <View style={styles.rowTextWrap}>
+                <Text style={styles.supportRowLabel}>Contact support</Text>
+                <Text style={styles.rowSubtext}>{SUPPORT_EMAIL}</Text>
+              </View>
+              <Ionicons name="open-outline" size={18} color={colors.navy} />
+            </TouchableOpacity>
+          </StaggeredZoomIn>
+          <StaggeredZoomIn delayIndex={3} reduceMotion={reduceMotion}>
             <TouchableOpacity
               activeOpacity={1}
               style={[styles.row, styles.blueRow]}
@@ -184,7 +273,7 @@ export function SettingsScreen() {
               <Ionicons name="chevron-forward" size={20} color={colors.blue} />
             </TouchableOpacity>
           </StaggeredZoomIn>
-          <StaggeredZoomIn delayIndex={3} reduceMotion={reduceMotion}>
+          <StaggeredZoomIn delayIndex={4} reduceMotion={reduceMotion}>
             <TouchableOpacity
               activeOpacity={1}
               style={[styles.row, styles.goldRow]}
@@ -195,7 +284,7 @@ export function SettingsScreen() {
               <Ionicons name="open-outline" size={18} color={colors.navy} />
             </TouchableOpacity>
           </StaggeredZoomIn>
-          <StaggeredZoomIn delayIndex={4} reduceMotion={reduceMotion}>
+          <StaggeredZoomIn delayIndex={5} reduceMotion={reduceMotion}>
             <TouchableOpacity
               activeOpacity={1}
               style={[styles.row, styles.goldRow]}
@@ -206,7 +295,7 @@ export function SettingsScreen() {
               <Ionicons name="open-outline" size={18} color={colors.navy} />
             </TouchableOpacity>
           </StaggeredZoomIn>
-          <StaggeredZoomIn delayIndex={5} reduceMotion={reduceMotion}>
+          <StaggeredZoomIn delayIndex={6} reduceMotion={reduceMotion}>
             <TouchableOpacity
               activeOpacity={1}
               style={[styles.row, styles.logoutRow]}
@@ -216,7 +305,7 @@ export function SettingsScreen() {
               <Text style={styles.logoutLabel}>Log out</Text>
             </TouchableOpacity>
           </StaggeredZoomIn>
-          <StaggeredZoomIn delayIndex={6} reduceMotion={reduceMotion}>
+          <StaggeredZoomIn delayIndex={7} reduceMotion={reduceMotion}>
             <TouchableOpacity
               activeOpacity={1}
               style={[styles.row, styles.deleteAccountRow]}
@@ -237,7 +326,7 @@ export function SettingsScreen() {
           </StaggeredZoomIn>
         </View>
 
-        <StaggeredZoomIn delayIndex={7} reduceMotion={reduceMotion}>
+        <StaggeredZoomIn delayIndex={8} reduceMotion={reduceMotion}>
           <Text style={styles.disclaimer}>
             MenoLisa is for informational purposes only and is not a substitute for professional medical advice, diagnosis, or treatment. Always consult a qualified healthcare provider.
           </Text>
@@ -323,6 +412,15 @@ const styles = StyleSheet.create({
     fontFamily: typography.family.regular,
     color: colors.textMuted,
     marginTop: 2,
+  },
+  supportRow: {
+    backgroundColor: colors.rowNavyBg,
+    borderColor: 'rgba(46, 42, 77, 0.35)',
+  },
+  supportRowLabel: {
+    fontSize: 16,
+    fontFamily: typography.family.medium,
+    color: colors.navy,
   },
   blueRow: {
     backgroundColor: colors.rowBlueBg,

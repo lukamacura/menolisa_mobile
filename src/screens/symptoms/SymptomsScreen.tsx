@@ -11,21 +11,35 @@ import {
   ScrollView,
   Alert,
   Image,
+  RefreshControl,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { apiFetchWithAuth, API_CONFIG } from '../../lib/api';
+import { errorMessage } from '../../lib/errorCopy';
 import { getTriggersForSymptom, type TimeSelection } from '../../lib/symptomTrackerConstants';
+import {
+  TIME_INPUT_MAX_LENGTH,
+  TIME_INPUT_PLACEHOLDER,
+  formatTimeInput,
+  resolveLoggedAt,
+} from '../../lib/symptomTime';
 import { getSymptomIllustration } from '../../lib/symptomIllustration';
+import { useSymptomsToday } from '../../hooks/useSymptomsToday';
 
 import type { TodayStackParamList } from '../../navigation/types';
 
 type NavProp = NativeStackNavigationProp<TodayStackParamList, 'Symptoms'>;
 import { colors, spacing, radii, typography, minTouchTarget, shadows } from '../../theme/tokens';
 import { StaggeredZoomIn, useReduceMotion } from '../../components/StaggeredZoomIn';
-import { GratitudeSuccessPanel } from '../../components/GratitudeSuccessPanel';
+import {
+  GratitudeSuccessPanel,
+  GRATITUDE_DISMISS_MS,
+} from '../../components/GratitudeSuccessPanel';
 import { SymptomsSkeleton, ContentTransition } from '../../components/skeleton';
 
 type Symptom = {
@@ -55,7 +69,12 @@ export function SymptomsScreen() {
   const reduceMotion = useReduceMotion();
   const [symptoms, setSymptoms] = useState<Symptom[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [addVisible, setAddVisible] = useState(false);
+  const [newSymptomName, setNewSymptomName] = useState('');
+  const [addError, setAddError] = useState<string | null>(null);
+  const [addSubmitting, setAddSubmitting] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedSymptom, setSelectedSymptom] = useState<Symptom | null>(null);
   const [severity, setSeverity] = useState<number>(1);
@@ -66,7 +85,9 @@ export function SymptomsScreen() {
   const [modalStep, setModalStep] = useState(1);
   const [customTrigger, setCustomTrigger] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [todayCount, setTodayCount] = useState<number | null>(null);
+  // Same count the hub shows, from the same hook — this screen used to keep its
+  // own copy of the fetch and the local-midnight cut, so the two could disagree.
+  const { count: todayCount, refresh: loadTodayCount } = useSymptomsToday();
   const [showLogSuccess, setShowLogSuccess] = useState(false);
   const [successSnapshot, setSuccessSnapshot] = useState<SuccessSnapshot | null>(null);
 
@@ -78,27 +99,9 @@ export function SymptomsScreen() {
       const data = await apiFetchWithAuth(API_CONFIG.endpoints.symptoms);
       setSymptoms(Array.isArray(data) ? data : data?.data ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load symptoms');
+      setError(errorMessage(e, 'We could not load your symptoms.'));
     } finally {
       setLoading(false);
-    }
-  }, []);
-
-  const loadTodayCount = useCallback(async () => {
-    try {
-      const res = await apiFetchWithAuth(
-        `${API_CONFIG.endpoints.symptomLogs}?days=1`
-      );
-      const logs = res?.data ?? [];
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
-      const count = logs.filter(
-        (log: { logged_at?: string }) =>
-          log.logged_at && new Date(log.logged_at) >= todayStart
-      ).length;
-      setTodayCount(count);
-    } catch {
-      setTodayCount(null);
     }
   }, []);
 
@@ -106,9 +109,19 @@ export function SymptomsScreen() {
     loadSymptoms();
   }, [loadSymptoms]);
 
-  useEffect(() => {
-    loadTodayCount();
-  }, [loadTodayCount]);
+  /**
+   * Pull-to-refresh, which this screen was the only list in the app to lack.
+   *
+   * It also only ever fetched on mount, so a failed load left her stuck with no
+   * way to retry short of backing out to the hub and coming in again — and
+   * nothing on screen suggested that would help.
+   */
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    Promise.all([loadSymptoms(), loadTodayCount()])
+      .catch(() => {})
+      .finally(() => setRefreshing(false));
+  }, [loadSymptoms, loadTodayCount]);
 
   const closeModalAndRefresh = useCallback(() => {
     setModalVisible(false);
@@ -126,7 +139,7 @@ export function SymptomsScreen() {
 
     const timer = setTimeout(() => {
       closeModalAndRefresh();
-    }, 1800);
+    }, GRATITUDE_DISMISS_MS);
 
     return () => clearTimeout(timer);
   }, [showLogSuccess, closeModalAndRefresh]);
@@ -153,6 +166,59 @@ export function SymptomsScreen() {
     setSuccessSnapshot(null);
   };
 
+  /**
+   * Adding one of her own — the missing half of long-press-to-delete.
+   *
+   * `POST /api/symptoms` has existed all along; the app just never called it,
+   * so the tracker was a one-way ratchet. She could destroy a symptom she had
+   * created (an accidental long-press on a tile she meant to tap, confirmed out
+   * of muscle memory) and then had no way to bring it back without finding a
+   * laptop. Deleting something you cannot recreate is the part that stings.
+   *
+   * The server defaults `icon` and matches nothing in the illustration set for
+   * a custom name, so the grid falls back to an Ionicon — see
+   * `getSymptomIllustration`. No icon picker here on purpose: naming the thing
+   * is the whole job.
+   */
+  const openAddModal = useCallback(() => {
+    setNewSymptomName('');
+    setAddError(null);
+    setAddVisible(true);
+  }, []);
+
+  const closeAddModal = useCallback(() => {
+    if (addSubmitting) return;
+    setAddVisible(false);
+    setNewSymptomName('');
+    setAddError(null);
+  }, [addSubmitting]);
+
+  const trimmedNewName = newSymptomName.trim();
+  const duplicateName = symptoms.some(
+    (s) => s.name.trim().toLowerCase() === trimmedNewName.toLowerCase()
+  );
+  const canSubmitNewSymptom = trimmedNewName.length > 0 && !duplicateName && !addSubmitting;
+
+  const submitNewSymptom = useCallback(async () => {
+    const name = newSymptomName.trim();
+    if (!name || addSubmitting) return;
+    setAddSubmitting(true);
+    setAddError(null);
+    try {
+      await apiFetchWithAuth(API_CONFIG.endpoints.symptoms, {
+        method: 'POST',
+        body: JSON.stringify({ name }),
+      });
+      setAddVisible(false);
+      setNewSymptomName('');
+      await loadSymptoms();
+    } catch (e) {
+      setAddError(errorMessage(e, 'We could not add that symptom.'));
+    } finally {
+      setAddSubmitting(false);
+    }
+  }, [newSymptomName, addSubmitting, loadSymptoms]);
+
   const handleDeleteSymptom = useCallback((symptom: Symptom) => {
     if (symptom.is_default) {
       Alert.alert('Cannot delete', 'Default symptoms cannot be removed.');
@@ -161,7 +227,7 @@ export function SymptomsScreen() {
     const symptomId = symptom.id;
     Alert.alert(
       'Delete symptom?',
-      `Remove "${symptom.name}" from your list? All logs for this symptom will remain, but you won't see it in the tracker anymore.`,
+      `Remove "${symptom.name}" from your list? All logs for this symptom will remain, and you can add it back any time with "Add your own".`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -177,7 +243,7 @@ export function SymptomsScreen() {
               loadSymptoms();
             };
             runDelete().catch((e) => {
-              Alert.alert('Error', e instanceof Error ? e.message : 'Failed to delete symptom');
+              Alert.alert('Could not delete', errorMessage(e, 'We could not remove that symptom.'));
             });
           },
         },
@@ -199,36 +265,16 @@ export function SymptomsScreen() {
     }
   };
 
-  const getLoggedAtTimestamp = (): string | undefined => {
-    if (timeSelection === 'now') return undefined;
-    const now = new Date();
-    if (timeSelection === 'earlier-today') {
-      if (customTime) {
-        const [hours, minutes] = customTime.split(':').map(Number);
-        const logTime = new Date(now);
-        logTime.setHours(hours, minutes, 0, 0);
-        return logTime.toISOString();
-      }
-      const logTime = new Date(now);
-      logTime.setHours(logTime.getHours() - 2);
-      return logTime.toISOString();
-    }
-    if (timeSelection === 'yesterday') {
-      const logTime = new Date(now);
-      logTime.setDate(logTime.getDate() - 1);
-      if (customTime) {
-        const [hours, minutes] = customTime.split(':').map(Number);
-        logTime.setHours(hours, minutes, 0, 0);
-      } else {
-        logTime.setHours(now.getHours(), now.getMinutes(), 0, 0);
-      }
-      return logTime.toISOString();
-    }
-    return undefined;
-  };
+  // Recomputed on every keystroke so the footer button and the inline hint
+  // agree with each other and with what submit will actually send.
+  const loggedAtResult = resolveLoggedAt(timeSelection, customTime);
+  const timeError = loggedAtResult.valid ? null : loggedAtResult.message;
 
   const submitLog = async () => {
     if (!selectedSymptom) return;
+    // Re-checked here as well as on the button: a malformed time must never
+    // reach `.toISOString()`, which throws and loses the log she just described.
+    if (!loggedAtResult.valid) return;
     setSubmitting(true);
     try {
       await apiFetchWithAuth(API_CONFIG.endpoints.symptomLogs, {
@@ -238,7 +284,7 @@ export function SymptomsScreen() {
           severity,
           triggers: selectedTriggers,
           notes: notes.trim() || undefined,
-          loggedAt: getLoggedAtTimestamp(),
+          loggedAt: loggedAtResult.loggedAt,
         }),
       });
       const severityLabel =
@@ -251,9 +297,11 @@ export function SymptomsScreen() {
       setSubmitting(false);
       setShowLogSuccess(true);
     } catch (e) {
+      // Her description is still in the form behind this alert, so the copy
+      // says the log was not saved — not that it was lost.
       Alert.alert(
-        'Error',
-        e instanceof Error ? e.message : 'Failed to log symptom'
+        'Could not save',
+        errorMessage(e, 'We could not save that log. Your entry is still here — try again.')
       );
       setSubmitting(false);
     }
@@ -262,6 +310,9 @@ export function SymptomsScreen() {
   const symptomTriggers = getTriggersForSymptom(selectedSymptom?.name ?? '');
   const hasTriggers = symptomTriggers.length > 0;
   const totalSteps = hasTriggers ? 4 : 3;
+  /** The timing step — the only one that can hold input we refuse to send. */
+  const timingStep = hasTriggers ? 3 : 2;
+  const canLeaveStep = modalStep !== timingStep || loggedAtResult.valid;
 
   if (loading) {
     return (
@@ -276,7 +327,10 @@ export function SymptomsScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ContentTransition>
-      {error && (
+      {/* Only when there is still a grid to sit above. With an empty list the
+          empty state carries the same message and a retry, and showing both
+          reads as two separate things having gone wrong. */}
+      {error && symptoms.length > 0 && (
         <StaggeredZoomIn delayIndex={0} reduceMotion={reduceMotion}>
           <View style={styles.errorBanner}>
             <Text style={styles.errorText}>{error}</Text>
@@ -289,6 +343,13 @@ export function SymptomsScreen() {
         numColumns={2}
         columnWrapperStyle={styles.gridRow}
         contentContainerStyle={styles.listContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+          />
+        }
         ListHeaderComponent={
           <View style={styles.listHeader}>
             {todayCount !== null ? (
@@ -314,14 +375,70 @@ export function SymptomsScreen() {
           </View>
         }
         ListEmptyComponent={
-          <Text style={styles.emptyText}>
-            No symptoms set up yet. You can add and manage symptoms in the web app, or ask your coach in Chat to log one for you.
-          </Text>
+          /* An empty list after a failed request is not an empty list — it is a
+             request we never got an answer to. Saying "no symptoms set up yet"
+             there told her something false about her own account and offered no
+             way to find out otherwise. */
+          error ? (
+            <View style={styles.emptyStateWrap}>
+              <Ionicons name="cloud-offline-outline" size={40} color={colors.textMuted} />
+              <Text style={styles.emptyTitle}>We could not load your symptoms</Text>
+              <Text style={styles.emptyText}>{error}</Text>
+              <TouchableOpacity
+                activeOpacity={0.85}
+                style={styles.emptyActionButton}
+                onPress={() => {
+                  setLoading(true);
+                  loadSymptoms();
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Try loading your symptoms again"
+              >
+                <Ionicons name="refresh" size={18} color={colors.background} />
+                <Text style={styles.emptyActionText}>Try again</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.emptyStateWrap}>
+              <Ionicons name="add-circle-outline" size={40} color={colors.textMuted} />
+              <Text style={styles.emptyTitle}>No symptoms set up yet</Text>
+              <Text style={styles.emptyText}>
+                Add the ones you want to keep an eye on, or ask Lisa in Chat to log one for you.
+              </Text>
+              <TouchableOpacity
+                activeOpacity={0.85}
+                style={styles.emptyActionButton}
+                onPress={openAddModal}
+                accessibilityRole="button"
+                accessibilityLabel="Add your own symptom"
+              >
+                <Ionicons name="add" size={18} color={colors.background} />
+                <Text style={styles.emptyActionText}>Add your own</Text>
+              </TouchableOpacity>
+            </View>
+          )
         }
         ListFooterComponent={
-          <Text style={styles.symptomsDisclaimer}>
-            Symptom logs are for personal tracking only and are not a medical record. Share with your healthcare provider.
-          </Text>
+          <>
+            {/* The visible half of the pair. Long-press-to-delete has no
+                affordance at all, so without this the only discoverable
+                operation on her own symptoms was destroying them. */}
+            {symptoms.length > 0 ? (
+              <TouchableOpacity
+                activeOpacity={0.85}
+                style={styles.addSymptomButton}
+                onPress={openAddModal}
+                accessibilityRole="button"
+                accessibilityLabel="Add your own symptom"
+              >
+                <Ionicons name="add-circle-outline" size={20} color={colors.primary} />
+                <Text style={styles.addSymptomButtonText}>Add your own</Text>
+              </TouchableOpacity>
+            ) : null}
+            <Text style={styles.symptomsDisclaimer}>
+              Symptom logs are for personal tracking only and are not a medical record. Share with your healthcare provider.
+            </Text>
+          </>
         }
         renderItem={({ item, index }) => {
           const illustration = getSymptomIllustration(item.name, item.icon);
@@ -530,11 +647,14 @@ export function SymptomsScreen() {
                   </TouchableOpacity>
                   {timeSelection === 'earlier-today' && (
                     <TextInput
-                      style={styles.timePickerInput}
+                      style={[styles.timePickerInput, timeError && styles.timePickerInputError]}
                       value={customTime}
-                      onChangeText={setCustomTime}
-                      placeholder="HH:MM"
+                      onChangeText={(text) => setCustomTime(formatTimeInput(text))}
+                      placeholder={TIME_INPUT_PLACEHOLDER}
                       placeholderTextColor={colors.textMuted}
+                      keyboardType="number-pad"
+                      maxLength={TIME_INPUT_MAX_LENGTH}
+                      accessibilityLabel="Time this happened, 24-hour clock"
                     />
                   )}
                   <TouchableOpacity
@@ -551,13 +671,17 @@ export function SymptomsScreen() {
                   </TouchableOpacity>
                   {timeSelection === 'yesterday' && (
                     <TextInput
-                      style={styles.timePickerInput}
+                      style={[styles.timePickerInput, timeError && styles.timePickerInputError]}
                       value={customTime}
-                      onChangeText={setCustomTime}
-                      placeholder="HH:MM"
+                      onChangeText={(text) => setCustomTime(formatTimeInput(text))}
+                      placeholder={TIME_INPUT_PLACEHOLDER}
                       placeholderTextColor={colors.textMuted}
+                      keyboardType="number-pad"
+                      maxLength={TIME_INPUT_MAX_LENGTH}
+                      accessibilityLabel="Time this happened, 24-hour clock"
                     />
                   )}
+                  {timeError && <Text style={styles.timeErrorText}>{timeError}</Text>}
                 </>
               )}
               {((modalStep === 4 && hasTriggers) || (modalStep === 3 && !hasTriggers)) && (
@@ -589,8 +713,9 @@ export function SymptomsScreen() {
               {modalStep < totalSteps ? (
                 <TouchableOpacity
                   activeOpacity={1}
-                  style={styles.footerBtnPrimary}
+                  style={[styles.footerBtnPrimary, !canLeaveStep && styles.submitBtnDisabled]}
                   onPress={() => setModalStep((s) => s + 1)}
+                  disabled={!canLeaveStep}
                 >
                   <Text style={styles.footerBtnPrimaryText}>Next</Text>
                   <Ionicons name="chevron-forward" size={20} color={colors.textInverse} />
@@ -598,9 +723,13 @@ export function SymptomsScreen() {
               ) : (
                 <TouchableOpacity
                   activeOpacity={1}
-                  style={[styles.submitBtn, styles.submitBtnFlex, submitting && styles.submitBtnDisabled]}
+                  style={[
+                    styles.submitBtn,
+                    styles.submitBtnFlex,
+                    (submitting || !loggedAtResult.valid) && styles.submitBtnDisabled,
+                  ]}
                   onPress={submitLog}
-                  disabled={submitting}
+                  disabled={submitting || !loggedAtResult.valid}
                 >
                   {submitting ? (
                     <ActivityIndicator size="small" color={colors.textInverse} />
@@ -614,6 +743,81 @@ export function SymptomsScreen() {
             )}
           </View>
         </View>
+      </Modal>
+
+      <Modal
+        visible={addVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={closeAddModal}
+      >
+        {/* Bottom-anchored sheet with a text field in it: without this the
+            keyboard rises straight over the input and the submit button. */}
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={styles.addModalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Add your own</Text>
+              <TouchableOpacity
+                activeOpacity={1}
+                onPress={closeAddModal}
+                disabled={addSubmitting}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                accessibilityRole="button"
+                accessibilityLabel="Close"
+              >
+                <Ionicons name="close" size={28} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.addModalHint}>
+              What would you like to keep an eye on? It will appear alongside the others.
+            </Text>
+
+            <TextInput
+              style={styles.addInput}
+              placeholder="Headaches"
+              placeholderTextColor={colors.textMuted}
+              value={newSymptomName}
+              onChangeText={(text) => {
+                setNewSymptomName(text);
+                if (addError) setAddError(null);
+              }}
+              autoFocus
+              autoCapitalize="sentences"
+              autoCorrect
+              maxLength={40}
+              returnKeyType="done"
+              onSubmitEditing={() => {
+                if (canSubmitNewSymptom) submitNewSymptom();
+              }}
+              editable={!addSubmitting}
+              accessibilityLabel="Symptom name"
+            />
+
+            {duplicateName ? (
+              <Text style={styles.addInlineHint}>You are already tracking that one.</Text>
+            ) : null}
+            {addError ? <Text style={styles.addErrorText}>{addError}</Text> : null}
+
+            <TouchableOpacity
+              activeOpacity={0.85}
+              style={[styles.addSubmitButton, !canSubmitNewSymptom && styles.addSubmitButtonDisabled]}
+              onPress={submitNewSymptom}
+              disabled={!canSubmitNewSymptom}
+              accessibilityRole="button"
+              accessibilityLabel="Add symptom"
+            >
+              {addSubmitting ? (
+                <ActivityIndicator color={colors.background} />
+              ) : (
+                <Text style={styles.addSubmitText}>Add symptom</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
@@ -723,7 +927,106 @@ const styles = StyleSheet.create({
     ...typography.presets.bodySmall,
     color: colors.textMuted,
     textAlign: 'center',
+  },
+  emptyStateWrap: {
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
     marginTop: spacing.xl,
+  },
+  emptyTitle: {
+    ...typography.presets.heading3,
+    color: colors.text,
+    textAlign: 'center',
+  },
+  emptyActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+    minHeight: minTouchTarget,
+    paddingHorizontal: spacing.xl,
+    borderRadius: radii.lg,
+    backgroundColor: colors.primary,
+    ...shadows.buttonPrimary,
+  },
+  emptyActionText: {
+    ...typography.presets.button,
+    color: colors.background,
+  },
+  addSymptomButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.lg,
+    marginHorizontal: spacing.lg,
+    minHeight: minTouchTarget,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: colors.primary,
+    backgroundColor: colors.surface,
+  },
+  addSymptomButtonText: {
+    ...typography.presets.button,
+    color: colors.primary,
+  },
+  addModalContent: {
+    backgroundColor: colors.background,
+    borderTopLeftRadius: radii.xl,
+    borderTopRightRadius: radii.xl,
+    paddingBottom: spacing['2xl'],
+  },
+  addModalHint: {
+    ...typography.presets.bodySmall,
+    color: colors.textMuted,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+  },
+  addInput: {
+    ...typography.presets.body,
+    color: colors.text,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  addInlineHint: {
+    ...typography.presets.caption,
+    color: colors.textMuted,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xs,
+  },
+  addErrorText: {
+    ...typography.presets.caption,
+    color: colors.danger,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xs,
+  },
+  addSubmitButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    minHeight: minTouchTarget,
+    borderRadius: radii.lg,
+    backgroundColor: colors.primary,
+    ...shadows.buttonPrimary,
+  },
+  addSubmitButtonDisabled: {
+    opacity: 0.6,
+    backgroundColor: colors.borderStrong,
+  },
+  addSubmitText: {
+    ...typography.presets.button,
+    color: colors.background,
   },
   modalOverlay: {
     flex: 1,
@@ -801,7 +1104,7 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
   stepDotTextActive: {
-    color: '#fff',
+    color: colors.textInverse,
   },
   stepLine: {
     flex: 1,
@@ -839,7 +1142,7 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   severityLabelActive: {
-    color: '#fff',
+    color: colors.textInverse,
   },
   severityDescription: {
     fontSize: 9,
@@ -875,7 +1178,7 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   triggerChipTextActive: {
-    color: '#fff',
+    color: colors.textInverse,
   },
   customTriggerRow: {
     flexDirection: 'row',
@@ -922,7 +1225,7 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   timingOptionTextActive: {
-    color: '#fff',
+    color: colors.textInverse,
   },
   timePickerInput: {
     borderWidth: 1,
@@ -933,6 +1236,15 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     marginLeft: spacing.lg,
     color: colors.text,
+  },
+  timePickerInputError: {
+    borderColor: colors.danger,
+  },
+  timeErrorText: {
+    ...typography.presets.caption,
+    color: colors.danger,
+    marginLeft: spacing.lg,
+    marginBottom: spacing.sm,
   },
   modalFooter: {
     flexDirection: 'row',

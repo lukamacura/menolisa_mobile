@@ -30,6 +30,12 @@ export type AccountStatus = {
   subscription_canceled: boolean;
   payment_failed_at: string | null;
   has_onboarding: boolean;
+  /**
+   * Her first name, already trimmed to one word by the server. Null when the
+   * quiz never captured one — every surface that uses it must read fine
+   * without it, so never build a sentence that needs it to be there.
+   */
+  first_name: string | null;
 };
 
 const STATUS_TIMEOUT_MS = 10_000;
@@ -49,27 +55,8 @@ export const DENIED_ACCOUNT_STATUS: AccountStatus = {
   subscription_canceled: false,
   payment_failed_at: null,
   has_onboarding: false,
+  first_name: null,
 };
-
-function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const t = setTimeout(() => {
-      const err = new Error(`${label} timed out after ${ms}ms`);
-      (err as Error & { code?: string }).code = 'TIMEOUT';
-      reject(err);
-    }, ms);
-    promise.then(
-      (v) => {
-        clearTimeout(t);
-        resolve(v);
-      },
-      (e) => {
-        clearTimeout(t);
-        reject(e);
-      },
-    );
-  });
-}
 
 /**
  * Fetch the canonical account/subscription status from the web API.
@@ -79,11 +66,12 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
  * fail-closed rules, and a schema change silently breaks the read.
  */
 export async function fetchAccountStatus(): Promise<AccountStatus> {
-  const data = await withTimeout(
-    apiFetchWithAuth(ACCOUNT_STATUS_ENDPOINT, { method: 'GET' }),
-    STATUS_TIMEOUT_MS,
-    'fetchAccountStatus',
-  );
+  // The transport timeout actually aborts the request, where the old promise
+  // race only stopped waiting on one that carried on running in the background.
+  const data = await apiFetchWithAuth(ACCOUNT_STATUS_ENDPOINT, {
+    method: 'GET',
+    timeoutMs: STATUS_TIMEOUT_MS,
+  });
 
   if (!data || typeof data !== 'object' || !('state' in data)) {
     logger.warn('fetchAccountStatus: unexpected response shape', data);

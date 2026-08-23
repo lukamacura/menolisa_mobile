@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import type { RouteProp } from '@react-navigation/native';
 import { useRoute } from '@react-navigation/native';
@@ -10,8 +10,11 @@ import { PlanScreenLayout } from '../../components/plan/PlanScreenLayout';
 import { BreathingPlayer } from '../../components/plan/BreathingPlayer';
 import { PracticeTimer } from '../../components/plan/PracticeTimer';
 import { TickStepper } from '../../components/plan/TickStepper';
-import { GratitudeSuccessPanel } from '../../components/GratitudeSuccessPanel';
-import { useReduceMotion } from '../../components/StaggeredZoomIn';
+import {
+  GratitudeSuccessPanel,
+  GRATITUDE_DISMISS_MS,
+} from '../../components/GratitudeSuccessPanel';
+import { StaggeredZoomIn, useReduceMotion } from '../../components/StaggeredZoomIn';
 
 export function RelaxationScreen() {
   const route = useRoute<RouteProp<TodayStackParamList, 'Relaxation'>>();
@@ -27,8 +30,18 @@ export function RelaxationScreen() {
   const onComplete = useCallback(() => {
     if (!task) return;
     setCelebrating(true);
-    tick(task.key, Math.min(task.doneToday + 1, task.target)).catch(() => {});
+    // Uncapped, like Movement: a second session in one day is a good day, not an
+    // error, and silently discarding the tick made the player look broken.
+    tick(task.key, task.doneToday + 1).catch(() => {});
   }, [task, tick]);
+
+  // The panel has no controls, so without this she is left on a congratulations
+  // screen with no way back to the practice except the header's back button.
+  useEffect(() => {
+    if (!celebrating) return;
+    const timer = setTimeout(() => setCelebrating(false), GRATITUDE_DISMISS_MS);
+    return () => clearTimeout(timer);
+  }, [celebrating]);
 
   if (!task) {
     return (
@@ -54,27 +67,31 @@ export function RelaxationScreen() {
 
   return (
     <PlanScreenLayout>
-      <View style={styles.header}>
-        <Text style={styles.title}>{task.title}</Text>
-        <Text style={styles.why}>{task.why}</Text>
-        <Text style={styles.progress}>{taskProgressLabel(task, finished)}</Text>
-      </View>
+      <StaggeredZoomIn delayIndex={0} reduceMotion={reduceMotion}>
+        <View style={styles.header}>
+          <Text style={styles.title}>{task.title}</Text>
+          <Text style={styles.why}>{task.why}</Text>
+          <Text style={styles.progress}>{taskProgressLabel(task, finished)}</Text>
+        </View>
+      </StaggeredZoomIn>
 
       {task.relaxation?.kind === 'breathing' && (
-        <BreathingPlayer detail={task.relaxation} onComplete={onComplete} />
+        <StaggeredZoomIn delayIndex={1} reduceMotion={reduceMotion}>
+          <BreathingPlayer detail={task.relaxation} onComplete={onComplete} />
+        </StaggeredZoomIn>
       )}
 
       {task.relaxation?.kind === 'practice' && (
-        <>
+        <StaggeredZoomIn delayIndex={1} reduceMotion={reduceMotion}>
           <Text style={styles.use}>{task.relaxation.use}</Text>
           <PracticeTimer minutes={task.relaxation.minutes} onComplete={onComplete} />
-        </>
+        </StaggeredZoomIn>
       )}
 
       {/* A relaxation task whose key isn't a catalog id arrives with no protocol.
           It is still a real task — she just ticks it rather than being guided. */}
       {!task.relaxation && (
-        <View style={styles.manual}>
+        <StaggeredZoomIn delayIndex={1} reduceMotion={reduceMotion} style={styles.manual}>
           <Text style={styles.manualLabel}>Mark it done when you have</Text>
           <TickStepper
             count={task.doneToday}
@@ -83,7 +100,7 @@ export function RelaxationScreen() {
             onChange={(next) => tick(task.key, next).catch(() => {})}
             label={task.title}
           />
-        </View>
+        </StaggeredZoomIn>
       )}
     </PlanScreenLayout>
   );

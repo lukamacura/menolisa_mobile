@@ -70,6 +70,16 @@ type PlanContextValue = {
   plan: PlanReady | null;
   /** The local date the plan is scored against. */
   date: string;
+  /**
+   * Which eight weeks she is on. 1 until her first plan runs out, then 2, and
+   * so on every 56 days.
+   *
+   * Null only before the first response of the session. It deliberately
+   * survives `generating`: at a rollover the server sends the new cycle number
+   * while the plan is still being written, and that is the window the recap of
+   * the finished eight weeks belongs in.
+   */
+  cycle: number | null;
   /** The week with `state: 'current'`, or null. Never read locked weeks. */
   currentWeek: PlanWeek | null;
   /** Set when a tick failed and was rolled back. Render inline, never as an Alert. */
@@ -263,6 +273,7 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
   const [date, setDate] = useState(() => localDateString());
   const [plan, setPlan] = useState<PlanReady | null>(null);
   const [status, setStatus] = useState<PlanStatus>('loading');
+  const [cycle, setCycle] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [completion, setCompletion] = useState<PlanCompletion | null>(null);
   /** Monotonic, so finishing the same row twice is still two distinct events. */
@@ -270,6 +281,8 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
 
   const lastFetchedAt = useRef(0);
   const inFlight = useRef<Promise<void> | null>(null);
+  /** Which date the in-flight read is for — a read for yesterday cannot satisfy today. */
+  const inFlightDate = useRef<string | null>(null);
   const generatingSince = useRef<number | null>(null);
   const mounted = useRef(true);
   /** Mirrors `date` so callbacks don't re-identify every time it changes. */
@@ -277,6 +290,9 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
   dateRef.current = date;
   /** Mirrors "we have a plan", for the staleness check, without capturing it. */
   const hasPlan = useRef(false);
+  /** Mirrors `plan` itself, for rollbacks that need the pre-write value. */
+  const planRef = useRef<PlanReady | null>(null);
+  planRef.current = plan;
 
   // The write latch. One in-flight request per key, last tap wins — `count`
   // replaces the day's total server-side, so a superseded request is simply
@@ -306,7 +322,11 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
    * two of them racing is both wasteful and a source of stale overwrites.
    */
   const load = useCallback(async (forDate: string) => {
-    if (inFlight.current) return inFlight.current;
+    // Deduplicate only against a read for the *same* day. Sharing the promise
+    // across a midnight rollover deadlocked the screen: the in-flight read was
+    // for yesterday, so it discarded its own response as stale, and today's
+    // read never happened — leaving the plan on the loading skeleton forever.
+    if (inFlight.current && inFlightDate.current === forDate) return inFlight.current;
 
     const request = (async () => {
       try {
@@ -319,6 +339,8 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
         if (isPlanReady(response)) {
           generatingSince.current = null;
           setPlan(response);
+          // `?? 1` covers a server that predates cycles — she is on her first.
+          setCycle(response.cycle ?? 1);
           setStatus('ready');
           hasPlan.current = true;
           lastFetchedAt.current = Date.now();
@@ -326,6 +348,9 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
         }
 
         // Still being written. Poll — the server re-kicks a stalled run on read.
+        // An older server sends no cycle here; leaving the last known value in
+        // place is right either way, since a rollover only ever raises it.
+        if (response.cycle) setCycle(response.cycle);
         if (generatingSince.current === null) generatingSince.current = Date.now();
         setStatus(
           Date.now() - generatingSince.current > GENERATING_TIMEOUT_MS ? 'error' : 'generating'
@@ -339,11 +364,17 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
         setStatus((current) => (current === 'ready' ? 'ready' : 'error'));
         setError('We could not load your plan. Pull down to try again.');
       } finally {
-        inFlight.current = null;
+        // Only clear if we are still the current read; a rollover may have
+        // started a newer one that must stay tracked.
+        if (inFlightDate.current === forDate) {
+          inFlight.current = null;
+          inFlightDate.current = null;
+        }
       }
     })();
 
     inFlight.current = request;
+    inFlightDate.current = forDate;
     return request;
   }, []);
 
@@ -381,14 +412,41 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
     return () => clearInterval(timer);
   }, [status, load]);
 
-  // Midnight rollover. A phone left open overnight would otherwise tick yesterday.
+  // Midnight rollover.
+  //
+  // Two triggers, because either alone leaves a hole. The foreground check
+  // catches the phone that was asleep at midnight; the timer catches the phone
+  // that was awake — she is reading the plan at 23:58 and taps a box at 00:01,
+  // and without this that tick is written against yesterday and vanishes from
+  // her day when the screen next reloads.
   useEffect(() => {
-    const subscription = AppState.addEventListener('change', (next: AppStateStatus) => {
-      if (next !== 'active') return;
+    const rollIfNeeded = () => {
       const today = localDateString();
       setDate((current) => (current === today ? current : today));
+    };
+
+    let timer: ReturnType<typeof setTimeout>;
+    const scheduleNextMidnight = () => {
+      const now = new Date();
+      const midnight = new Date(now);
+      midnight.setHours(24, 0, 0, 0);
+      // A second past, so the local date has definitely turned over.
+      timer = setTimeout(() => {
+        rollIfNeeded();
+        scheduleNextMidnight();
+      }, midnight.getTime() - now.getTime() + 1_000);
+    };
+    scheduleNextMidnight();
+
+    const subscription = AppState.addEventListener('change', (next: AppStateStatus) => {
+      if (next !== 'active') return;
+      rollIfNeeded();
     });
-    return () => subscription.remove();
+
+    return () => {
+      clearTimeout(timer);
+      subscription.remove();
+    };
   }, []);
 
   // ---- the write path -----------------------------------------------------
@@ -420,7 +478,7 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
       try {
         // `count: 0` is a 400 — clearing a day is `done: false`, not a zero count.
         if (wanted <= 0) await clearTask(taskKey, date);
-        else await completeTask({ taskKey, date, count: Math.min(MAX_COUNT, wanted) });
+        else await completeTask({ taskKey, date, count: wanted });
 
         inflight.current.delete(taskKey);
         if (!mounted.current) return;
@@ -460,7 +518,10 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
 
   const tick = useCallback(
     async (taskKey: string, count: number) => {
-      const next = Math.max(0, count);
+      // Clamped here, not just on the way out: the server caps `count` at
+      // MAX_COUNT, so an optimistic 25 would paint a number that the reconcile
+      // silently corrects to 20 a few seconds later.
+      const next = Math.min(MAX_COUNT, Math.max(0, count));
       setPlan((current) => {
         if (!current) return current;
         const previous = currentCountFor(current, taskKey);
@@ -518,13 +579,15 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
 
   const removeHabit = useCallback(
     async (id: string) => {
-      let snapshot: PlanReady | null = null;
-      setPlan((current) => {
-        snapshot = current;
-        return current
+      // Captured before the write, not from inside the updater: a state updater
+      // must be pure, may run twice under StrictMode, and is not guaranteed to
+      // have run by the time the catch below needs the value.
+      const snapshot = planRef.current;
+      setPlan((current) =>
+        current
           ? { ...current, habits: current.habits.filter((habit) => habit.id !== id) }
-          : current;
-      });
+          : current
+      );
       try {
         await deleteHabitRequest(id);
         // Deleting a habit also clears its logs server-side, and can bring a
@@ -553,6 +616,7 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
       status,
       plan,
       date,
+      cycle,
       currentWeek,
       error,
       clearError: () => setError(null),
@@ -568,6 +632,7 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
       status,
       plan,
       date,
+      cycle,
       currentWeek,
       error,
       refresh,

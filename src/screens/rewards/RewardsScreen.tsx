@@ -1,7 +1,8 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radii, shadows, spacing, typography } from '../../theme/tokens';
 import { useRewards } from '../../context/RewardsContext';
@@ -9,6 +10,11 @@ import type { Achievement } from '../../lib/rewardTypes';
 import { BadgeTile, formatCount } from '../../components/rewards/BadgeTile';
 import { BadgeDetailSheet } from '../../components/rewards/BadgeDetailSheet';
 import { StaggeredZoomIn, useReduceMotion } from '../../components/StaggeredZoomIn';
+import { ProgressSummaryCard } from '../../components/progress/ProgressSummaryCard';
+import { usePlanHistory } from '../../hooks/usePlanHistory';
+import type { TodayStackParamList } from '../../navigation/types';
+
+type NavProp = NativeStackNavigationProp<TodayStackParamList, 'Rewards'>;
 
 /**
  * Everything she has earned: level, streak and every badge.
@@ -23,7 +29,11 @@ import { StaggeredZoomIn, useReduceMotion } from '../../components/StaggeredZoom
  * every number in it is already the reason one of those medals exists.
  */
 export function RewardsScreen() {
+  const navigation = useNavigation<NavProp>();
   const { status, rewards, refresh } = useRewards();
+  // Badges are what she has earned; the grid is what she has done against the
+  // plan. Different questions, so it links out rather than folding in here.
+  const { history } = usePlanHistory();
   const reduceMotion = useReduceMotion();
   const [refreshing, setRefreshing] = useState(false);
   const [selected, setSelected] = useState<Achievement | null>(null);
@@ -49,7 +59,7 @@ export function RewardsScreen() {
 
   if (!rewards) {
     return (
-      <SafeAreaView style={styles.container} edges={['top']}>
+      <SafeAreaView style={styles.container} edges={['bottom']}>
         <View style={styles.emptyState}>
           <Text style={styles.emptyText}>
             {status === 'error'
@@ -67,7 +77,7 @@ export function RewardsScreen() {
   const badgeCount = earned.length;
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={
@@ -116,8 +126,17 @@ export function RewardsScreen() {
           </View>
         </StaggeredZoomIn>
 
-        {earned.length > 0 && (
+        {history ? (
           <StaggeredZoomIn delayIndex={2} reduceMotion={reduceMotion}>
+            <ProgressSummaryCard
+              history={history}
+              onPress={() => navigation.navigate('Progress')}
+            />
+          </StaggeredZoomIn>
+        ) : null}
+
+        {earned.length > 0 && (
+          <StaggeredZoomIn delayIndex={3} reduceMotion={reduceMotion}>
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Earned</Text>
               <View style={styles.grid}>
@@ -134,7 +153,7 @@ export function RewardsScreen() {
         )}
 
         {locked.length > 0 && (
-          <StaggeredZoomIn delayIndex={3} reduceMotion={reduceMotion}>
+          <StaggeredZoomIn delayIndex={4} reduceMotion={reduceMotion}>
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Still to come</Text>
               <View style={styles.grid}>

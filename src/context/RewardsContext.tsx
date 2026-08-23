@@ -76,7 +76,11 @@ export function RewardsProvider({ children }: { children: React.ReactNode }) {
 
   const mounted = useRef(true);
   const inFlight = useRef<Promise<void> | null>(null);
+  /** Which date the in-flight read is for — see the same guard in PlanContext. */
+  const inFlightDate = useRef<string | null>(null);
   const lastFetchedAt = useRef(0);
+  /** Mirrors "we have a payload", so the freshness check needs no state dependency. */
+  const hasRewards = useRef(false);
   const dateRef = useRef(date);
   dateRef.current = date;
 
@@ -101,6 +105,7 @@ export function RewardsProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     seen.current = null;
     lastLevel.current = null;
+    hasRewards.current = false;
     setRewards(null);
     setStatus('loading');
     setQueue([]);
@@ -202,7 +207,9 @@ export function RewardsProvider({ children }: { children: React.ReactNode }) {
   const load = useCallback(
     async (forDate: string) => {
       if (!user?.id) return;
-      if (inFlight.current) return inFlight.current;
+      // Same-day dedupe only: a read for yesterday discards its own response as
+      // stale, so sharing it across a rollover would strand rewards on 'loading'.
+      if (inFlight.current && inFlightDate.current === forDate) return inFlight.current;
 
       const request = (async () => {
         try {
@@ -213,6 +220,7 @@ export function RewardsProvider({ children }: { children: React.ReactNode }) {
 
           setRewards(payload);
           setStatus('ready');
+          hasRewards.current = true;
           lastFetchedAt.current = Date.now();
           reconcile(payload);
         } catch (err) {
@@ -223,22 +231,31 @@ export function RewardsProvider({ children }: { children: React.ReactNode }) {
           logger.error('Failed to load rewards', err);
           setStatus((current) => (current === 'ready' ? 'ready' : 'error'));
         } finally {
-          inFlight.current = null;
+          if (inFlightDate.current === forDate) {
+            inFlight.current = null;
+            inFlightDate.current = null;
+          }
         }
       })();
 
       inFlight.current = request;
+      inFlightDate.current = forDate;
       return request;
     },
     [user?.id, reconcile]
   );
 
+  // Referentially stable: this is a `useFocusEffect` dependency on the hub, and
+  // one that changed identity on every response turned a single focus into a
+  // cascade of reads.
   const refresh = useCallback(
     async (force = false) => {
-      if (!force && rewards && Date.now() - lastFetchedAt.current < STALE_AFTER_MS) return;
+      if (!force && hasRewards.current && Date.now() - lastFetchedAt.current < STALE_AFTER_MS) {
+        return;
+      }
       return load(dateRef.current);
     },
-    [load, rewards]
+    [load]
   );
 
   // Initial load, and a fresh one whenever the local date rolls over.

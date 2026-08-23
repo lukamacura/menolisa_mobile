@@ -17,16 +17,25 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StaggeredZoomIn, useReduceMotion } from '../../components/StaggeredZoomIn';
-import { GratitudeSuccessPanel } from '../../components/GratitudeSuccessPanel';
+import {
+  GratitudeSuccessPanel,
+  GRATITUDE_DISMISS_MS,
+} from '../../components/GratitudeSuccessPanel';
 import { SymptomLogsSkeleton, ContentTransition } from '../../components/skeleton';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { apiFetchWithAuth, API_CONFIG, deleteSymptomLog } from '../../lib/api';
 import { getSymptomIllustration } from '../../lib/symptomIllustration';
 import { getTriggersForSymptom, type TimeSelection } from '../../lib/symptomTrackerConstants';
+import {
+  TIME_INPUT_MAX_LENGTH,
+  TIME_INPUT_PLACEHOLDER,
+  formatTimeInput,
+  resolveLoggedAt,
+} from '../../lib/symptomTime';
 import { colors, spacing, radii, typography, minTouchTarget, shadows } from '../../theme/tokens';
+import { errorMessage } from '../../lib/errorCopy';
 
-const GRATITUDE_DISMISS_MS = 1800;
 
 const SEVERITY_OPTIONS = [
   { value: 1, label: 'Mild', emoji: '😊', description: 'Noticeable but manageable' },
@@ -78,24 +87,24 @@ function formatTime(iso: string): string {
   return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 }
 
-function getTimeSelectionFromLoggedAt(loggedAt: string): { timeSelection: TimeSelection; customTime: string } {
+/**
+ * What the timing step is set to while editing.
+ *
+ * `'keep'` is the default and exists because the three real options cannot
+ * express most timestamps. A log from last Tuesday came back as
+ * `'earlier-today'` with its clock time, so saving a corrected note dragged the
+ * entry forward to today — she fixes a typo and loses when it happened. Now the
+ * timestamp only moves if she says so.
+ */
+type EditTimeChoice = TimeSelection | 'keep';
+
+/**
+ * The log's clock time as "HH:MM", to prefill the field if she does choose to
+ * move it. Which *day* it belongs to is no longer guessed — see `EditTimeChoice`.
+ */
+function clockTimeOf(loggedAt: string): string {
   const d = new Date(loggedAt);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const logDay = new Date(d);
-  logDay.setHours(0, 0, 0, 0);
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-  const h = d.getHours();
-  const m = d.getMinutes();
-  const customTime = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-  if (logDay.getTime() === yesterday.getTime()) return { timeSelection: 'yesterday', customTime };
-  if (logDay.getTime() === today.getTime()) {
-    const now = new Date();
-    const diffMins = Math.abs(now.getTime() - d.getTime()) / 60000;
-    return diffMins <= 5 ? { timeSelection: 'now', customTime: '' } : { timeSelection: 'earlier-today', customTime };
-  }
-  return { timeSelection: 'earlier-today', customTime };
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
 type GroupedLog = { dateKey: string; dateLabel: string; logs: SymptomLog[] };
@@ -112,8 +121,10 @@ export function SymptomLogsScreen() {
   const [editStep, setEditStep] = useState(1);
   const [editSeverity, setEditSeverity] = useState(1);
   const [editTriggers, setEditTriggers] = useState<string[]>([]);
-  const [editTimeSelection, setEditTimeSelection] = useState<TimeSelection>('now');
+  const [editTimeSelection, setEditTimeSelection] = useState<EditTimeChoice>('keep');
   const [editCustomTime, setEditCustomTime] = useState('');
+  /** The log's own timestamp, sent back untouched unless she picks another option. */
+  const [editOriginalLoggedAt, setEditOriginalLoggedAt] = useState<string | null>(null);
   const [editNotes, setEditNotes] = useState('');
   const [editCustomTrigger, setEditCustomTrigger] = useState('');
   const [editSubmitting, setEditSubmitting] = useState(false);
@@ -129,7 +140,7 @@ export function SymptomLogsScreen() {
       const res = await apiFetchWithAuth(`${API_CONFIG.endpoints.symptomLogs}?days=30`);
       setLogs(Array.isArray(res?.data) ? res.data : []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load logs');
+      setError(errorMessage(e, 'We could not load your symptom history.'));
       setLogs([]);
     } finally {
       setLoading(false);
@@ -147,11 +158,12 @@ export function SymptomLogsScreen() {
   }, [loadLogs]);
 
   const openEditModal = useCallback((log: SymptomLog) => {
-    const { timeSelection, customTime } = getTimeSelectionFromLoggedAt(log.logged_at);
+    const customTime = clockTimeOf(log.logged_at);
     setLogToEdit(log);
     setEditSeverity(log.severity);
     setEditTriggers(log.triggers ?? []);
-    setEditTimeSelection(timeSelection);
+    setEditOriginalLoggedAt(log.logged_at);
+    setEditTimeSelection('keep');
     setEditCustomTime(customTime);
     setEditNotes(log.notes?.trim() ?? '');
     setEditCustomTrigger('');
@@ -177,33 +189,19 @@ export function SymptomLogsScreen() {
     return () => clearTimeout(timer);
   }, [showEditSuccess, closeEditModal, loadLogs]);
 
-  const getEditLoggedAtTimestamp = useCallback((): string => {
-    const now = new Date();
-    if (editTimeSelection === 'now') return now.toISOString();
-    if (editTimeSelection === 'earlier-today') {
-      if (editCustomTime) {
-        const [hours, minutes] = editCustomTime.split(':').map(Number);
-        const logTime = new Date(now);
-        logTime.setHours(hours, minutes, 0, 0);
-        return logTime.toISOString();
-      }
-      const logTime = new Date(now);
-      logTime.setHours(logTime.getHours() - 2);
-      return logTime.toISOString();
-    }
-    const logTime = new Date(now);
-    logTime.setDate(logTime.getDate() - 1);
-    if (editCustomTime) {
-      const [hours, minutes] = editCustomTime.split(':').map(Number);
-      logTime.setHours(hours, minutes, 0, 0);
-    } else {
-      logTime.setHours(now.getHours(), now.getMinutes(), 0, 0);
-    }
-    return logTime.toISOString();
-  }, [editTimeSelection, editCustomTime]);
+  // Same validated resolver the log flow uses. An edit that re-stamps a log with
+  // an Invalid Date is worse than a bad new log: it destroys history she has.
+  const editLoggedAt = useMemo(
+    () =>
+      editTimeSelection === 'keep'
+        ? ({ valid: true, loggedAt: editOriginalLoggedAt ?? undefined } as const)
+        : resolveLoggedAt(editTimeSelection, editCustomTime),
+    [editTimeSelection, editCustomTime, editOriginalLoggedAt]
+  );
+  const editTimeError = editLoggedAt.valid ? null : editLoggedAt.message;
 
   const submitEdit = useCallback(async () => {
-    if (!logToEdit) return;
+    if (!logToEdit || !editLoggedAt.valid) return;
     setEditSubmitting(true);
     try {
       await apiFetchWithAuth(API_CONFIG.endpoints.symptomLogs, {
@@ -213,7 +211,7 @@ export function SymptomLogsScreen() {
           severity: editSeverity,
           triggers: editTriggers,
           notes: editNotes.trim() || undefined,
-          loggedAt: getEditLoggedAtTimestamp(),
+          loggedAt: editLoggedAt.loggedAt ?? new Date().toISOString(),
         }),
       });
       const name = logToEdit.symptoms?.name ?? 'Symptom';
@@ -223,11 +221,11 @@ export function SymptomLogsScreen() {
       });
       setShowEditSuccess(true);
     } catch (e) {
-      Alert.alert('Error', e instanceof Error ? e.message : 'Failed to update log');
+      Alert.alert('Could not save', errorMessage(e, 'We could not update that log.'));
     } finally {
       setEditSubmitting(false);
     }
-  }, [logToEdit, editSeverity, editTriggers, editNotes, getEditLoggedAtTimestamp]);
+  }, [logToEdit, editSeverity, editTriggers, editNotes, editLoggedAt]);
 
   const [deleteConfirmLog, setDeleteConfirmLog] = useState<SymptomLog | null>(null);
 
@@ -254,7 +252,7 @@ export function SymptomLogsScreen() {
                 await deleteSymptomLog(logId);
               } catch (e) {
                 loadLogs();
-                const message = e instanceof Error ? e.message : 'Failed to delete log';
+                const message = errorMessage(e, 'We could not delete that log.');
                 Alert.alert('Error', message);
               }
             };
@@ -275,7 +273,7 @@ export function SymptomLogsScreen() {
       await deleteSymptomLog(logId);
     } catch (e) {
       loadLogs();
-      const message = e instanceof Error ? e.message : 'Failed to delete log';
+      const message = errorMessage(e, 'We could not delete that log.');
       if (Platform.OS === 'web') {
         setDeleteConfirmLog(null);
         window.alert(message);
@@ -318,6 +316,8 @@ export function SymptomLogsScreen() {
   const editSymptomTriggers = getTriggersForSymptom(logToEdit?.symptoms?.name ?? '');
   const editHasTriggers = editSymptomTriggers.length > 0;
   const editTotalSteps = editHasTriggers ? 4 : 3;
+  const editTimingStep = editHasTriggers ? 3 : 2;
+  const canLeaveEditStep = editStep !== editTimingStep || editLoggedAt.valid;
 
   if (loading && !refreshing) {
     return (
@@ -558,6 +558,23 @@ export function SymptomLogsScreen() {
               {((editStep === 3 && editHasTriggers) || (editStep === 2 && !editHasTriggers)) && (
                 <>
                   <Text style={styles.label}>When did this happen?</Text>
+                  {editOriginalLoggedAt && (
+                    <TouchableOpacity
+                      activeOpacity={1}
+                      style={[styles.timingOption, editTimeSelection === 'keep' && styles.timingOptionActive]}
+                      onPress={() => setEditTimeSelection('keep')}
+                    >
+                      <Text
+                        style={[
+                          styles.timingOptionText,
+                          editTimeSelection === 'keep' && styles.timingOptionTextActive,
+                        ]}
+                      >
+                        {`Keep ${formatSectionTitle(getDateKey(new Date(editOriginalLoggedAt))).toLowerCase()}, ${formatTime(editOriginalLoggedAt)}`}
+                        {editTimeSelection === 'keep' ? ' ✓' : ''}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                   <TouchableOpacity
                     activeOpacity={1}
                     style={[styles.timingOption, editTimeSelection === 'now' && styles.timingOptionActive]}
@@ -573,7 +590,16 @@ export function SymptomLogsScreen() {
                     <Text style={[styles.timingOptionText, editTimeSelection === 'earlier-today' && styles.timingOptionTextActive]}>Earlier today{editTimeSelection === 'earlier-today' ? ' ✓' : ''}</Text>
                   </TouchableOpacity>
                   {editTimeSelection === 'earlier-today' && (
-                    <TextInput style={styles.timePickerInput} value={editCustomTime} onChangeText={setEditCustomTime} placeholder="HH:MM" placeholderTextColor={colors.textMuted} />
+                    <TextInput
+                      style={[styles.timePickerInput, editTimeError && styles.timePickerInputError]}
+                      value={editCustomTime}
+                      onChangeText={(text) => setEditCustomTime(formatTimeInput(text))}
+                      placeholder={TIME_INPUT_PLACEHOLDER}
+                      placeholderTextColor={colors.textMuted}
+                      keyboardType="number-pad"
+                      maxLength={TIME_INPUT_MAX_LENGTH}
+                      accessibilityLabel="Time this happened, 24-hour clock"
+                    />
                   )}
                   <TouchableOpacity
                     activeOpacity={1}
@@ -583,8 +609,18 @@ export function SymptomLogsScreen() {
                     <Text style={[styles.timingOptionText, editTimeSelection === 'yesterday' && styles.timingOptionTextActive]}>Yesterday{editTimeSelection === 'yesterday' ? ' ✓' : ''}</Text>
                   </TouchableOpacity>
                   {editTimeSelection === 'yesterday' && (
-                    <TextInput style={styles.timePickerInput} value={editCustomTime} onChangeText={setEditCustomTime} placeholder="HH:MM" placeholderTextColor={colors.textMuted} />
+                    <TextInput
+                      style={[styles.timePickerInput, editTimeError && styles.timePickerInputError]}
+                      value={editCustomTime}
+                      onChangeText={(text) => setEditCustomTime(formatTimeInput(text))}
+                      placeholder={TIME_INPUT_PLACEHOLDER}
+                      placeholderTextColor={colors.textMuted}
+                      keyboardType="number-pad"
+                      maxLength={TIME_INPUT_MAX_LENGTH}
+                      accessibilityLabel="Time this happened, 24-hour clock"
+                    />
                   )}
+                  {editTimeError && <Text style={styles.timeErrorText}>{editTimeError}</Text>}
                 </>
               )}
               {((editStep === 4 && editHasTriggers) || (editStep === 3 && !editHasTriggers)) && (
@@ -612,18 +648,27 @@ export function SymptomLogsScreen() {
                 <Text style={styles.footerBtnSecondaryText}>{editStep === 1 ? 'Cancel' : 'Back'}</Text>
               </TouchableOpacity>
               {editStep < editTotalSteps ? (
-                <TouchableOpacity activeOpacity={1} style={styles.footerBtnPrimary} onPress={() => setEditStep((s) => s + 1)}>
+                <TouchableOpacity
+                  activeOpacity={1}
+                  style={[styles.footerBtnPrimary, !canLeaveEditStep && styles.submitBtnDisabled]}
+                  onPress={() => setEditStep((s) => s + 1)}
+                  disabled={!canLeaveEditStep}
+                >
                   <Text style={styles.footerBtnPrimaryText}>Next</Text>
-                  <Ionicons name="chevron-forward" size={20} color="#fff" />
+                  <Ionicons name="chevron-forward" size={20} color={colors.textInverse} />
                 </TouchableOpacity>
               ) : (
                 <TouchableOpacity
                   activeOpacity={1}
-                  style={[styles.submitBtn, styles.submitBtnFlex, editSubmitting && styles.submitBtnDisabled]}
+                  style={[
+                    styles.submitBtn,
+                    styles.submitBtnFlex,
+                    (editSubmitting || !editLoggedAt.valid) && styles.submitBtnDisabled,
+                  ]}
                   onPress={submitEdit}
-                  disabled={editSubmitting}
+                  disabled={editSubmitting || !editLoggedAt.valid}
                 >
-                  {editSubmitting ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.submitBtnText}>Update</Text>}
+                  {editSubmitting ? <ActivityIndicator size="small" color={colors.textInverse} /> : <Text style={styles.submitBtnText}>Update</Text>}
                 </TouchableOpacity>
               )}
             </View>
@@ -888,7 +933,7 @@ const styles = StyleSheet.create({
   stepDotActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   stepDotDone: { backgroundColor: colors.success, borderColor: colors.success },
   stepDotText: { fontSize: 12, fontFamily: typography.family.semibold, color: colors.textMuted },
-  stepDotTextActive: { color: '#fff' },
+  stepDotTextActive: { color: colors.textInverse },
   stepLine: { flex: 1, height: 2, backgroundColor: colors.border, marginHorizontal: 4 },
   modalBody: { flex: 1, padding: spacing.lg },
   modalBodyContent: { paddingBottom: spacing['2xl'], flexGrow: 1 },
@@ -908,7 +953,7 @@ const styles = StyleSheet.create({
   severityBtnActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   severityEmoji: { fontSize: 24, marginBottom: 2 },
   severityLabel: { fontSize: 12, fontFamily: typography.family.semibold, color: colors.text },
-  severityLabelActive: { color: '#fff' },
+  severityLabelActive: { color: colors.textInverse },
   severityDescription: { fontSize: 9, fontFamily: typography.family.regular, color: colors.textMuted, marginTop: 2, textAlign: 'center' },
   severityDescriptionActive: { color: 'rgba(255,255,255,0.9)' },
   triggerChips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.lg },
@@ -922,7 +967,7 @@ const styles = StyleSheet.create({
   },
   triggerChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   triggerChipText: { fontSize: 14, fontFamily: typography.family.medium, color: colors.text },
-  triggerChipTextActive: { color: '#fff' },
+  triggerChipTextActive: { color: colors.textInverse },
   customTriggerRow: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center' },
   customTriggerInput: {
     flex: 1,
@@ -947,7 +992,7 @@ const styles = StyleSheet.create({
   },
   timingOptionActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   timingOptionText: { fontSize: 16, fontFamily: typography.family.medium, color: colors.text },
-  timingOptionTextActive: { color: '#fff' },
+  timingOptionTextActive: { color: colors.textInverse },
   timePickerInput: {
     borderWidth: 1,
     borderColor: colors.border,
@@ -957,6 +1002,15 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     marginLeft: spacing.lg,
     color: colors.text,
+  },
+  timePickerInputError: {
+    borderColor: colors.danger,
+  },
+  timeErrorText: {
+    ...typography.presets.caption,
+    color: colors.danger,
+    marginLeft: spacing.lg,
+    marginBottom: spacing.sm,
   },
   notesInput: {
     borderWidth: 1,

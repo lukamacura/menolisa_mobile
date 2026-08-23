@@ -7,8 +7,10 @@
  * 1. `doneToday` is a NUMBER on tasks and habits but a BOOLEAN on nutrition rows
  *    (there it means `count >= target`). No shared renderer may assume one type.
  * 2. `count` on `POST /api/plan/complete` REPLACES the day's total — it does not add.
- * 3. `video`/`poster` only arrive with `?media=1` AND once the server's `MEDIA_READY`
- *    set lists the exercise id. It is empty today, so treat clips as optional forever.
+ * 3. `video` only arrives with `?media=1` AND once the server's `MEDIA_READY` set
+ *    lists the exercise id. It is empty today, so treat clips as optional forever.
+ *    The API also sends a `poster` still; the app ignores it and shows no frame
+ *    behind the clip — see `ExerciseVideo`.
  */
 
 /** Pillars that appear as plan tasks. Nutrition is never a task — it has its own section. */
@@ -87,7 +89,6 @@ export type PlanExercise = {
   dose?: ExerciseDose;
   /** Only with `?media=1` and only for ids the server has clips for. */
   video?: string;
-  poster?: string;
 };
 
 /** One step of a breathing pattern. `top_up` is a 1-second sip, used only by `breath_sigh`. */
@@ -204,12 +205,29 @@ export type ResistSuggestion = {
 
 export type PlanGenerating = {
   status: 'generating';
+  /**
+   * Which eight weeks are being written. Absent on an API older than
+   * 2026-08-23; present from a server that knows about cycles.
+   *
+   * It rides along on `generating` for one reason: at a rollover this is the
+   * only signal available *while she waits*, and the wait is exactly when the
+   * recap of the eight weeks she just finished should be on screen.
+   */
+  cycle?: number;
 };
 
 export type PlanReady = {
   status: 'ready';
   /** The date the server resolved — echo of what we sent, unless it was rejected. */
   date: string;
+  /**
+   * Which eight weeks these are. 1 is the plan she bought; every 56 days the
+   * server scores what she did, writes her the next one, and this goes up.
+   *
+   * Optional only because an older server does not send it — read it through
+   * `planCycle()`, which treats a missing value as her first plan.
+   */
+  cycle?: number;
   /** Day 1 of week 1. Stamped by the first-ever GET from the date we sent. */
   startedAt: string;
   /** 1-8, clamped. Stays at 8 forever once she is past day 56. */
@@ -241,6 +259,14 @@ export const MAX_HABITS = 10;
 
 /** Weeks in a plan. The server always returns this many, padding locked ones. */
 export const PLAN_WEEKS = 8;
+
+/** Days one cycle covers, and therefore how often she is written a new plan. */
+export const PLAN_DAYS = PLAN_WEEKS * 7;
+
+/** Her cycle number, defaulting to her first plan on a server that predates cycles. */
+export function planCycle(plan: PlanResponse | null | undefined): number {
+  return plan?.cycle ?? 1;
+}
 
 export function isPlanReady(plan: PlanResponse): plan is PlanReady {
   return plan.status === 'ready';

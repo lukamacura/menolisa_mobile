@@ -11,7 +11,7 @@
  *
  * Every dose is time now, so the clock means one thing on every step: these are
  * the seconds, and the countdown is the instruction. She still owns the tempo
- * inside them — "Done" moves on early and "+ time" buys more when today is
+ * inside them — "skip set" moves on early and "+ time" buys more when today is
  * slower — but nothing on the screen asks her to keep a count in her head.
  */
 
@@ -79,9 +79,10 @@ export function stepSeconds(
 /**
  * The step after this one.
  *
- * A pure function of the current step, so that a timer firing, a "skip" tap and
- * a "set done" tap all take the same path — there is no second copy of the
- * ordering anywhere to drift out of sync with this one.
+ * A pure function of the current step, so that a timer firing and a "skip set"
+ * tap take the same path — there is no second copy of the ordering anywhere to
+ * drift out of sync with this one. It is the only way through a session: there
+ * is no jump that abandons an exercise whole.
  */
 export function nextStep(step: SessionStep, items: SessionExercise[]): SessionStep {
   if (step.kind === 'done') return step;
@@ -105,12 +106,6 @@ export function nextStep(step: SessionStep, items: SessionExercise[]): SessionSt
 
   if (step.set >= dose.sets) return afterExercise(step.index);
   return { kind: 'rest', index: step.index, set: step.set };
-}
-
-/** The step reached by abandoning the current exercise entirely. */
-export function skipToNextExercise(step: SessionStep, items: SessionExercise[]): SessionStep {
-  if (step.kind === 'done') return step;
-  return step.index + 1 >= items.length ? { kind: 'done' } : { kind: 'transition', index: step.index + 1 };
 }
 
 /**

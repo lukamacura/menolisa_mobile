@@ -18,7 +18,18 @@ import type { AccountStatus } from '../lib/accountStatus';
 
 type Copy = { heading: string; subheading: string; cta: string };
 
-function getCopy(status: AccountStatus | null): Copy {
+function getCopy(status: AccountStatus | null, unavailable: boolean): Copy {
+  // We could not reach the server, so we do not actually know that anything
+  // ended. Saying so would be a false accusation against a paying subscriber —
+  // and the fix she needs is a signal bar, not a credit card.
+  if (unavailable) {
+    return {
+      heading: "We couldn't check your subscription",
+      subheading:
+        'This usually means the connection dropped. Check your signal and try again — nothing about your plan has changed.',
+      cta: 'Try again',
+    };
+  }
   if (status?.account_status === 'pending_payment') {
     return {
       heading: 'Finish setting up your subscription',
@@ -36,12 +47,12 @@ function getCopy(status: AccountStatus | null): Copy {
 }
 
 export function SubscriptionRequiredScreen() {
-  const { accountStatus, refetchAccountStatus, signOut } = useAuth();
+  const { accountStatus, accountStatusUnavailable, reconcileAccountStatus, signOut } = useAuth();
   const [opening, setOpening] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
-  const copy = getCopy(accountStatus);
+  const copy = getCopy(accountStatus, accountStatusUnavailable);
 
   const handleOpenWeb = useCallback(async () => {
     if (opening) return;
@@ -60,13 +71,16 @@ export function SubscriptionRequiredScreen() {
     if (refreshing) return;
     setRefreshing(true);
     try {
-      await refetchAccountStatus();
+      // This is the "I just paid" button. If the Stripe webhook has not landed
+      // yet, a plain status read would keep telling her she has not paid — so
+      // reconcile with Stripe first, which is exactly what this moment is for.
+      await reconcileAccountStatus();
     } catch (err) {
       logger.warn('Refresh account status failed', err);
     } finally {
       setRefreshing(false);
     }
-  }, [refetchAccountStatus, refreshing]);
+  }, [reconcileAccountStatus, refreshing]);
 
   const handleSignOut = useCallback(async () => {
     if (signingOut) return;
@@ -93,34 +107,69 @@ export function SubscriptionRequiredScreen() {
         <Text style={styles.heading}>{copy.heading}</Text>
         <Text style={styles.subheading}>{copy.subheading}</Text>
 
-        <TouchableOpacity
-          activeOpacity={0.85}
-          style={[styles.primaryButton, opening && styles.primaryButtonDisabled]}
-          onPress={handleOpenWeb}
-          disabled={opening}
-          accessibilityRole="button"
-          accessibilityLabel={copy.cta}
-        >
-          {opening ? (
-            <ActivityIndicator color={colors.background} />
-          ) : (
-            <>
-              <Text style={styles.primaryButtonText}>{copy.cta}</Text>
-              <Ionicons name="open-outline" size={18} color={colors.background} />
-            </>
-          )}
-        </TouchableOpacity>
+        {accountStatusUnavailable ? (
+          <>
+            <TouchableOpacity
+              activeOpacity={0.85}
+              style={[styles.primaryButton, refreshing && styles.primaryButtonDisabled]}
+              onPress={handleRefresh}
+              disabled={refreshing}
+              accessibilityRole="button"
+              accessibilityLabel={copy.cta}
+            >
+              {refreshing ? (
+                <ActivityIndicator color={colors.background} />
+              ) : (
+                <>
+                  <Text style={styles.primaryButtonText}>{copy.cta}</Text>
+                  <Ionicons name="refresh" size={18} color={colors.background} />
+                </>
+              )}
+            </TouchableOpacity>
 
-        <TouchableOpacity
-          activeOpacity={0.7}
-          style={styles.secondaryButton}
-          onPress={handleRefresh}
-          disabled={refreshing}
-        >
-          <Text style={styles.secondaryButtonText}>
-            {refreshing ? 'Checking…' : "I've completed checkout — refresh"}
-          </Text>
-        </TouchableOpacity>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              style={styles.secondaryButton}
+              onPress={handleOpenWeb}
+              disabled={opening}
+            >
+              <Text style={styles.secondaryButtonText}>
+                {opening ? 'Opening…' : 'Manage on menolisa.com'}
+              </Text>
+            </TouchableOpacity>
+          </>
+        ) : (
+          <>
+            <TouchableOpacity
+              activeOpacity={0.85}
+              style={[styles.primaryButton, opening && styles.primaryButtonDisabled]}
+              onPress={handleOpenWeb}
+              disabled={opening}
+              accessibilityRole="button"
+              accessibilityLabel={copy.cta}
+            >
+              {opening ? (
+                <ActivityIndicator color={colors.background} />
+              ) : (
+                <>
+                  <Text style={styles.primaryButtonText}>{copy.cta}</Text>
+                  <Ionicons name="open-outline" size={18} color={colors.background} />
+                </>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              activeOpacity={0.7}
+              style={styles.secondaryButton}
+              onPress={handleRefresh}
+              disabled={refreshing}
+            >
+              <Text style={styles.secondaryButtonText}>
+                {refreshing ? 'Checking…' : "I've completed checkout — refresh"}
+              </Text>
+            </TouchableOpacity>
+          </>
+        )}
 
         <TouchableOpacity
           activeOpacity={0.7}

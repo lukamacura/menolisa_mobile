@@ -7,14 +7,17 @@ import {
   TouchableOpacity,
   RefreshControl,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { apiFetchWithAuth, API_CONFIG, openAccountBillingEntry } from '../../lib/api';
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { useNotifications } from '../../context/NotificationsContext';
+import type { MainTabParamList } from '../../navigation/types';
 import { colors, spacing, radii, typography, shadows } from '../../theme/tokens';
 import { StaggeredZoomIn, useReduceMotion } from '../../components/StaggeredZoomIn';
 import { ListSkeleton, ContentTransition } from '../../components/skeleton';
+import { errorMessage } from '../../lib/errorCopy';
 
 /**
  * `metadata.alert_kind` is set by the server's alert catalog (web:
@@ -131,15 +134,34 @@ function getDisplayTitle(item: NotificationItem): string {
   }
 }
 
-/** Alerts about money open the billing page; everything else stays in the app. */
+/**
+ * Alerts she has to act on at the billing page open it; everything else stays
+ * in the app.
+ *
+ * `renewal` used to be in here and is deliberately not any more — see
+ * `opensPlanContinue`. The bare `type === 'trial'` fallback stays for rows
+ * written before the alert catalog stamped a `kind`.
+ */
 function opensBilling(item: NotificationItem): boolean {
   const kind = item.metadata?.alert_kind;
-  if (kind) return kind === 'renewal' || kind === 'access_ending' || kind === 'payment_failed';
+  if (kind) return kind === 'access_ending' || kind === 'payment_failed';
   return item.type === 'trial';
+}
+
+/**
+ * The renewal notice opens the plan screen, not a billing page.
+ *
+ * It is the one money alert with nothing for her to do — the card is charged
+ * automatically — so dropping her onto an invoice list next to a Cancel button
+ * answers a question she did not ask.
+ */
+function opensPlanContinue(item: NotificationItem): boolean {
+  return item.metadata?.alert_kind === 'renewal';
 }
 
 export function NotificationsScreen() {
   const reduceMotion = useReduceMotion();
+  const navigation = useNavigation<BottomTabNavigationProp<MainTabParamList>>();
   const { markAllSeen } = useNotifications();
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -169,7 +191,7 @@ export function NotificationsScreen() {
         markAllSeen().catch(() => {});
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load notifications');
+      setError(errorMessage(e, 'We could not load your notifications.'));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -237,7 +259,9 @@ export function NotificationsScreen() {
           const style = getNotificationStyle(item);
           const onPress = opensBilling(item)
             ? () => openAccountBillingEntry().catch(() => {})
-            : undefined;
+            : opensPlanContinue(item)
+              ? () => navigation.navigate('TodayTab', { screen: 'PlanContinue' })
+              : undefined;
           const Wrapper = onPress ? TouchableOpacity : View;
           const wrapperProps = onPress ? { activeOpacity: 0.7, onPress } : {};
           return (

@@ -1,6 +1,5 @@
-import { useCallback, useMemo } from 'react';
+import { useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { apiFetchWithAuth } from '../lib/api';
 import type { AccountState, AccountStatusValue } from '../lib/accountStatus';
 
 /**
@@ -21,7 +20,6 @@ export type TrialStatus = {
   /** True when access has ended. Mirrors the server's decision — do not re-derive. */
   expired: boolean;
   loading: boolean;
-  error: string | null;
   /** Days until access ends. Null when there is no end date — never treat that as 0. */
   daysLeft: number | null;
   /** Access boundary: renewal date, or last day of access when canceling. */
@@ -33,39 +31,36 @@ export type TrialStatus = {
   state: AccountState | null;
   /** True for Apple/Google-managed subscriptions — manage in the store, not on the web. */
   isThirdPartyProvider: boolean;
-  /** Refetch status. Reconciles with Stripe first when this is a Stripe-managed plan. */
+  /** Her first name, or null. Never build a sentence that breaks without it. */
+  firstName: string | null;
+  /**
+   * Plain status read. Referentially stable, so it is safe as a `useFocusEffect`
+   * dependency — an unstable one re-armed the effect on every response and
+   * turned one focus into a loop of reads.
+   */
   refetch: () => Promise<void>;
+  /** Sync Stripe first, then read. Only for "I just paid" moments — it is expensive. */
+  reconcile: () => Promise<void>;
 };
 
 export function useTrialStatus(): TrialStatus {
-  const { accountStatus, accountStatusLoading, refetchAccountStatus } = useAuth();
-
-  const refetch = useCallback(async () => {
-    // Recover from a missed Stripe webhook before re-reading status. Apple/Google
-    // subscriptions reconcile through their own server notifications, not Stripe.
-    if (accountStatus?.account_status === 'paid' && !accountStatus.is_third_party_provider) {
-      try {
-        await apiFetchWithAuth('/api/stripe/sync-subscription', { method: 'POST' });
-      } catch {
-        // Sync is best-effort; the status read below is what matters.
-      }
-    }
-    await refetchAccountStatus();
-  }, [accountStatus?.account_status, accountStatus?.is_third_party_provider, refetchAccountStatus]);
+  const { accountStatus, accountStatusLoading, refetchAccountStatus, reconcileAccountStatus } =
+    useAuth();
 
   return useMemo(
     () => ({
       expired: accountStatus ? !accountStatus.has_access : false,
       loading: accountStatusLoading || accountStatus === null,
-      error: null,
       daysLeft: accountStatus?.days_left ?? null,
       end: accountStatus?.ends_at ? new Date(accountStatus.ends_at) : null,
       accountStatus: accountStatus?.account_status ?? null,
       subscriptionCanceled: accountStatus?.subscription_canceled ?? false,
       state: accountStatus?.state ?? null,
       isThirdPartyProvider: accountStatus?.is_third_party_provider ?? false,
-      refetch,
+      firstName: accountStatus?.first_name ?? null,
+      refetch: refetchAccountStatus,
+      reconcile: reconcileAccountStatus,
     }),
-    [accountStatus, accountStatusLoading, refetch],
+    [accountStatus, accountStatusLoading, refetchAccountStatus, reconcileAccountStatus],
   );
 }

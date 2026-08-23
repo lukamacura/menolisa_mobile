@@ -1,29 +1,40 @@
-import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet } from 'react-native';
 import Animated, {
   Easing,
   cancelAnimation,
+  runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
   type EasingFunction,
   type EasingFunctionFactory,
 } from 'react-native-reanimated';
-import { colors, radii, spacing, typography } from '../../theme/tokens';
+import { colors, radii, typography } from '../../theme/tokens';
 import type { BreathPhase } from '../../lib/planTypes';
 
-const CIRCLE_SIZE = 200;
+/**
+ * The circle is sized by the player, which measures what is actually left on
+ * screen. These are the ends of the range it may pick.
+ *
+ * The floor is not arbitrary: "Breathe out" has to sit on one line inside the
+ * circle at its resting scale, and below ~120pt it stops fitting. It is what an
+ * iPhone SE ends up with, so do not raise it without re-checking that screen —
+ * a higher floor there overrides the fit and pushes Start back below the fold.
+ */
+export const CIRCLE_MIN = 120;
+export const CIRCLE_MAX = 200;
 
 /**
- * On a short screen the full-size stage alone eats 290pt and the start button
- * lands below the fold — she should never have to scroll to begin. Shrink the
- * circle instead, so the whole session stays on one screen.
+ * The stage reserves room for the largest phase scale (`top_up`, 1.4) and the
+ * glow that rides 6% outside it — 1.4 * 1.06, rounded up. Anything smaller and
+ * a `breath_sigh` sip paints over the round counter underneath.
  */
-const CIRCLE_SIZE_COMPACT = 156;
-const COMPACT_HEIGHT = 740;
+export const STAGE_RATIO = 1.5;
 
-/** The stage reserves room for the largest phase scale (`top_up`, 1.4) plus the glow. */
-const STAGE_RATIO = 1.45;
+/** The phase word's cross-fade. Out fast, in slow — the same shape as the breath. */
+const LABEL_FADE_OUT_MS = 160;
+const LABEL_FADE_IN_MS = 300;
 
 /**
  * Scale targets, matched to the funnel's `BREATH_SEQUENCE`.
@@ -64,6 +75,8 @@ type BreathingCircleProps = {
   secondsLeft: number;
   running: boolean;
   reduceMotion: boolean;
+  /** Diameter at rest, from the player's fit calculation. */
+  size: number;
 };
 
 export function BreathingCircle({
@@ -72,15 +85,48 @@ export function BreathingCircle({
   secondsLeft,
   running,
   reduceMotion,
+  size,
 }: BreathingCircleProps) {
-  const { height } = useWindowDimensions();
   const scale = useSharedValue(1);
   const glow = useSharedValue(PHASE_GLOW.out);
 
-  const size = height < COMPACT_HEIGHT ? CIRCLE_SIZE_COMPACT : CIRCLE_SIZE;
+  /**
+   * The phase word cross-fades rather than cutting.
+   *
+   * "Breathe in" replacing "Hold" on a single frame is the one hard edge left on
+   * a screen whose entire job is to have none — and it lands at the exact moment
+   * she is meant to be changing what her lungs are doing.
+   */
+  const [label, setLabel] = useState(phase?.label ?? '');
+  const labelOpacity = useSharedValue(1);
+
+  useEffect(() => {
+    const next = phase?.label ?? '';
+    if (next === label) return;
+    if (reduceMotion) {
+      setLabel(next);
+      return;
+    }
+    labelOpacity.value = withTiming(0, { duration: LABEL_FADE_OUT_MS }, (done) => {
+      if (done) runOnJS(setLabel)(next);
+    });
+  }, [phase?.label, label, reduceMotion]);
+
+  useEffect(() => {
+    labelOpacity.value = reduceMotion
+      ? 1
+      : withTiming(1, { duration: LABEL_FADE_IN_MS, easing: Easing.out(Easing.quad) });
+  }, [label, reduceMotion]);
+
   const circleSize = { width: size, height: size };
   const stageSize = { width: size * STAGE_RATIO, height: size * STAGE_RATIO };
-  const countdownSize = { fontSize: Math.round(size * 0.28) };
+  const readoutSize = { width: size, height: size, paddingHorizontal: Math.round(size * 0.11) };
+  const countdownSize = { fontSize: Math.round(size * 0.3), lineHeight: Math.round(size * 0.36) };
+  /** Clamped, or the word outgrows the chord it has to sit on at the small end. */
+  const phaseSize = {
+    fontSize: Math.min(17, Math.max(13, Math.round(size * 0.085))),
+    lineHeight: Math.min(24, Math.max(18, Math.round(size * 0.115))),
+  };
 
   useEffect(() => {
     if (reduceMotion || !phase) return;
@@ -103,15 +149,26 @@ export function BreathingCircle({
   }, [phaseIndex, running, reduceMotion]);
 
   const circleStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  const labelStyle = useAnimatedStyle(() => ({ opacity: labelOpacity.value }));
   const glowStyle = useAnimatedStyle(() => ({
     opacity: glow.value,
     transform: [{ scale: scale.value * 1.06 }],
   }));
 
   if (reduceMotion) {
+    // No scaling, so no stage to reserve — the circle is its own footprint.
     return (
-      <View style={styles.stage}>
-        <View style={[styles.circle, styles.circleStatic, circleSize]}>
+      <View style={[styles.circleWrap, circleSize]}>
+        <View style={[styles.circle, styles.circleStatic, circleSize]} />
+        <View style={[styles.readout, readoutSize]} pointerEvents="none">
+          <Text
+            style={[styles.phase, styles.phaseStatic, phaseSize]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            accessibilityLiveRegion="polite"
+          >
+            {phase?.label ?? ''}
+          </Text>
           <Text
             style={[styles.countdown, styles.countdownStatic, countdownSize]}
             accessibilityLiveRegion="polite"
@@ -119,35 +176,39 @@ export function BreathingCircle({
             {secondsLeft}
           </Text>
         </View>
-        <Text style={styles.label} accessibilityLiveRegion="polite">
-          {phase?.label ?? ''}
-        </Text>
       </View>
     );
   }
 
   return (
-    <View style={styles.stage}>
-      <View style={[styles.circleWrap, stageSize]}>
-        <Animated.View style={[styles.glow, circleSize, glowStyle]} pointerEvents="none" />
-        <Animated.View style={[styles.circle, circleSize, circleStyle]}>
-          <Text style={[styles.countdown, countdownSize]} allowFontScaling={false}>
-            {secondsLeft}
-          </Text>
-        </Animated.View>
+    <View style={[styles.circleWrap, stageSize]}>
+      <Animated.View style={[styles.glow, circleSize, glowStyle]} pointerEvents="none" />
+      <Animated.View style={[styles.circle, circleSize, circleStyle]} />
+      {/*
+        The readout rides above the circle rather than inside it, on a layer that
+        does not scale. Parented to the animated view it would stretch 35% on
+        every inhale — the one thing on the screen she is actually reading, made
+        to pulse. Absolute with no insets, so the wrap's centering places it.
+      */}
+      <View style={[styles.readout, readoutSize]} pointerEvents="none">
+        <Animated.Text
+          style={[styles.phase, phaseSize, labelStyle]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          allowFontScaling={false}
+          accessibilityLiveRegion="polite"
+        >
+          {label}
+        </Animated.Text>
+        <Text style={[styles.countdown, countdownSize]} allowFontScaling={false}>
+          {secondsLeft}
+        </Text>
       </View>
-      <Text style={styles.label} accessibilityLiveRegion="polite">
-        {phase?.label ?? ''}
-      </Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  stage: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   circleWrap: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -158,9 +219,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(249, 184, 200, 0.55)',
   },
   circle: {
+    position: 'absolute',
     borderRadius: radii.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
     backgroundColor: colors.primary,
   },
   circleStatic: {
@@ -168,17 +228,26 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.primary,
   },
+  readout: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  phase: {
+    fontFamily: typography.display.semibold,
+    color: colors.textInverse,
+    textAlign: 'center',
+  },
   countdown: {
     fontFamily: typography.display.bold,
     color: colors.textInverse,
+    textAlign: 'center',
   },
   /** The static circle is a light fill, so white would drop below contrast. */
-  countdownStatic: {
+  phaseStatic: {
     color: colors.text,
   },
-  label: {
-    ...typography.presets.heading2,
+  countdownStatic: {
     color: colors.text,
-    marginTop: spacing.md,
   },
 });

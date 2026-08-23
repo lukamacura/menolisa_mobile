@@ -6,8 +6,17 @@ import Animated, {
   withTiming,
   Easing,
 } from 'react-native-reanimated';
+import { useReduceMotion } from '../StaggeredZoomIn';
 
-const FADE_DURATION_MS = 320;
+/**
+ * Short on purpose.
+ *
+ * The blocks inside a plan screen run their own staggered entrance, and two
+ * fades multiplied together read as one slow, murky one — this is only here to
+ * cover the swap from skeleton to content, so it gets out of the way well
+ * before the first card has finished arriving.
+ */
+const FADE_DURATION_MS = 180;
 
 type ContentTransitionProps = {
   children: React.ReactNode;
@@ -19,14 +28,19 @@ type ContentTransitionProps = {
  * Use when replacing a skeleton: render skeleton while loading, then this wrapper around real content when loaded.
  */
 export function ContentTransition({ children, style }: ContentTransitionProps) {
-  const opacity = useSharedValue(0);
+  const reduceMotion = useReduceMotion();
+  const opacity = useSharedValue(reduceMotion ? 1 : 0);
 
   useEffect(() => {
+    if (reduceMotion) {
+      opacity.value = 1;
+      return;
+    }
     opacity.value = withTiming(1, {
       duration: FADE_DURATION_MS,
       easing: Easing.out(Easing.ease),
     });
-  }, [opacity]);
+  }, [opacity, reduceMotion]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,

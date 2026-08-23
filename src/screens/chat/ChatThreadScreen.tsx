@@ -25,11 +25,13 @@ import {
   apiFetchWithAuth,
   API_CONFIG,
   isSubscriptionRequiredError,
+  CHAT_TIMEOUT_MS,
 } from '../../lib/api';
 import { MarkdownText } from '../../components/MarkdownText';
 import { CoffeeLoading } from '../../components/CoffeeLoading';
 import { StaggeredZoomIn, useReduceMotion } from '../../components/StaggeredZoomIn';
 import { colors, spacing, radii, typography, shadows } from '../../theme/tokens';
+import { errorMessage } from '../../lib/errorCopy';
 
 type ChatStackParamList = {
   ChatList: undefined;
@@ -100,8 +102,8 @@ const STRINGS = {
   networkError:
     "Could not reach the server. Check your connection and try again.",
   timeoutError: 'Lisa is taking too long to answer. Tap retry to ask again.',
-  loadError: 'Failed to load messages',
-  sendError: 'Failed to send',
+  loadError: 'We could not load this conversation.',
+  sendError: 'We could not send that message.',
   a11ySend: 'Send message',
   a11yStop: 'Stop generating',
 };
@@ -481,8 +483,9 @@ export function ChatThreadScreen() {
       // A 403 means "no subscription" — AuthContext is already re-syncing the
       // navigator toward the paywall, so an error banner would only flash.
       if (isSubscriptionRequiredError(e)) return;
-      const msg = e instanceof Error ? e.message : STRINGS.loadError;
-      setError(isNetworkError(e) ? STRINGS.networkError : msg);
+      // Its own network copy wins here; everything else goes through the
+      // shared humaniser rather than putting `HTTP 500` in front of her.
+      setError(isNetworkError(e) ? STRINGS.networkError : errorMessage(e, STRINGS.loadError));
     } finally {
       if (isCurrent()) setLoading(false);
     }
@@ -595,6 +598,7 @@ export function ChatThreadScreen() {
             stream: false,
           }),
           signal: controller.signal,
+          timeoutMs: CHAT_TIMEOUT_MS,
         });
         if (!mountedRef.current) return;
 
@@ -641,8 +645,7 @@ export function ChatThreadScreen() {
 
         markUnsent('failed');
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
-        const msg = e instanceof Error ? e.message : STRINGS.sendError;
-        setError(isNetworkError(e) ? STRINGS.networkError : msg);
+        setError(isNetworkError(e) ? STRINGS.networkError : errorMessage(e, STRINGS.sendError));
       } finally {
         clearTimeout(timeoutId);
         if (abortRef.current === controller) abortRef.current = null;

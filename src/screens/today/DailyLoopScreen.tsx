@@ -1,5 +1,13 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl, Alert } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  RefreshControl,
+  Alert,
+  TouchableOpacity,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -11,17 +19,30 @@ import type { TodayStackParamList } from '../../navigation/types';
 import { usePlan, tasksForPillar } from '../../context/PlanContext';
 import { useRewards } from '../../context/RewardsContext';
 import { useTrialStatus } from '../../hooks/useTrialStatus';
+import { usePlanCycleRecap } from '../../hooks/usePlanCycleRecap';
+import { usePlanRenewalPrompt } from '../../hooks/usePlanRenewalPrompt';
 import { useSymptomsToday } from '../../hooks/useSymptomsToday';
 import { openAccountBillingEntry } from '../../lib/api';
 import { AccessEndedView } from '../../components/AccessEndedView';
 import { RewardsSummaryCard } from '../../components/rewards/RewardsSummaryCard';
-import { isPlanFinished, relaxationLength, taskProgress, taskProgressLabel } from '../../lib/planFormat';
+import {
+  isPlanFinished,
+  relaxationLength,
+  taskProgress,
+  taskProgressLabel,
+  taskRemainingLabel,
+} from '../../lib/planFormat';
 import type { PlanReady, PlanTask } from '../../lib/planTypes';
 import { PlanGeneratingView } from '../../components/plan/PlanGeneratingView';
 import { SegmentCard, type SegmentCardProps } from '../../components/plan/SegmentCard';
 import { WeekHeader } from '../../components/plan/WeekHeader';
-import { StaggeredZoomIn, useReduceMotion } from '../../components/StaggeredZoomIn';
+import {
+  StaggeredZoomIn,
+  STAGGER_DELAY_MS,
+  useReduceMotion,
+} from '../../components/StaggeredZoomIn';
 import { ContentTransition, DailyLoopSkeleton } from '../../components/skeleton';
+import { errorMessage } from '../../lib/errorCopy';
 
 type NavProp = NativeStackNavigationProp<TodayStackParamList, 'DailyLoop'>;
 
@@ -35,23 +56,57 @@ export function DailyLoopScreen() {
   const { rewards, refresh: refreshRewards } = useRewards();
   const { count: symptomsToday, refresh: refreshSymptoms } = useSymptomsToday();
   const trialStatus = useTrialStatus();
+  const { pendingCycle } = usePlanCycleRecap();
+  const { pendingRenewal } = usePlanRenewalPrompt();
   const [refreshing, setRefreshing] = useState(false);
   const [endingSoonDismissed, setEndingSoonDismissed] = useState(false);
 
+  // Every dependency here is referentially stable, so this runs once per focus.
+  // It previously listed callbacks that changed identity whenever their own
+  // response landed, which re-armed the effect and fired a second round of
+  // reads — including a second POST to Stripe — on every visit to the hub.
+  const refetchStatus = trialStatus.refetch;
   useFocusEffect(
     useCallback(() => {
       refresh().catch(() => {});
       refreshRewards().catch(() => {});
       refreshSymptoms().catch(() => {});
-      trialStatus.refetch().catch(() => {});
-    }, [refresh, refreshRewards, refreshSymptoms, trialStatus.refetch])
+      refetchStatus().catch(() => {});
+    }, [refresh, refreshRewards, refreshSymptoms, refetchStatus])
+  );
+
+  /**
+   * The handoff between two plans.
+   *
+   * Her eight weeks ran out, the server scored them and started writing the
+   * next set, and she is owed the recap exactly once. This is the only place
+   * that decides to show it — the hub is the app's front door, so there is no
+   * route into a fresh week 1 that bypasses it.
+   *
+   * It runs on focus rather than on mount because the rollover is detected by
+   * a `GET /api/plan` that may land while she is on another tab, and it is
+   * deliberately not guarded by `status === 'ready'`: the new plan is usually
+   * still generating at this point, and filling that wait is the whole idea.
+   */
+  useFocusEffect(
+    useCallback(() => {
+      // The recap wins when both are owed. It is about the eight weeks she has
+      // just finished, so it has to come before the screen asking her to commit
+      // to eight more — and dismissing it lands her back here, where the
+      // renewal screen is still waiting.
+      if (pendingCycle) {
+        navigation.navigate('PlanRecap', { cycle: pendingCycle });
+        return;
+      }
+      if (pendingRenewal) navigation.navigate('PlanContinue');
+    }, [pendingCycle, pendingRenewal, navigation])
   );
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    Promise.all([refresh(true), refreshRewards(true), refreshSymptoms()]).finally(() =>
-      setRefreshing(false)
-    );
+    Promise.all([refresh(true), refreshRewards(true), refreshSymptoms()])
+      .catch(() => {})
+      .finally(() => setRefreshing(false));
   }, [refresh, refreshRewards, refreshSymptoms]);
 
   const handleOpenAccountWeb = useCallback(async () => {
@@ -60,7 +115,7 @@ export function DailyLoopScreen() {
     } catch (e) {
       Alert.alert(
         'Open account',
-        e instanceof Error ? e.message : 'Could not open account options. Please try again.'
+        errorMessage(e, 'Could not open account options. Please try again.')
       );
     }
   }, []);
@@ -74,12 +129,23 @@ export function DailyLoopScreen() {
     const finished = isPlanFinished(plan);
 
     return [
-      movementSegment(movementTask, finished, () =>
-        navigation.navigate('Movement', { taskKey: movementTask?.key ?? '' })
+      // `onPress` is undefined when there is nothing scheduled, so the card
+      // reads as inert rather than pushing a screen whose only content is the
+      // same sentence she just tapped.
+      movementSegment(
+        movementTask,
+        finished,
+        movementTask
+          ? () => navigation.navigate('Movement', { taskKey: movementTask.key })
+          : undefined
       ),
       nutritionSegment(plan, () => navigation.navigate('Nutrition')),
-      relaxationSegment(relaxationTask, finished, () =>
-        navigation.navigate('Relaxation', { taskKey: relaxationTask?.key ?? '' })
+      relaxationSegment(
+        relaxationTask,
+        finished,
+        relaxationTask
+          ? () => navigation.navigate('Relaxation', { taskKey: relaxationTask.key })
+          : undefined
       ),
       habitSegment(plan, habitTasks, () => navigation.navigate('Habits')),
     ];
@@ -133,7 +199,38 @@ export function DailyLoopScreen() {
     );
   }
 
-  if (!plan || !segments) return <SafeAreaView style={styles.container} edges={['top']} />;
+  /*
+    The fall-through: status is neither loading, generating, nor a hard error,
+    and yet there is no plan to draw. It should not happen — but it used to
+    return a bare `SafeAreaView`, and a white screen with nothing on it is the
+    one state she cannot act on. No text, no refresh control, nothing to tap;
+    the only way out was force-quitting the app. Whatever the cause, she gets a
+    sentence and a button.
+  */
+  if (!plan || !segments) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        {paywall}
+        <View style={styles.blankState}>
+          <Ionicons name="cloud-offline-outline" size={40} color={colors.textMuted} />
+          <Text style={styles.blankTitle}>Your plan isn't showing</Text>
+          <Text style={styles.blankText}>
+            Nothing is lost — we just could not put today together. Try again in a moment.
+          </Text>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            style={styles.blankButton}
+            onPress={() => refresh(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Reload your plan"
+          >
+            <Ionicons name="refresh" size={18} color={colors.background} />
+            <Text style={styles.blankButtonText}>Try again</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -161,6 +258,8 @@ export function DailyLoopScreen() {
               startedAt={plan.startedAt}
               currentWeek={plan.currentWeek}
               week={currentWeek}
+              onOpenDay={() => navigation.navigate('Progress', { focusDate: date })}
+              onOpenWeek={() => navigation.navigate('Progress', { focusWeek: plan.currentWeek })}
             />
           </StaggeredZoomIn>
 
@@ -184,7 +283,7 @@ export function DailyLoopScreen() {
                 delayIndex={index + 2}
                 reduceMotion={reduceMotion}
               >
-                <SegmentCard {...segment} />
+                <SegmentCard {...segment} sweepDelayMs={(index + 2) * STAGGER_DELAY_MS} />
               </StaggeredZoomIn>
             ))}
           </View>
@@ -240,7 +339,7 @@ export function DailyLoopScreen() {
 function movementSegment(
   task: PlanTask | null,
   finished: boolean,
-  onPress: () => void
+  onPress?: () => void
 ): SegmentCardProps {
   const progress = task ? taskProgress(task, finished) : { value: 0, total: 0 };
   return {
@@ -248,7 +347,9 @@ function movementSegment(
     tint: colors.primary,
     tintSoft: 'rgba(244, 124, 151, 0.14)',
     title: 'Movement',
-    subtitle: task ? `${task.title} · ${taskProgressLabel(task, finished)}` : NOTHING_SCHEDULED,
+    // What is left, not where she is: "1 of 2 this week" is the ring's job, and
+    // on the hub the sentence has to say what today still asks of her.
+    subtitle: task ? `${task.title} · ${taskRemainingLabel(task, finished)}` : NOTHING_SCHEDULED,
     ...progress,
     onPress,
   };
@@ -261,7 +362,7 @@ function nutritionSegment(plan: PlanReady, onPress: () => void): SegmentCardProp
     tint: colors.blue,
     tintSoft: 'rgba(58, 191, 163, 0.16)',
     title: 'Nutrition',
-    subtitle: `${doneToday} of ${total} rows complete today`,
+    subtitle: `${doneToday} of ${total} tasks complete today`,
     value: doneToday,
     total,
     onPress,
@@ -271,7 +372,7 @@ function nutritionSegment(plan: PlanReady, onPress: () => void): SegmentCardProp
 function relaxationSegment(
   task: PlanTask | null,
   finished: boolean,
-  onPress: () => void
+  onPress?: () => void
 ): SegmentCardProps {
   const progress = task ? taskProgress(task, finished) : { value: 0, total: 0 };
   const length = task?.relaxation ? ` · ${relaxationLength(task.relaxation)}` : '';
@@ -379,6 +480,38 @@ const styles = StyleSheet.create({
     flex: 1,
     ...typography.presets.caption,
     color: colors.textMuted,
+  },
+  blankState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing['2xl'],
+  },
+  blankTitle: {
+    ...typography.presets.heading3,
+    color: colors.text,
+    textAlign: 'center',
+  },
+  blankText: {
+    ...typography.presets.bodySmall,
+    color: colors.textMuted,
+    textAlign: 'center',
+  },
+  blankButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.md,
+    minHeight: 48,
+    paddingHorizontal: spacing.xl,
+    borderRadius: radii.lg,
+    backgroundColor: colors.primary,
+  },
+  blankButtonText: {
+    ...typography.presets.button,
+    color: colors.background,
   },
   errorBanner: {
     marginHorizontal: spacing.lg,
