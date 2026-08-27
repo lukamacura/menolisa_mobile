@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 import { useIsFocused } from '@react-navigation/native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { colors, spacing, radii, typography } from '../../theme/tokens';
+import { clipSource } from '../../lib/clipCache';
 import type { PlanExercise } from '../../lib/planTypes';
 
 /**
@@ -129,6 +130,17 @@ export function ExerciseVideo({
 /**
  * Split out because `useVideoPlayer` cannot be called conditionally, and the
  * common case today is an exercise with no clip at all.
+ *
+ * ─── One player, re-pointed ─────────────────────────────────────────────────
+ * `useVideoPlayer` tears down the native player and builds a new one every time
+ * its source changes, which on the session stage is every exercise: a fresh
+ * AVPlayer / ExoPlayer, a fresh surface, and a black frame in between. The
+ * source it is given here is deliberately frozen at the first clip, and every
+ * clip after that arrives through `replaceAsync` on the player we already have.
+ *
+ * `replaceAsync`, not `replace` — the synchronous one loads the asset on the
+ * main thread, which is a stutter on the one screen she is watching while she
+ * moves.
  */
 function ExerciseClip({
   uri,
@@ -142,11 +154,43 @@ function ExerciseClip({
   contentFit: 'contain' | 'cover';
 }) {
   const isFocused = useIsFocused();
-  const player = useVideoPlayer(uri, (instance) => {
+  const firstUri = useRef(uri).current;
+  const player = useVideoPlayer(clipSource(firstUri), (instance) => {
     instance.loop = true;
     instance.muted = true;
     instance.play();
   });
+
+  const loaded = useRef(firstUri);
+  useEffect(() => {
+    if (loaded.current === uri) return;
+    loaded.current = uri;
+    let cancelled = false;
+    player
+      .replaceAsync(clipSource(uri))
+      .then(() => {
+        // The swap does not carry playback with it, and `loop` has been seen to
+        // survive it — set both rather than rely on either.
+        if (cancelled) return;
+        player.loop = true;
+        player.muted = true;
+        player.play();
+      })
+      // A clip that fails to load leaves the previous one looping rather than
+      // blacking out the stage. She loses the demonstration, never the session.
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [uri, player]);
+
+  // The surface is unmounted when the screen is not the one on top, so the
+  // player is told to stop too. Left alone it goes on decoding a clip nobody can
+  // see — on a session she backgrounds mid-set, for as long as she leaves it.
+  useEffect(() => {
+    if (isFocused) player.play();
+    else player.pause();
+  }, [isFocused, player]);
 
   return (
     <View style={style}>

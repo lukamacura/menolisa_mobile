@@ -3,6 +3,7 @@ import type { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { apiFetchWithAuth, setSubscriptionRequiredHandler } from '../lib/api';
 import { unregisterPushToken } from '../lib/pushToken';
+import { cancelScheduledReminders } from '../lib/reminders/schedule';
 import { logger } from '../lib/logger';
 import {
   fetchAccountStatus,
@@ -131,6 +132,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Drop this device's push token first — it needs the still-valid Bearer token,
     // and a signed-out phone must not keep buzzing with the account's reminders.
     await unregisterPushToken();
+
+    // The local ones have to go too, and they have to go from here. They are
+    // scheduled with the OS rather than held in memory, so nothing stops them
+    // by being unmounted: the tabs are torn down the moment the session clears,
+    // and a week of her plan reminders would go on firing at whoever is holding
+    // the phone. Not awaited — it is device-local and cannot block a sign-out.
+    cancelScheduledReminders().catch(() => {});
 
     try {
       // Global scope revokes the refresh token server-side, so a copy of it

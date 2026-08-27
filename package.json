@@ -1,6 +1,6 @@
 {
   "name": "womenreset-mobile",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "main": "index.ts",
   "scripts": {
     "start": "APP_VARIANT=development REACT_NATIVE_PACKAGER_HOSTNAME=localhost expo start",
@@ -13,6 +13,7 @@
     "ios:reset": "node scripts/sim-reset.js",
     "web": "expo start --web",
     "normalize-logo": "node scripts/normalize-logo.js",
+    "build-sounds": "node scripts/build-reward-sounds.js && node scripts/build-session-sounds.js",
     "verify-session": "tsx scripts/verify-session.ts"
   },
   "dependencies": {

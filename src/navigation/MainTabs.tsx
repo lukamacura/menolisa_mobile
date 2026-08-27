@@ -1,18 +1,15 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React from 'react';
 import { Platform } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useAuth } from '../context/AuthContext';
-import { useMedicalConsentAccepted } from '../context/ConsentContext';
-import { useRegisterPushToken, NOTIFICATION_PROMPT_SHOWN_KEY } from '../hooks/useRegisterPushToken';
-import { NotificationPromptModal } from '../components/NotificationPromptModal';
 import { colors, typography } from '../theme/tokens';
 import { PlanProvider } from '../context/PlanContext';
 import { RewardsProvider } from '../context/RewardsContext';
+import { NotificationPermissionProvider } from '../context/NotificationPermissionContext';
 import { NotificationsProvider, useNotifications } from '../context/NotificationsContext';
+import { DailyReminders } from '../components/DailyReminders';
 import { RewardCelebrations } from '../components/rewards/RewardCelebrations';
 import { CompletionReward } from '../components/rewards/CompletionReward';
 import { RewardsScreen } from '../screens/rewards/RewardsScreen';
@@ -178,67 +175,28 @@ function SettingsStackScreen() {
 }
 
 export function MainTabs() {
-  const { user } = useAuth();
-  const { permissionStatus, requestPermissionAndRegister } = useRegisterPushToken(user?.id);
-  const consentAccepted = useMedicalConsentAccepted();
-  const [showNotificationPrompt, setShowNotificationPrompt] = useState(false);
-
-  /*
-    Held behind the medical disclaimer.
-
-    These tabs mount underneath that gate on a first launch, so without the
-    `consentAccepted` check both modals opened at once: she accepted the
-    disclaimer and found this one already waiting under it, two consent-shaped
-    interruptions before she had seen a single screen. Worse on Android, where
-    two simultaneous `Modal`s z-order unreliably and the disclaimer could land
-    behind this one. Now they queue — the flag flips the moment she accepts, and
-    this prompt follows.
-  */
-  useEffect(() => {
-    if (!user || !consentAccepted || permissionStatus !== 'undetermined') return;
-    let cancelled = false;
-    AsyncStorage.getItem(NOTIFICATION_PROMPT_SHOWN_KEY)
-      .then((value) => {
-        if (!cancelled && value !== 'true') setShowNotificationPrompt(true);
-      })
-      .catch(() => {
-        // Unreadable flag: stay quiet rather than risk re-asking every launch.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [user, consentAccepted, permissionStatus]);
-
-  const handleNotificationEnable = useCallback(() => {
-    requestPermissionAndRegister();
-    AsyncStorage.setItem(NOTIFICATION_PROMPT_SHOWN_KEY, 'true');
-    setShowNotificationPrompt(false);
-  }, [requestPermissionAndRegister]);
-
-  const handleNotificationNotNow = useCallback(() => {
-    AsyncStorage.setItem(NOTIFICATION_PROMPT_SHOWN_KEY, 'true');
-    setShowNotificationPrompt(false);
-  }, []);
-
   return (
     <PlanProvider>
     {/* Inside PlanProvider: rewards share the plan's local date, and watch it
         for ticks so a badge earned by checking a box announces itself. */}
     <RewardsProvider>
+    {/* Inside both: it asks for notification permission at her first finished
+        task, which only PlanContext can tell it about, and the reminder
+        scheduler underneath it reads her plan and her streak. */}
+    <NotificationPermissionProvider>
     {/* Outside the navigator so the tab bar can read the unread count. */}
     <NotificationsProvider>
-    <NotificationPromptModal
-      visible={showNotificationPrompt}
-      onEnable={handleNotificationEnable}
-      onNotNow={handleNotificationNotNow}
-    />
     <AppTabs />
+    {/* Renders nothing — keeps the device's scheduled reminders in step with
+        her plan, so ticking a box cancels the nudge about it. */}
+    <DailyReminders />
     {/* Both last, so a reward sits above the tab bar and every screen.
         CompletionReward fires on each finished task and passes touches through;
         RewardCelebrations is the rarer badge/level modal that does interrupt. */}
     <CompletionReward />
     <RewardCelebrations />
     </NotificationsProvider>
+    </NotificationPermissionProvider>
     </RewardsProvider>
     </PlanProvider>
   );

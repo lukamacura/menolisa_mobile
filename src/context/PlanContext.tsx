@@ -193,6 +193,19 @@ function nextStreak(streak: number, wasDone: boolean, isDone: boolean): number {
   return streak;
 }
 
+/**
+ * Re-apply the writes we are still waiting on, on top of a freshly read plan.
+ *
+ * `GET /api/plan` answers with the day as it stood when the query ran, so a
+ * write that was still in the air is simply absent from it. Painting the
+ * response as-is would un-tick a row she has already ticked.
+ */
+function applyPending(plan: PlanReady, pending: Map<string, number>): PlanReady {
+  let next = plan;
+  for (const [taskKey, count] of pending) next = applyCount(next, taskKey, count);
+  return next;
+}
+
 /** Today's tick count for whichever row `taskKey` names. 0 when it isn't in the plan. */
 function currentCountFor(plan: PlanReady, taskKey: string): number {
   if (taskKey.startsWith('nut_')) {
@@ -306,6 +319,13 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
   /** The count before this burst of taps started — where a failure rolls back to. */
   const baseline = useRef(new Map<string, number>());
   const reconcileTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /**
+   * Bumped by every tick. A read that starts at one value and lands at another
+   * overlapped a write, and its payload predates that tap — see `load`.
+   */
+  const writeSeq = useRef(0);
+  /** Assigned below: `load` needs to reschedule, and the scheduler needs `load`. */
+  const scheduleReconcileRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     mounted.current = true;
@@ -328,6 +348,10 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
     // read never happened — leaving the plan on the loading skeleton forever.
     if (inFlight.current && inFlightDate.current === forDate) return inFlight.current;
 
+    // Sampled before the request goes out, not inside it, so a tap made while
+    // it is in the air is visible when the response lands.
+    const seqAtStart = writeSeq.current;
+
     const request = (async () => {
       try {
         const response = await fetchPlan(forDate);
@@ -337,8 +361,24 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
         if (forDate !== dateRef.current) return;
 
         if (isPlanReady(response)) {
+          // She ticked something while this read was in the air.
+          //
+          // The response is the day as it stood before that tap, so painting it
+          // would silently un-tick the row she just tapped — and because the
+          // reconcile fires a few seconds after the previous tick settles, that
+          // is exactly the moment she is reaching for the next row. The
+          // optimistic state is already correct; drop the stale read and take
+          // another once the writes have gone quiet.
+          if (hasPlan.current && writeSeq.current !== seqAtStart) {
+            scheduleReconcileRef.current?.();
+            return;
+          }
+
           generatingSince.current = null;
-          setPlan(response);
+          // Writes that were already in flight when the read started can be
+          // missing from it too. Those we still hold the wanted value for, so
+          // they go back on top rather than being lost.
+          setPlan(applyPending(response, desired.current));
           // `?? 1` covers a server that predates cycles — she is on her first.
           setCycle(response.cycle ?? 1);
           setStatus('ready');
@@ -460,6 +500,7 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
       load(dateRef.current);
     }, RECONCILE_DEBOUNCE_MS);
   }, [load]);
+  scheduleReconcileRef.current = scheduleReconcile;
 
   useEffect(
     () => () => {
@@ -522,6 +563,8 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
       // MAX_COUNT, so an optimistic 25 would paint a number that the reconcile
       // silently corrects to 20 a few seconds later.
       const next = Math.min(MAX_COUNT, Math.max(0, count));
+      // Marks this tap for any read already in the air — see `load`.
+      writeSeq.current += 1;
       setPlan((current) => {
         if (!current) return current;
         const previous = currentCountFor(current, taskKey);

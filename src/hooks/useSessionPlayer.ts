@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import type { SessionPhase } from '../lib/planTypes';
+import { playSessionCue } from '../lib/sessionSound';
 import {
   REST_BUMP_SECONDS,
   completedSets,
@@ -16,7 +17,7 @@ export { REST_BUMP_SECONDS } from '../lib/sessionSteps';
 export type { SessionStep, SessionExercise } from '../lib/sessionSteps';
 
 /**
- * Drives a guided movement session: the clock, the haptics and the resume.
+ * Drives a guided movement session: the clock, the countdown and the resume.
  *
  * All of the ordering — what follows what, and which steps are timed — lives in
  * `lib/sessionSteps.ts` as pure functions, so it can be simulated without a
@@ -111,6 +112,10 @@ export function useSessionPlayer(
   const remainingRef = useRef<number | null>(null);
   remainingRef.current = remaining;
 
+  /** Mirrors `step` so the clock can ask what comes next without re-arming on every step. */
+  const stepRef = useRef(step);
+  stepRef.current = step;
+
   const togglePause = useCallback(() => {
     setPaused((wasPaused) => {
       // Resuming restarts the clock from whatever was left when she paused.
@@ -165,6 +170,10 @@ export function useSessionPlayer(
       if (left === 0) {
         endsAt.current = null;
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        // Silent when the session itself is what ends here: the celebration
+        // rings its own chime a beat later, and the two landing on top of each
+        // other is a muddle where the bigger moment should be.
+        if (nextStep(stepRef.current, items).kind !== 'done') playSessionCue('end');
         advance();
       }
     };
@@ -179,16 +188,19 @@ export function useSessionPlayer(
       clearInterval(timer);
       subscription.remove();
     };
-  }, [baseDuration, paused, advance]);
+  }, [baseDuration, paused, advance, items]);
 
-  // The last three seconds, felt rather than watched — she is not looking at the
-  // screen while she is holding a wall sit.
+  // The last three seconds, heard and felt rather than watched — she is not
+  // looking at the screen while she is holding a wall sit. Three ticks and then
+  // the note above marks zero, so the clock can be followed with the phone
+  // face-down on the mat.
   useEffect(() => {
     if (remaining === null || paused) return;
     if (remaining > 3 || remaining < 1) return;
     if (lastTick.current === remaining) return;
     lastTick.current = remaining;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    playSessionCue('tick');
   }, [remaining, paused]);
 
   const setsTotal = useMemo(() => totalSets(items), [items]);

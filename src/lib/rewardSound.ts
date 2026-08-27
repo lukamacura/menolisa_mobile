@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
-import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from 'expo-audio';
+import { createAudioPlayer, type AudioPlayer } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
+import { ensureAudioMode } from './audioMode';
 import { logger } from './logger';
 
 /**
@@ -62,35 +63,8 @@ const WEIGHTS: Record<RewardCue, number> = {
 const COALESCE_MS = 400;
 
 const players: Partial<Record<RewardCue, AudioPlayer>> = {};
-let audioModeReady: Promise<void> | null = null;
 let lastCueAt = 0;
 let lastCue: RewardCue | null = null;
-
-/**
- * Set once, for the whole app.
- *
- * `playsInSilentMode: false` is the important line: on iOS it makes the mute
- * switch mute us. She may well be logging a hot flash in a meeting, and a
- * celebration chirping out loud is the kind of thing that gets an app deleted.
- * The switch is her control and we do not override it.
- *
- * `mixWithOthers` keeps whatever she is listening to playing underneath — a
- * one-second chime is not worth interrupting a podcast for.
- */
-function ensureAudioMode(): Promise<void> {
-  if (!audioModeReady) {
-    audioModeReady = setAudioModeAsync({
-      playsInSilentMode: false,
-      shouldPlayInBackground: false,
-      interruptionMode: 'mixWithOthers',
-      interruptionModeAndroid: 'duckOthers',
-      shouldRouteThroughEarpiece: false,
-    }).catch((error) => {
-      logger.warn('rewardSound: audio mode failed', error);
-    });
-  }
-  return audioModeReady;
-}
 
 function playerFor(cue: RewardCue): AudioPlayer {
   let player = players[cue];

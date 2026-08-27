@@ -14,6 +14,7 @@ export type NotificationPermissionStatus = 'undetermined' | 'granted' | 'denied'
 export function useRegisterPushToken(userId: string | undefined): {
   permissionStatus: NotificationPermissionStatus;
   requestPermissionAndRegister: () => Promise<void>;
+  refreshPermissionStatus: () => Promise<void>;
 } {
   const lastTokenRef = useRef<string | null>(null);
   const [permissionStatus, setPermissionStatus] = useState<NotificationPermissionStatus>('undetermined');
@@ -26,13 +27,32 @@ export function useRegisterPushToken(userId: string | undefined): {
     await registerPushToken(token);
   }, []);
 
+  /**
+   * Re-read the OS setting and register if it has become `granted`.
+   *
+   * Called on the way back from system settings, where she may have turned
+   * notifications on outside the app entirely — without this the app keeps
+   * showing the "blocked" banner over a permission that is no longer blocked.
+   */
+  const refreshPermissionStatus = useCallback(async () => {
+    const Notifications = getNativeExpoNotifications();
+    if (!Notifications) return;
+    try {
+      const { status } = await Notifications.getPermissionsAsync();
+      setPermissionStatus(toStatus(status));
+      if (status === 'granted' && userId) await fetchAndRegisterToken();
+    } catch {
+      // Leave the last known answer standing rather than guess at a worse one.
+    }
+  }, [userId, fetchAndRegisterToken]);
+
   const requestPermissionAndRegister = useCallback(async () => {
     if (!userId) return;
     const Notifications = getNativeExpoNotifications();
     if (!Notifications) return;
     try {
       const { status: requested } = await Notifications.requestPermissionsAsync();
-      setPermissionStatus(requested === 'granted' ? 'granted' : requested === 'denied' ? 'denied' : 'undetermined');
+      setPermissionStatus(toStatus(requested));
       if (requested === 'granted') {
         await fetchAndRegisterToken();
       }
@@ -57,8 +77,7 @@ export function useRegisterPushToken(userId: string | undefined): {
     const run = async () => {
       try {
         const { status: existing } = await Notifications.getPermissionsAsync();
-        const status: NotificationPermissionStatus =
-          existing === 'granted' ? 'granted' : existing === 'denied' ? 'denied' : 'undetermined';
+        const status = toStatus(existing);
         setPermissionStatus(status);
 
         if (status === 'granted') {
@@ -87,7 +106,15 @@ export function useRegisterPushToken(userId: string | undefined): {
   return {
     permissionStatus,
     requestPermissionAndRegister,
+    refreshPermissionStatus,
   };
+}
+
+/** Everything that is not an explicit yes or no is still an open question. */
+function toStatus(status: string): NotificationPermissionStatus {
+  if (status === 'granted') return 'granted';
+  if (status === 'denied') return 'denied';
+  return 'undetermined';
 }
 
 export { NOTIFICATION_PROMPT_SHOWN_KEY };

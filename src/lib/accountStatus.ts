@@ -4,6 +4,9 @@ import { logger } from './logger';
 /** `account_status` column on user_trials. There is no trial — one plan, paid at checkout. */
 export type AccountStatusValue = 'paid' | 'pending_payment' | 'expired';
 
+/** The part of the day she said she trains in. Mirrors `user_profiles.training_time`. */
+export type TrainingWindow = 'morning' | 'midday' | 'evening';
+
 /**
  * Access state as decided by the server (`lib/getAccountState.ts` on the web app).
  * `active`, `canceling` and `past_due` all keep access; `canceling` keeps it until `ends_at`.
@@ -36,6 +39,15 @@ export type AccountStatus = {
    * without it, so never build a sentence that needs it to be there.
    */
   first_name: string | null;
+  /**
+   * When she told the quiz she has time to exercise — "morning" | "midday" |
+   * "evening", or null for an account that predates the question.
+   *
+   * The app's local movement reminder is scheduled against it. Null falls back
+   * to an evening reminder, which is what everybody received before the
+   * question existed; her own choice in Settings overrides it either way.
+   */
+  training_time: TrainingWindow | null;
 };
 
 const STATUS_TIMEOUT_MS = 10_000;
@@ -56,6 +68,7 @@ export const DENIED_ACCOUNT_STATUS: AccountStatus = {
   payment_failed_at: null,
   has_onboarding: false,
   first_name: null,
+  training_time: null,
 };
 
 /**

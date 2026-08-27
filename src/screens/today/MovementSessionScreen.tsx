@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert, StatusBar } from 'react-native';
 import type { RouteProp } from '@react-navigation/native';
 import { useRoute, useNavigation } from '@react-navigation/native';
@@ -24,6 +24,8 @@ import {
   taskRemainingLabel,
 } from '../../lib/planFormat';
 import { SESSION_PHASE_LABEL, type SessionPhase } from '../../lib/planTypes';
+import { useClipPrewarm } from '../../lib/clipCache';
+import { prepareSessionSounds } from '../../lib/sessionSound';
 import { ExerciseVideo } from '../../components/plan/ExerciseVideo';
 import { AnimatedPressable } from '../../components/AnimatedPressable';
 import { GratitudeSuccessPanel } from '../../components/GratitudeSuccessPanel';
@@ -38,16 +40,28 @@ import {
 
 /**
  * Reserved height for the two lines over the clip — name (up to 2) and support
- * (up to 2), at their preset line heights plus the gap between them.
+ * (1), at their preset line heights plus the gap between them.
  *
- * Fixed on purpose, still, but for a different reason than it once had. When
- * the clip was a box in a column this was what stopped the picture breathing
- * between sets. On a full-bleed stage the picture no longer cares — the caption
- * floats over it — and what the fixed height protects now is the primary
- * button: a support line that grows from one to two makes the thing under her
- * thumb jump 22pt at the exact moment she is reaching for it.
+ * A floor, not a fixed height, and it reserves three lines rather than four.
+ * What it protects is the primary button: a support line that grows from one to
+ * two makes the thing under her thumb jump 22pt at the exact moment she is
+ * reaching for it. But the only step whose support ever runs to two lines is the
+ * transition card — the one place the dose and the props are printed together —
+ * and there no clock is running, no set is in progress, and nothing is under her
+ * thumb yet. Reserving that second line on every other step cost the picture
+ * 22pt permanently to protect a jump that cannot happen while she is moving.
  */
-const CAPTION_HEIGHT = 28 * 2 + spacing.xs + 22 * 2;
+const CAPTION_HEIGHT = 28 * 2 + spacing.xs + 22;
+
+/**
+ * How much of the display the bottom band actually occupies, so the scrim under
+ * it can be sized from the chrome instead of from a percentage that was right
+ * on one phone. Every term is the style below it reads from.
+ */
+const INTERVAL_BAR_HEIGHT = 5;
+const CONTROLS_HEIGHT = minTouchTarget + 12 + spacing.sm + minTouchTarget;
+const BOTTOM_CHROME_HEIGHT =
+  INTERVAL_BAR_HEIGHT + spacing.sm + CAPTION_HEIGHT + spacing.sm + CONTROLS_HEIGHT;
 
 /**
  * The two gradients that make chrome legible on top of moving video.
@@ -87,6 +101,22 @@ const SCRIM_BOTTOM = [
  * and the fade itself still happens over ~120pt of picture where nothing is.
  */
 const SCRIM_BOTTOM_STOPS = [0, 0.28, 0.62] as const;
+
+/**
+ * The bottom scrim is only as tall as it has to be to sit fully opaque behind
+ * every pixel of chrome — everything above that is picture being darkened for
+ * nothing. It was `52%` of the display, which on a tall phone reached about
+ * 130pt higher than the controls it exists to make legible.
+ *
+ * The gradient is transparent at its own top and hits 0.90 at
+ * `SCRIM_BOTTOM_STOPS[1]`, so the solid part is the lower `1 - stop` of it:
+ * divide the chrome by that and the fade lands exactly where the chrome ends.
+ */
+function scrimBottomHeight(bottomInset: number) {
+  return Math.round(
+    (bottomInset + spacing.md + BOTTOM_CHROME_HEIGHT) / (1 - SCRIM_BOTTOM_STOPS[1]),
+  );
+}
 
 type Nav = NativeStackNavigationProp<TodayStackParamList, 'MovementSession'>;
 
@@ -157,6 +187,31 @@ export function MovementSessionScreen() {
   }, [logSession]);
 
   const player = useSessionPlayer(items, { compact, onFinish: finish });
+
+  // Decode the countdown cues while she is still reading the intro card. Doing
+  // it on first play would cost the first tick a few hundred milliseconds, and
+  // a tick that lands late is a tick on the wrong second.
+  useEffect(() => {
+    prepareSessionSounds();
+  }, []);
+
+  /**
+   * Pull the clips she is about to need down onto the device before she needs
+   * them — the setup card's first two while she reads it, and from then on the
+   * two exercises ahead of the one she is working.
+   *
+   * A clip that only starts downloading when its exercise starts is a clip she
+   * watches load, and the moment it lands on is the exact moment she is looking
+   * up from the mat for the next movement. Two ahead is a whole exercise of
+   * lead time — a set, its rest and the card between — over a file the size of
+   * a photo. See `lib/clipCache.ts` for what happens to the bytes.
+   */
+  const stepIndex = 'index' in player.step ? player.step.index : items.length;
+  const upcoming = useMemo(() => {
+    const from = started ? stepIndex + 1 : 0;
+    return [items[from]?.exercise.video, items[from + 1]?.exercise.video];
+  }, [items, started, stepIndex]);
+  useClipPrewarm(upcoming);
 
   // Only while she is actually working. Released the moment this unmounts, so a
   // session left open on the counter can't sit there draining her battery.
@@ -706,7 +761,7 @@ function SessionRunner({
       <LinearGradient
         colors={SCRIM_BOTTOM}
         locations={SCRIM_BOTTOM_STOPS}
-        style={styles.scrimBottom}
+        style={[styles.scrimBottom, { height: scrimBottomHeight(insets.bottom) }]}
         pointerEvents="none"
       />
 
@@ -788,7 +843,7 @@ function SessionRunner({
                 It is the only button on this screen that changes colour; the row
                 below stays neutral so the two never compete. */}
             <AnimatedPressable
-              containerStyle={styles.primaryWrap}
+              containerStyle={[styles.primaryWrap, styles.primaryWrapStage]}
               // `shadows.buttonPrimary` drops a coral-tinted shadow, which under a
               // green button reads as a pink halo. The shadow follows the fill.
               style={[styles.primary, { backgroundColor: tone.tint, shadowColor: tone.tint }]}
@@ -1113,18 +1168,12 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
   },
-  /**
-   * Tall enough to cover the interval bar, the caption and both rows of
-   * buttons, with the fade itself finishing well above them. A percentage
-   * rather than a fixed height so it scales with the display instead of
-   * stopping halfway up an iPad.
-   */
+  /** Height comes from `scrimBottomHeight` — it is measured, not guessed. */
   scrimBottom: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    height: '52%',
   },
   /**
    * The state band. 4pt so the colour registers as a colour and not a hairline
@@ -1240,7 +1289,7 @@ const styles = StyleSheet.create({
    * half of this bar that has to stay believable.
    */
   intervalTrack: {
-    height: 5,
+    height: INTERVAL_BAR_HEIGHT,
     backgroundColor: colors.stageChip,
     overflow: 'hidden',
   },
@@ -1248,13 +1297,13 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   /**
-   * Fixed height, holding two lines of name and two of support whether or not
-   * this step uses them, so the button under her thumb never moves between
-   * steps. It used to cost the picture the same 132pt on every screen; over a
-   * full-bleed stage it costs nothing, which is the main thing the stage bought.
+   * A floor of two name lines and one support line, held whether or not this
+   * step uses them, so the button under her thumb never moves between work,
+   * rest and the set after it. The transition card is the one step allowed to
+   * push past it — see `CAPTION_HEIGHT`.
    */
   caption: {
-    height: CAPTION_HEIGHT,
+    minHeight: CAPTION_HEIGHT,
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.xs,
@@ -1281,6 +1330,15 @@ const styles = StyleSheet.create({
   primaryWrap: {
     marginTop: spacing.md,
     width: '100%',
+  },
+  /**
+   * On the stage that margin is doubled up — `bottom` already gaps the caption
+   * off the controls — and every point of it is picture. The setup and
+   * celebration screens keep it: there the button ends a scrolling column and
+   * has nothing above it holding a gap of its own.
+   */
+  primaryWrapStage: {
+    marginTop: 0,
   },
   primary: {
     flexDirection: 'row',

@@ -8,6 +8,7 @@ import { View, Text, ActivityIndicator, StyleSheet, Platform } from 'react-nativ
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Linking from 'expo-linking';
 import { getNativeExpoNotifications } from '../lib/expoNotificationsGate';
+import { isLocalReminder } from '../lib/reminders/schedule';
 import { useAuth } from '../context/AuthContext';
 import { MedicalConsentProvider } from '../context/ConsentContext';
 import { openAccountBillingEntry } from '../lib/api';
@@ -62,13 +63,21 @@ export function AppNavigator() {
     if (!Notifications) return;
 
     Notifications.setNotificationHandler({
-      handleNotification: async () => ({
-        shouldShowAlert: true,
-        shouldPlaySound: true,
-        shouldSetBadge: true,
-        shouldShowBanner: true,
-        shouldShowList: true,
-      }),
+      handleNotification: async (notification) => {
+        /**
+         * A local reminder that fires while she is already in the app is noise:
+         * it exists to bring her here, and she is here. It is dropped silently
+         * rather than banner-ed over the very screen it was pointing at. Server
+         * alerts still show — those carry news she has no other way to see.
+         */
+        const reminder = isLocalReminder(notification.request.content.data);
+        return {
+          shouldPlaySound: !reminder,
+          shouldSetBadge: !reminder,
+          shouldShowBanner: !reminder,
+          shouldShowList: !reminder,
+        };
+      },
     });
 
     if (Platform.OS === 'android') {
@@ -123,14 +132,19 @@ export function AppNavigator() {
     return () => subscription.remove();
   }, []);
 
-  // Where a tapped push lands.
+  // Where a tapped notification lands — server push and local reminder alike.
   //
-  // The payload is written by the server's alert catalog (web:
+  // The server payload is written by the alert catalog (web:
   // lib/alerts/catalog.ts): `action: 'upgrade'` for anything about money, which
-  // is managed on the web, and otherwise `screen` naming a tab. An alert that
-  // opens nowhere is worse than no alert — she acts on it and the app ignores
-  // her — so an unrecognised payload still opens the Alerts tab, where the same
-  // words are waiting as a row she can read.
+  // is managed on the web, and otherwise `screen` naming a tab. Local reminders
+  // (src/lib/reminders) deliberately use the same `{ screen }` shape so there is
+  // one router rather than two.
+  //
+  // An alert that opens nowhere is worse than no alert — she acts on it and the
+  // app ignores her — so an unrecognised payload still opens the Alerts tab,
+  // where the same words are waiting as a row she can read. The one exception is
+  // a local reminder, which was never written to the Alerts tab: it falls back
+  // to the plan itself, which is what it was about.
   useEffect(() => {
     if (Platform.OS === 'web' || !user) return;
     const Notifications = getNativeExpoNotifications();
@@ -154,17 +168,30 @@ export function AppNavigator() {
         navigate: (name: string, params?: object) => void;
       }).navigate;
 
+      /** Any screen on the Today stack, with the params that screen needs. */
+      const today = (screen: string, params?: object) =>
+        navigate('Main', { screen: 'TodayTab', params: { screen, params } });
+
       const go = () => {
         if (cancelled || !navigationRef.isReady()) return;
-        if (data?.screen === 'DailyLoop') {
-          navigate('Main', { screen: 'TodayTab', params: { screen: 'DailyLoop' } });
-          return;
+        switch (data?.screen) {
+          case 'DailyLoop':
+            return today('DailyLoop');
+          case 'PlanContinue':
+            return today('PlanContinue');
+          case 'Nutrition':
+            return today('Nutrition');
+          // The movement reminder names the task it is about, so she lands on
+          // the session rather than on a hub she has to find it in again.
+          case 'Movement':
+            return data.taskKey
+              ? today('Movement', { taskKey: data.taskKey })
+              : today('DailyLoop');
+          default:
+            return isLocalReminder(data)
+              ? today('DailyLoop')
+              : navigate('Main', { screen: 'NotificationsTab' });
         }
-        if (data?.screen === 'PlanContinue') {
-          navigate('Main', { screen: 'TodayTab', params: { screen: 'PlanContinue' } });
-          return;
-        }
-        navigate('Main', { screen: 'NotificationsTab' });
       };
 
       // On a cold start the navigator is still mounting when this resolves, and

@@ -29,11 +29,15 @@ export function NotificationPromptModal({ visible, onEnable, onNotNow }: Props) 
           <View style={styles.iconWrap}>
             <Ionicons name="notifications" size={32} color={colors.primary} />
           </View>
-          <Text style={styles.title}>Enable notifications?</Text>
+          <Text style={styles.title}>Shall I remind you?</Text>
+          {/* Shown after her first finished task, so it can talk about keeping
+              something going rather than about a feature she has not used. The
+              cap is named because it is the honest answer to the question she is
+              actually asking, which is "how often will this thing buzz at me". */}
           <Text style={styles.message}>
-            A morning nudge when your plan is ready, a word if your streak is about
-            to break, and a weekly summary from Lisa. You can change this anytime in
-            Settings.
+            A nudge when your plan is ready, a word if your streak is about to break,
+            and your weekly summary. Never more than two a day, and you can change
+            the times in Settings.
             {Platform.OS === 'android'
               ? '\n\nAfter you tap Enable, Android will show its own confirmation — that step is required to turn notifications on.'
               : ''}
