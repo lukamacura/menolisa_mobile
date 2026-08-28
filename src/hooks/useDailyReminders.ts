@@ -110,9 +110,21 @@ function buildDayState(
     plan.habits.some((habit) => habit.doneToday > 0) ||
     plan.nutrition.groups.some((group) => group.items.some((item) => item.count > 0));
 
-  const movementTask = tasksForPillar(currentWeek, 'movement').find(
-    (task) => !isTaskComplete(task, finished)
-  );
+  const movementPillar = tasksForPillar(currentWeek, 'movement');
+  /**
+   * Suppressed entirely on a day she has already trained.
+   *
+   * Movement is counted across the week, so a task at 1 of 3 is genuinely still
+   * open on the evening of the day she did that first session — and nudging her
+   * about it then reads as an app that did not notice she trained. It is also
+   * the one candidate that could still fire on a finished day, which is the
+   * promise Settings makes to her in as many words: never more than two a day,
+   * and none at all once you are done.
+   */
+  const trainedToday = movementPillar.some((task) => task.doneToday > 0);
+  const movementTask = trainedToday
+    ? undefined
+    : movementPillar.find((task) => !isTaskComplete(task, finished));
 
   const water = plan.nutrition.groups
     .flatMap((group) => group.items)

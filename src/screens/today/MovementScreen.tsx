@@ -40,7 +40,7 @@ export function MovementScreen() {
   // the week's days and moves on its own.
   const markSession = useCallback(() => {
     if (!task) return;
-    tick(task.key, task.doneToday + 1).catch(() => {});
+    tick(task.key, (current) => current + 1).catch(() => {});
   }, [task, tick]);
 
   const startSession = useCallback(() => {

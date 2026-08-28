@@ -18,6 +18,19 @@ import { ConfettiBurst } from './ConfettiBurst';
 
 /** How long a reward stays up before it clears itself. */
 const VISIBLE_MS = 1_700;
+/** The fade out, and the unmount that follows one frame behind it. */
+const EXIT_MS = 260;
+
+/**
+ * The whole life of one reward card, from the completion event to a clear screen.
+ *
+ * Exported because anything that wants to interrupt her *after* a reward has no
+ * other way to know when the confetti has gone: `PlanContext.completion` is
+ * cleared on the frame the card appears, not the frame it leaves, so waiting on
+ * that value lands a modal on top of the celebration it was meant to follow.
+ * `NotificationPermissionContext` is the one caller.
+ */
+export const COMPLETION_REWARD_MS = VISIBLE_MS + EXIT_MS;
 
 /**
  * The reward for finishing one thing — a task, or a sub-task like a nutrition row.
@@ -76,11 +89,11 @@ export function CompletionReward() {
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => {
       timer.current = null;
-      opacity.value = reduceMotion ? 0 : withTiming(0, { duration: 240 });
-      translateY.value = reduceMotion ? 0 : withTiming(-24, { duration: 240 });
+      opacity.value = reduceMotion ? 0 : withTiming(0, { duration: EXIT_MS - 20 });
+      translateY.value = reduceMotion ? 0 : withTiming(-24, { duration: EXIT_MS - 20 });
       // Unmount after the fade rather than on the same frame, or the card
       // disappears instantly and the exit animation is never seen.
-      setTimeout(() => setShown(null), reduceMotion ? 0 : 260);
+      setTimeout(() => setShown(null), reduceMotion ? 0 : EXIT_MS);
     }, VISIBLE_MS);
   }, [completion, clearCompletion, reduceMotion, opacity, translateY, scale]);
 

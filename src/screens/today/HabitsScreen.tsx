@@ -2,7 +2,7 @@ import React, { useCallback, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radii, typography, minTouchTarget } from '../../theme/tokens';
-import { usePlan, tasksForPillar } from '../../context/PlanContext';
+import { usePlan, tasksForPillar, type TickValue } from '../../context/PlanContext';
 import { MAX_HABITS, habitTaskKey, type HabitKind, type PlanTask } from '../../lib/planTypes';
 import { isPlanFinished, taskProgressLabel } from '../../lib/planFormat';
 import { PlanScreenLayout } from '../../components/plan/PlanScreenLayout';
@@ -146,7 +146,7 @@ function PlanHabitRow({
 }: {
   task: PlanTask;
   finished: boolean;
-  onChange: (next: number) => void;
+  onChange: (next: TickValue) => void;
 }) {
   const [whyOpen, setWhyOpen] = useState(false);
 

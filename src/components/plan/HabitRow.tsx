@@ -3,12 +3,13 @@ import { View, Text, Pressable, StyleSheet, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radii, typography, minTouchTarget } from '../../theme/tokens';
 import type { PlanHabit } from '../../lib/planTypes';
+import type { TickValue } from '../../context/PlanContext';
 import { StreakChip } from './StreakChip';
 import { TickStepper } from './TickStepper';
 
 type HabitRowProps = {
   habit: PlanHabit;
-  onChange: (next: number) => void;
+  onChange: (next: TickValue) => void;
   onRemove: () => void;
 };
 

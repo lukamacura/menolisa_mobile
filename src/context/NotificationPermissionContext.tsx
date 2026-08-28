@@ -7,6 +7,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { AppState, type AppStateStatus } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { usePlan } from './PlanContext';
 import { useAuth } from './AuthContext';
@@ -17,6 +18,17 @@ import {
   type NotificationPermissionStatus,
 } from '../hooks/useRegisterPushToken';
 import { NotificationPromptModal } from '../components/NotificationPromptModal';
+import { COMPLETION_REWARD_MS } from '../components/rewards/CompletionReward';
+
+/**
+ * How long after her finished task the ask waits.
+ *
+ * `PlanContext.completion` is cleared on the frame `CompletionReward` *appears*,
+ * not the frame it leaves — so a gate on that value alone opened this modal
+ * straight over the confetti of the very task that earned the right to ask. The
+ * card's own life plus a breath is what actually separates the two moments.
+ */
+const AFTER_REWARD_MS = COMPLETION_REWARD_MS + 400;
 
 /**
  * Who may turn notifications on, and when she is asked.
@@ -67,36 +79,70 @@ export function NotificationPermissionProvider({
 
   const [promptVisible, setPromptVisible] = useState(false);
   /**
-   * She has finished something, but the reward for it is still on screen.
+   * She has finished something, and the ask is now owed to her.
    *
-   * Two modals at once is a bug this codebase has already had once, between the
+   * Two things at once is a bug this codebase has already had once, between the
    * medical disclaimer and this prompt — on Android they z-order unreliably and
-   * the wrong one can end up behind. So the ask waits for `completion` to clear,
-   * which is the moment `CompletionReward` is dismissed.
+   * the wrong one can end up behind. So the ask waits out the reward card in
+   * full (`AFTER_REWARD_MS`) rather than waiting on `completion`, which clears
+   * while the confetti is still falling.
    */
   const earned = useRef(false);
+  /** The wait in progress, so a second completion can restart it. */
+  const waiting = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mounted = useRef(true);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      if (waiting.current) clearTimeout(waiting.current);
+    };
+  }, []);
+
+  /**
+   * Re-read the OS setting every time she comes back to the app.
+   *
+   * Without it, a woman who turned notifications on in system settings — the
+   * only route left to her once iOS has taken its one shot at the dialog — came
+   * back to an app still holding `denied`, which made the reminder scheduler
+   * cancel everything it had for the rest of the session. It corrected itself on
+   * the next cold start, which is not a thing she can be expected to know.
+   */
+  useEffect(() => {
+    if (!user) return;
+    const subscription = AppState.addEventListener('change', (next: AppStateStatus) => {
+      if (next === 'active') refreshPermissionStatus().catch(() => {});
+    });
+    return () => subscription.remove();
+  }, [user, refreshPermissionStatus]);
 
   useEffect(() => {
     if (!user || !consentAccepted || permissionStatus !== 'undetermined') return;
 
     if (completion) {
       earned.current = true;
+      // A second finished task restarts the wait: the new card gets its own full
+      // life on screen, and the ask goes behind that one too.
+      if (waiting.current) {
+        clearTimeout(waiting.current);
+        waiting.current = null;
+      }
       return;
     }
-    if (!earned.current || promptVisible) return;
+    if (!earned.current || promptVisible || waiting.current) return;
 
-    let cancelled = false;
-    AsyncStorage.getItem(NOTIFICATION_PROMPT_SHOWN_KEY)
-      .then((value) => {
-        if (!cancelled && value !== 'true') setPromptVisible(true);
-      })
-      .catch(() => {
-        // Unreadable marker: stay quiet rather than risk asking every launch.
-        // Settings still offers the way in.
-      });
-    return () => {
-      cancelled = true;
-    };
+    waiting.current = setTimeout(() => {
+      waiting.current = null;
+      AsyncStorage.getItem(NOTIFICATION_PROMPT_SHOWN_KEY)
+        .then((value) => {
+          if (mounted.current && value !== 'true') setPromptVisible(true);
+        })
+        .catch(() => {
+          // Unreadable marker: stay quiet rather than risk asking every launch.
+          // Settings still offers the way in.
+        });
+    }, AFTER_REWARD_MS);
   }, [user, consentAccepted, permissionStatus, completion, promptVisible]);
 
   const dismissPrompt = useCallback(() => {

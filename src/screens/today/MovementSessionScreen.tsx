@@ -178,7 +178,7 @@ export function MovementSessionScreen() {
   const logSession = useCallback(() => {
     if (!task) return;
     // `count` replaces the day's total, so a second session today sends 2.
-    tick(task.key, task.doneToday + 1).catch(() => {});
+    tick(task.key, (current) => current + 1).catch(() => {});
   }, [task, tick]);
 
   const finish = useCallback(() => {

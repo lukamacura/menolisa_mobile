@@ -32,7 +32,7 @@ export function RelaxationScreen() {
     setCelebrating(true);
     // Uncapped, like Movement: a second session in one day is a good day, not an
     // error, and silently discarding the tick made the player look broken.
-    tick(task.key, task.doneToday + 1).catch(() => {});
+    tick(task.key, (current) => current + 1).catch(() => {});
   }, [task, tick]);
 
   // The panel has no controls, so without this she is left on a congratulations

@@ -2,10 +2,10 @@ import React, { useCallback } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { colors, spacing, radii, typography } from '../../theme/tokens';
 import { usePlan } from '../../context/PlanContext';
+import type { TickValue } from '../../context/PlanContext';
 import { PlanScreenLayout } from '../../components/plan/PlanScreenLayout';
 import { NutritionRow } from '../../components/plan/NutritionRow';
 import { ProgressRing } from '../../components/plan/ProgressRing';
-import { SupplementChips } from '../../components/plan/SupplementChips';
 import { StaggeredZoomIn, useReduceMotion } from '../../components/StaggeredZoomIn';
 
 /**
@@ -20,8 +20,10 @@ export function NutritionScreen() {
   const reduceMotion = useReduceMotion();
   const { plan, tick } = usePlan();
 
+  // One callback for all ten rows, and stable across renders, so `NutritionRow`
+  // can memoise. A new closure per row would defeat it on every tap.
   const onChange = useCallback(
-    (key: string, next: number) => {
+    (key: string, next: TickValue) => {
       tick(key, next).catch(() => {});
     },
     [tick]
@@ -65,12 +67,11 @@ export function NutritionScreen() {
                   <NutritionRow
                     key={item.key}
                     item={item}
-                    onChange={(next) => onChange(item.key, next)}
-                  >
-                    {item.id === 'supplements' && item.doneToday && (
-                      <SupplementChips supplements={plan.nutrition.supplements} />
-                    )}
-                  </NutritionRow>
+                    onChange={onChange}
+                    supplements={
+                      item.id === 'supplements' ? plan.nutrition.supplements : undefined
+                    }
+                  />
                 ))}
               </View>
             </StaggeredZoomIn>

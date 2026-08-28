@@ -49,6 +49,18 @@ const MAX_COUNT = 20;
 export type PlanStatus = 'loading' | 'generating' | 'ready' | 'error';
 
 /**
+ * A new day-total, or a function from the freshest known total to it.
+ *
+ * **Always pass the function form from a control.** A `Pressable` closes over
+ * the count it was last rendered with, and two taps landing inside one render
+ * pass both see the old one — so a stepper sending `count + 1` sends the same
+ * total twice and the second tap vanishes. The function form is resolved here,
+ * against what we have actually asked the server for, so a fast run down the
+ * water row lands every tap.
+ */
+export type TickValue = number | ((current: number) => number);
+
+/**
  * Something she just finished. Emitted once, at the tick that finished it.
  *
  * Detected here rather than inferred from the rewards payload because this is
@@ -87,8 +99,11 @@ type PlanContextValue = {
   clearError: () => void;
   /** Refetch. Skipped when the cached plan is fresh unless `force`. */
   refresh: (force?: boolean) => Promise<void>;
-  /** Set the day's total for a key. `count` replaces — pass the new total, not a delta. */
-  tick: (taskKey: string, count: number) => Promise<void>;
+  /**
+   * Set the day's total for a key. `count` replaces — a new total, not a delta.
+   * Pass a function to have it resolved against the freshest total; see `TickValue`.
+   */
+  tick: (taskKey: string, count: TickValue) => Promise<void>;
   /** Clear the day for a key. */
   clear: (taskKey: string) => Promise<void>;
   addHabit: (title: string, kind: HabitKind) => Promise<void>;
@@ -558,38 +573,47 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
   );
 
   const tick = useCallback(
-    async (taskKey: string, count: number) => {
+    async (taskKey: string, count: TickValue) => {
+      const plan = planRef.current;
+      if (!plan) return;
+
+      // `desired` first, `plan` only as a fallback.
+      //
+      // React state and the refs mirroring it are a render behind the tap that
+      // just happened; `desired` is written synchronously by this function, so
+      // it is the only thing that knows about a tap whose re-render has not
+      // landed yet. Reading the plan here instead is what dropped every second
+      // tap in a fast burst.
+      const previous = desired.current.get(taskKey) ?? currentCountFor(plan, taskKey);
       // Clamped here, not just on the way out: the server caps `count` at
       // MAX_COUNT, so an optimistic 25 would paint a number that the reconcile
       // silently corrects to 20 a few seconds later.
-      const next = Math.min(MAX_COUNT, Math.max(0, count));
+      const next = Math.min(
+        MAX_COUNT,
+        Math.max(0, typeof count === 'function' ? count(previous) : count)
+      );
+
+      // Remember where to land if this whole burst fails.
+      if (!baseline.current.has(taskKey)) {
+        baseline.current.set(taskKey, previous);
+      }
+
+      // Fired optimistically, alongside the count it belongs to. She has done
+      // the thing; the write is bookkeeping. If it later fails the count rolls
+      // back and the error banner explains it — but a reward that waits for the
+      // server to agree arrives too late to feel like a reward.
+      const finished = describeCompletion(plan, taskKey, previous, next);
+      if (finished) {
+        completionSeq.current += 1;
+        setCompletion({ id: completionSeq.current, ...finished });
+      }
+
       // Marks this tap for any read already in the air — see `load`.
       writeSeq.current += 1;
-      setPlan((current) => {
-        if (!current) return current;
-        const previous = currentCountFor(current, taskKey);
-        // Remember where to land if this whole burst fails.
-        if (!baseline.current.has(taskKey)) {
-          baseline.current.set(taskKey, previous);
-        }
-
-        // Fired optimistically, alongside the count it belongs to. She has done
-        // the thing; the write is bookkeeping. If it later fails the count rolls
-        // back and the error banner explains it — but a reward that waits for
-        // the server to agree arrives too late to feel like a reward.
-        const finished = describeCompletion(current, taskKey, previous, next);
-        if (finished) {
-          completionSeq.current += 1;
-          const event = { id: completionSeq.current, ...finished };
-          // Out of the updater: setState during another component's render phase
-          // warns, and this one runs inside setPlan.
-          queueMicrotask(() => {
-            if (mounted.current) setCompletion(event);
-          });
-        }
-
-        return applyCount(current, taskKey, next);
-      });
+      // The updater is handed the accumulated pending state, so a second tap in
+      // the same frame still applies on top of the first — `next` is absolute,
+      // and the streaks derive from a `current` that already has the first tap.
+      setPlan((current) => (current ? applyCount(current, taskKey, next) : current));
       setError(null);
       desired.current.set(taskKey, next);
       await flush(taskKey);

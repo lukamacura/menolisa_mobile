@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radii, typography, minTouchTarget } from '../../theme/tokens';
+import type { TickValue } from '../../context/PlanContext';
 
 /**
  * Pips get cramped fast. Three per row is comfortable at 44dp; eight is 30dp,
@@ -16,19 +17,28 @@ type TickStepperProps = {
   target: number;
   /** Ticks the control should offer. Only water differs from target (6 → 8). */
   max: number;
-  /** Called with the NEW TOTAL, not a delta. 0 clears the day. */
-  onChange: (next: number) => void;
+  /**
+   * Called with the NEW TOTAL, not a delta. 0 clears the day.
+   *
+   * Every call below passes the **function** form. `count` is a prop, so two
+   * taps landing inside one render pass both read the same stale number and the
+   * second one computes a total it has already sent — which the write path then
+   * discards as a duplicate, and the tap simply disappears. Six fast taps down
+   * the water row would land as three. Resolving the total at write time inside
+   * `PlanContext` is what makes every tap count.
+   */
+  onChange: (next: TickValue) => void;
   /** Announced by screen readers alongside the numbers. */
   label: string;
 };
 
-export function TickStepper({ count, target, max, onChange, label }: TickStepperProps) {
+function TickStepperComponent({ count, target, max, onChange, label }: TickStepperProps) {
   const done = count >= target;
 
   if (target === 1 && max === 1) {
     return (
       <Pressable
-        onPress={() => onChange(done ? 0 : 1)}
+        onPress={() => onChange((current) => (current > 0 ? 0 : 1))}
         hitSlop={8}
         style={[styles.check, done && styles.checkDone]}
         accessibilityRole="checkbox"
@@ -55,7 +65,7 @@ export function TickStepper({ count, target, max, onChange, label }: TickStepper
               key={pip}
               // Tapping the last filled pip steps back down, so a mistap is one
               // tap to fix rather than a trip to zero and back.
-              onPress={() => onChange(pip === count ? pip - 1 : pip)}
+              onPress={() => onChange((current) => (pip === current ? pip - 1 : pip))}
               hitSlop={6}
               style={[styles.pip, filled && styles.pipFilled]}
               accessibilityLabel={`${label}, ${pip} of ${max}`}
@@ -76,7 +86,7 @@ export function TickStepper({ count, target, max, onChange, label }: TickStepper
       accessibilityValue={{ min: 0, max, now: count }}
     >
       <Pressable
-        onPress={() => onChange(Math.max(0, count - 1))}
+        onPress={() => onChange((current) => Math.max(0, current - 1))}
         disabled={count === 0}
         hitSlop={6}
         style={[styles.stepButton, count === 0 && styles.stepButtonDisabled]}
@@ -101,7 +111,7 @@ export function TickStepper({ count, target, max, onChange, label }: TickStepper
       </View>
 
       <Pressable
-        onPress={() => onChange(Math.min(max, count + 1))}
+        onPress={() => onChange((current) => Math.min(max, current + 1))}
         disabled={count >= max}
         hitSlop={6}
         style={[styles.stepButton, count >= max && styles.stepButtonDisabled]}
@@ -117,6 +127,13 @@ export function TickStepper({ count, target, max, onChange, label }: TickStepper
     </View>
   );
 }
+
+/**
+ * Memoised because a tick re-renders the whole plan screen, and a nutrition
+ * screen holds ten of these. Every millisecond that render costs widens the
+ * window in which a second tap reads stale props.
+ */
+export const TickStepper = React.memo(TickStepperComponent);
 
 const styles = StyleSheet.create({
   check: {

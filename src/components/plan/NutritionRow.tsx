@@ -1,18 +1,24 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radii, typography, minTouchTarget } from '../../theme/tokens';
 import { nutritionIcon } from '../../lib/planIconMapping';
 import type { NutritionItem } from '../../lib/planTypes';
+import type { TickValue } from '../../context/PlanContext';
 import { StreakChip } from './StreakChip';
+import { SupplementChips } from './SupplementChips';
 import { TickStepper } from './TickStepper';
 import { WhySheet } from './WhySheet';
 
 type NutritionRowProps = {
   item: NutritionItem;
-  onChange: (next: number) => void;
-  /** Rendered under the row when it is ticked. Supplements only. */
-  children?: React.ReactNode;
+  /**
+   * Takes the row's own key, so the screen can pass one stable callback to all
+   * ten rows and let `React.memo` skip the nine that did not change.
+   */
+  onChange: (taskKey: string, next: TickValue) => void;
+  /** Revealed under the row once it is ticked. Supplements only. */
+  supplements?: { id: string; label: string }[];
 };
 
 /** "Every meal" for the 3× rows, "6 or more" for water. Derived, never hardcoded per id. */
@@ -23,9 +29,15 @@ function cadenceHint(item: NutritionItem): string | null {
   return null;
 }
 
-export function NutritionRow({ item, onChange, children }: NutritionRowProps) {
+function NutritionRowComponent({ item, onChange, supplements }: NutritionRowProps) {
   const [whyOpen, setWhyOpen] = useState(false);
   const hint = cadenceHint(item);
+
+  const taskKey = item.key;
+  const handleChange = useCallback(
+    (next: TickValue) => onChange(taskKey, next),
+    [onChange, taskKey]
+  );
 
   return (
     <View style={[styles.wrap, item.doneToday && styles.wrapDone]}>
@@ -66,12 +78,12 @@ export function NutritionRow({ item, onChange, children }: NutritionRowProps) {
           count={item.count}
           target={item.target}
           max={item.max}
-          onChange={onChange}
+          onChange={handleChange}
           label={item.title}
         />
       </View>
 
-      {children}
+      {supplements && item.doneToday && <SupplementChips supplements={supplements} />}
 
       <WhySheet
         visible={whyOpen}
@@ -85,6 +97,14 @@ export function NutritionRow({ item, onChange, children }: NutritionRowProps) {
     </View>
   );
 }
+
+/**
+ * Memoised: a tick replaces the plan object, but `applyNutritionCount` hands
+ * back the *same* item object for every row it did not touch — so nine of the
+ * ten rows here skip the render entirely, and the tenth is cheap enough that a
+ * second tap 80ms later still reads fresh props.
+ */
+export const NutritionRow = React.memo(NutritionRowComponent);
 
 const styles = StyleSheet.create({
   wrap: {
