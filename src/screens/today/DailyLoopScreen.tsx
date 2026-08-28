@@ -21,12 +21,15 @@ import { useRewards } from '../../context/RewardsContext';
 import { useTrialStatus } from '../../hooks/useTrialStatus';
 import { usePlanCycleRecap } from '../../hooks/usePlanCycleRecap';
 import { usePlanRenewalPrompt } from '../../hooks/usePlanRenewalPrompt';
+import { useUpdateNudge } from '../../hooks/useAppUpdate';
 import { useSymptomsToday } from '../../hooks/useSymptomsToday';
 import { openAccountBillingEntry } from '../../lib/api';
 import { AccessEndedView } from '../../components/AccessEndedView';
+import { UpdateAvailableCard } from '../../components/UpdateAvailableCard';
 import { RewardsSummaryCard } from '../../components/rewards/RewardsSummaryCard';
 import {
   isPlanFinished,
+  isTaskComplete,
   relaxationLength,
   taskProgress,
   taskProgressLabel,
@@ -58,6 +61,9 @@ export function DailyLoopScreen() {
   const trialStatus = useTrialStatus();
   const { pendingCycle } = usePlanCycleRecap();
   const { pendingRenewal } = usePlanRenewalPrompt();
+  // The soft half of the update prompt. The hard half is a gate in
+  // AppNavigator and never reaches this screen.
+  const updateNudge = useUpdateNudge();
   const [refreshing, setRefreshing] = useState(false);
   const [endingSoonDismissed, setEndingSoonDismissed] = useState(false);
 
@@ -120,7 +126,19 @@ export function DailyLoopScreen() {
     }
   }, []);
 
-  const movementTask = tasksForPillar(currentWeek, 'movement')[0] ?? null;
+  /**
+   * Every movement entry the week holds, not just the first.
+   *
+   * A week used to carry exactly one, so `[0]` was the whole story. The
+   * upper/lower split gives her two — and read one at a time, the second is
+   * invisible on this hub and unreachable from it, because the card below is
+   * also what navigates. The pillar stays one card: this screen is four
+   * pillars, and a fifth would stop being a daily loop.
+   */
+  const movementTasks = useMemo(
+    () => tasksForPillar(currentWeek, 'movement'),
+    [currentWeek]
+  );
   const relaxationTask = tasksForPillar(currentWeek, 'relaxation')[0] ?? null;
   const habitTasks = useMemo(() => tasksForPillar(currentWeek, 'habit'), [currentWeek]);
 
@@ -133,10 +151,19 @@ export function DailyLoopScreen() {
       // reads as inert rather than pushing a screen whose only content is the
       // same sentence she just tapped.
       movementSegment(
-        movementTask,
+        movementTasks,
         finished,
-        movementTask
-          ? () => navigation.navigate('Movement', { taskKey: movementTask.key })
+        // Opens the day she still owes, not whichever the plan happens to list
+        // first — on a split week that is the difference between landing on the
+        // session she has left and landing on the one she finished on Monday.
+        movementTasks.length
+          ? () =>
+              navigation.navigate('Movement', {
+                taskKey: (
+                  movementTasks.find((task) => !isTaskComplete(task, finished)) ??
+                  movementTasks[0]
+                ).key,
+              })
           : undefined
       ),
       nutritionSegment(plan, () => navigation.navigate('Nutrition')),
@@ -149,7 +176,7 @@ export function DailyLoopScreen() {
       ),
       habitSegment(plan, habitTasks, () => navigation.navigate('Habits')),
     ];
-  }, [plan, movementTask, relaxationTask, habitTasks, navigation]);
+  }, [plan, movementTasks, relaxationTask, habitTasks, navigation]);
 
   // Only nag when access really is about to stop — i.e. she cancelled and the
   // paid period runs out within two days. An auto-renewing subscriber is never
@@ -252,6 +279,17 @@ export function DailyLoopScreen() {
             </View>
           )}
 
+          {/* Sits with the error banner rather than among the plan cards: it is
+              news about the app, not about her day, and nothing below it should
+              have to shuffle around a message that is gone once she acts on it. */}
+          {updateNudge.visible && updateNudge.latest ? (
+            <UpdateAvailableCard
+              latest={updateNudge.latest}
+              onUpdate={updateNudge.openStore}
+              onDismiss={updateNudge.dismiss}
+            />
+          ) : null}
+
           <StaggeredZoomIn delayIndex={0} reduceMotion={reduceMotion}>
             <WeekHeader
               date={date}
@@ -337,11 +375,21 @@ export function DailyLoopScreen() {
 // ---------------------------------------------------------------------------
 
 function movementSegment(
-  task: PlanTask | null,
+  tasks: PlanTask[],
   finished: boolean,
   onPress?: () => void
 ): SegmentCardProps {
-  const progress = task ? taskProgress(task, finished) : { value: 0, total: 0 };
+  // Summed across the week's entries, so the ring counts the sessions she was
+  // actually asked for. On a split week the upper day alone would read "1 of 2"
+  // while she owed four.
+  const progress = tasks.reduce(
+    (running, task) => {
+      const { value, total } = taskProgress(task, finished);
+      return { value: running.value + value, total: running.total + total };
+    },
+    { value: 0, total: 0 }
+  );
+
   return {
     icon: 'barbell',
     tint: colors.primary,
@@ -349,10 +397,30 @@ function movementSegment(
     title: 'Movement',
     // What is left, not where she is: "1 of 2 this week" is the ring's job, and
     // on the hub the sentence has to say what today still asks of her.
-    subtitle: task ? `${task.title} · ${taskRemainingLabel(task, finished)}` : NOTHING_SCHEDULED,
+    subtitle: movementSubtitle(tasks, finished),
     ...progress,
     onPress,
   };
+}
+
+/**
+ * The one line under the Movement ring, however many entries the week holds.
+ *
+ * With two, naming the *next unfinished* day is the only version that stays
+ * true all week: naming the first would go on advertising the upper day after
+ * she had done it, and naming both does not fit on one line of a card.
+ */
+function movementSubtitle(tasks: PlanTask[], finished: boolean): string {
+  if (tasks.length === 0) return NOTHING_SCHEDULED;
+
+  const next = tasks.find((task) => !isTaskComplete(task, finished));
+  if (next) return `${next.title} · ${taskRemainingLabel(next, finished)}`;
+  if (tasks.length === 1) return `${tasks[0].title} · ${taskRemainingLabel(tasks[0], finished)}`;
+
+  // Everything done. `taskRemainingLabel` speaks for one entry only, so the
+  // all-clear for several is written here rather than borrowed from one of them.
+  const period = tasks[0].cadence === 'weekly' && !finished ? 'this week' : 'today';
+  return `All ${tasks.length} sessions done ${period}`;
 }
 
 function nutritionSegment(plan: PlanReady, onPress: () => void): SegmentCardProps {

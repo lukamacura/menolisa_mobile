@@ -8,9 +8,13 @@
  *    (there it means `count >= target`). No shared renderer may assume one type.
  * 2. `count` on `POST /api/plan/complete` REPLACES the day's total — it does not add.
  * 3. `video` only arrives with `?media=1` AND once the server's `MEDIA_READY` set
- *    lists the exercise id. It is empty today, so treat clips as optional forever.
- *    The API also sends a `poster` still; the app ignores it and shows no frame
- *    behind the clip — see `ExerciseVideo`.
+ *    lists the exercise id, so it is optional forever — K01 Zone 2 cardio and
+ *    K02 Sprint intervals are doses rather than movements and will never have a
+ *    clip. The key is absent, not null or "", so `Boolean(exercise.video)` is
+ *    the test; never build a URL from `id`. A row without one renders as name
+ *    and props, with no player, poster, spinner or apology — see
+ *    `ExerciseVideo`. The API also sends a `poster` still; the app ignores it
+ *    and shows no frame behind the clip.
  * 4. A movement task's session is `warmup` + `exercises` + `cooldown`, and
  *    `exercises` stayed meaning the main work only. Both bookends are optional
  *    and absent today. Never read the three arrays yourself — build a session

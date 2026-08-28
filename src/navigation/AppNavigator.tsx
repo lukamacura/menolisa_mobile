@@ -10,6 +10,7 @@ import * as Linking from 'expo-linking';
 import { getNativeExpoNotifications } from '../lib/expoNotificationsGate';
 import { isLocalReminder } from '../lib/reminders/schedule';
 import { useAuth } from '../context/AuthContext';
+import { useAppUpdate } from '../hooks/useAppUpdate';
 import { MedicalConsentProvider } from '../context/ConsentContext';
 import { openAccountBillingEntry } from '../lib/api';
 import { logger } from '../lib/logger';
@@ -17,6 +18,7 @@ import { LandingScreenWithButton } from '../screens/LandingScreen';
 import { LoginScreen } from '../screens/LoginScreen';
 import { AccountNotFoundScreen } from '../screens/AccountNotFoundScreen';
 import { SubscriptionRequiredScreen } from '../screens/SubscriptionRequiredScreen';
+import { UpdateRequiredScreen } from '../screens/UpdateRequiredScreen';
 import { MainTabs } from './MainTabs';
 import { MedicalDisclaimerModal } from '../components/MedicalDisclaimerModal';
 import { colors } from '../theme/tokens';
@@ -38,6 +40,11 @@ const DISCLAIMER_KEY = '@menolisa:consent_v2_accepted';
 
 export function AppNavigator() {
   const { user, loading, accountStatus, reconcileAccountStatus } = useAuth();
+  /**
+   * Whether this build is still one the API supports. Only `required`
+   * matters here; the soft nudge is the daily loop's business.
+   */
+  const { requirement: updateRequirement, openStore, recheck } = useAppUpdate();
   /**
    * `null` while the stored flag is still being read — neither "show the gate"
    * nor "consent is done". Anything downstream that waits on consent has to sit
@@ -232,6 +239,20 @@ export function AppNavigator() {
       sub.remove();
     };
   }, [user]);
+
+  /**
+   * Above everything, including the loading screen and the auth branch.
+   *
+   * A build below the server's `minimum` is one we no longer support, which
+   * means the calls the screens behind this are about to make cannot be
+   * trusted. Sitting her on a spinner, or on a login form that will fail in a
+   * way she cannot diagnose, is strictly worse than telling her to update.
+   * Anything other than `required` — including the `unknown` of a check that
+   * has not answered yet or could not — falls through and the app runs.
+   */
+  if (updateRequirement === 'required') {
+    return <UpdateRequiredScreen onUpdate={openStore} onRecheck={recheck} />;
+  }
 
   if (loading) {
     return <LoadingScreen />;

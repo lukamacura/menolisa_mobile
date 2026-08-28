@@ -13,9 +13,11 @@ type ExerciseCardProps = {
 /**
  * One exercise: what it is, what it needs, and how much of it.
  *
- * The clip is progressive enhancement. The server's ready-set is empty today, so
- * `video` is absent for every exercise — the card has to read as finished on
- * name, props and dose alone, and it does.
+ * The clip is progressive enhancement, and permanently so: `video` is optional
+ * on every exercise and some rows — K01 Zone 2 cardio, K02 Sprint intervals —
+ * are doses rather than movements and will never carry one. Without it the row
+ * loses the play affordance and stops being pressable, and reads as finished on
+ * name, props and dose alone, because that is all there ever was to say.
  */
 export function ExerciseCard({ exercise }: ExerciseCardProps) {
   const [expanded, setExpanded] = useState(false);
@@ -124,7 +126,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingBottom: spacing.sm,
   },
-  // Matched to the clips' own 4:5 rather than a fixed height, so the expanded
+  // Matched to the clips' own 9:16 rather than a fixed height, so the expanded
   // card frames the movement exactly — at this one ratio `contain` has nothing
   // to letterbox.
   clip: {

@@ -1,5 +1,5 @@
-import React, { useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
 import type { RouteProp } from '@react-navigation/native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -32,8 +32,32 @@ export function MovementScreen() {
   const { plan, currentWeek, tick } = usePlan();
 
   const tasks = tasksForPillar(currentWeek, 'movement');
-  const task = tasks.find((entry) => entry.key === route.params.taskKey) ?? tasks[0] ?? null;
   const finished = plan ? isPlanFinished(plan) : false;
+
+  /**
+   * Which of the week's movement days she is looking at.
+   *
+   * Held in state rather than read straight off the route because a week can
+   * now carry more than one — the upper/lower split — and the switcher below
+   * has to move between them without pushing a second copy of this screen onto
+   * the stack. The route still wins whenever it changes: that is a movement
+   * reminder naming its task, and it must land on the day it was about.
+   *
+   * The fallback is the first *unfinished* day, not `tasks[0]`. Landing her on
+   * the session she finished on Monday, with its ring full and its button
+   * offering to log another, is the wrong answer every day but the first.
+   */
+  const routeKey = route.params?.taskKey;
+  const [selectedKey, setSelectedKey] = useState<string | undefined>(routeKey);
+  useEffect(() => {
+    if (routeKey) setSelectedKey(routeKey);
+  }, [routeKey]);
+
+  const task =
+    tasks.find((entry) => entry.key === selectedKey) ??
+    tasks.find((entry) => !isTaskComplete(entry, finished)) ??
+    tasks[0] ??
+    null;
 
   // One session done today. `count` replaces the day's total, so a second
   // session on the same day sends 2 — doneThisWeek is the server's sum across
@@ -77,6 +101,41 @@ export function MovementScreen() {
     <PlanScreenLayout>
       <StaggeredZoomIn delayIndex={0} reduceMotion={reduceMotion}>
         <View style={styles.header}>
+          {/* Only when there is a choice to make. One movement day is the case
+              this screen was built for, and a lone tab above the title would be
+              a control that cannot do anything. */}
+          {tasks.length > 1 && (
+            <View style={styles.dayTabs} accessibilityRole="tablist">
+              {tasks.map((entry) => {
+                const selected = entry.key === task.key;
+                const done = isTaskComplete(entry, finished);
+                return (
+                  <Pressable
+                    key={entry.key}
+                    onPress={() => setSelectedKey(entry.key)}
+                    style={[styles.dayTab, selected && styles.dayTabSelected]}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected }}
+                    accessibilityLabel={done ? `${entry.title}, done` : entry.title}
+                  >
+                    {done && (
+                      <Ionicons
+                        name="checkmark"
+                        size={13}
+                        color={selected ? colors.primaryDark : colors.textMuted}
+                      />
+                    )}
+                    <Text
+                      numberOfLines={1}
+                      style={[styles.dayTabText, selected && styles.dayTabTextSelected]}
+                    >
+                      {entry.title}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
           <Text style={styles.title}>{task.title}</Text>
           <Text style={styles.why}>{task.why}</Text>
         </View>
@@ -200,6 +259,37 @@ function SessionDots({ task, value, total }: { task: PlanTask; value: number; to
 const styles = StyleSheet.create({
   header: {
     marginBottom: spacing.md,
+  },
+  dayTabs: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  dayTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    minHeight: minTouchTarget,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+  },
+  dayTabSelected: {
+    borderColor: colors.primary,
+    // rgba, never an 8-digit hex — Android renders #RRGGBBAA backgrounds flat grey.
+    backgroundColor: 'rgba(244, 124, 151, 0.14)',
+  },
+  dayTabText: {
+    ...typography.presets.buttonSmall,
+    color: colors.textMuted,
+    flexShrink: 1,
+  },
+  dayTabTextSelected: {
+    color: colors.primaryDark,
   },
   title: {
     ...typography.presets.heading2,

@@ -1,8 +1,8 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
+import { View, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 import { useIsFocused } from '@react-navigation/native';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { colors, spacing, radii, typography } from '../../theme/tokens';
+import { colors, radii } from '../../theme/tokens';
 import { clipSource } from '../../lib/clipCache';
 import type { PlanExercise } from '../../lib/planTypes';
 
@@ -33,13 +33,24 @@ export const CLIP_ASPECT = 9 / 16;
  *      ≤800KB). The filename IS the mapping.
  *   2. Add that id to `MEDIA_READY` in `lib/plan/catalog.ts`. An id missing from
  *      that set returns no media, so a half-finished shoot never ships a broken
- *      player — it lands on the placeholder below instead.
+ *      player.
  *
- * The set holds exactly one id today (`L01`, and that one still cut to the old
- * 4:5 spec), which is why the placeholder is the state that has been designed
- * properly: it has to read as "not filmed yet", never as a
- * failure, and it has to hold the same space the clip will take so the layout
- * does not shift the day the clips land.
+ * **`exercise.video` is the only source of a clip URL — never build one from
+ * `exercise.id`.** Nothing in this app may know the bucket, the extension or
+ * how the filename is spelled. Server-side, `hydrateList()` spreads
+ * `exerciseMedia(id)`, which returns `undefined` for a row with no clip, so the
+ * key is *missing* rather than `null` or `""`: `Boolean(exercise.video)` is the
+ * whole test, and it is the only one.
+ *
+ * ─── A missing clip is not a gap waiting to be filled ───────────────────────
+ * Some exercises will never have one. K01 Zone 2 cardio and K02 Sprint
+ * intervals are doses, not movements — there is nothing to demonstrate and no
+ * shoot will ever add them, and more rows like them will follow. So the no-clip
+ * state must not be dressed as a pending one: no player, no poster, no spinner,
+ * and above all no "coming soon" card, which turns a deliberate row into a
+ * broken one on the single screen she is reading from the floor. It renders as
+ * ground, and the name, props and dose beside it carry the exercise on their
+ * own — they were written to.
  *
  * ─── Frame the movement inside the safe area ────────────────────────────────
  * A phone is not 16:9 any more. `cover` on a 19.5:9 display scales a 1080×1920
@@ -89,9 +100,10 @@ export function ExerciseVideo({
    */
   contentFit?: 'contain' | 'cover';
   /**
-   * Which way round the surface is lit. `dark` is the session stage: the
-   * placeholder has to read on deep navy, and reading it as an unloaded image
-   * is exactly the failure it is there to avoid.
+   * Which way round the surface is lit. It picks the ground colour, which is
+   * what a clipless exercise shows and what covers a clip while it loads.
+   * `dark` is the session stage, whose ground is the deep navy the chrome was
+   * drawn against.
    */
   ground?: 'light' | 'dark';
 }) {
@@ -104,27 +116,12 @@ export function ExerciseVideo({
     );
   }
 
-  return (
-    <View style={shell} accessibilityRole="image" accessibilityLabel={exercise.name}>
-      {/* Type only. This used to lead with a 52pt circled body glyph, which is
-          the visual vocabulary of a broken image — a grey shape in a box where a
-          picture should be. Two lines of centred text read as "not filmed yet",
-          which is the truth, and they sit quietly enough that the surface around
-          them still looks finished. */}
-      <View style={[styles.placeholder, dark && styles.placeholderDark]}>
-        <Text
-          style={[styles.placeholderText, dark && styles.placeholderTextDark]}
-          numberOfLines={2}
-        >
-          {exercise.name}
-        </Text>
-        <Text style={[styles.placeholderHint, dark && styles.placeholderHintDark]}>
-          Demo video coming soon
-        </Text>
-      </View>
-      {overlay}
-    </View>
-  );
+  // Ground and whatever the caller floats on it, and nothing else. Both callers
+  // already say what the exercise is — `ExerciseCard` never mounts this without
+  // a clip, and the session runner carries the name and the dose in its own
+  // chrome — so any type drawn here would be a second copy of both under a
+  // caption apologising for a clip that was never coming.
+  return <View style={shell}>{overlay}</View>;
 }
 
 /**
@@ -221,38 +218,5 @@ const styles = StyleSheet.create({
   },
   fill: {
     ...StyleSheet.absoluteFillObject,
-  },
-  placeholder: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
-    padding: spacing.md,
-    backgroundColor: 'rgba(244, 124, 151, 0.06)',
-  },
-  /**
-   * Opaque, not a translucent wash over the stage. Android composites
-   * translucent rgba View backgrounds as flat grey often enough that a
-   * near-invisible tint is not worth the risk on the one surface that fills
-   * the whole screen.
-   */
-  placeholderDark: {
-    backgroundColor: colors.stage,
-  },
-  placeholderText: {
-    ...typography.presets.bodyMedium,
-    color: colors.text,
-    textAlign: 'center',
-  },
-  placeholderTextDark: {
-    color: colors.onStage,
-  },
-  placeholderHint: {
-    ...typography.presets.caption,
-    color: colors.textMuted,
-    textAlign: 'center',
-  },
-  placeholderHintDark: {
-    color: colors.onStageMuted,
   },
 });

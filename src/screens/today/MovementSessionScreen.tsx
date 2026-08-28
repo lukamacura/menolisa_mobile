@@ -742,8 +742,9 @@ function SessionRunner({
           rather than `contain`: on a stage a letterbox bar is a black band
           across her phone, not a neutral margin. The clips are shot 9:16 with
           the movement framed inside the central 76% of width precisely so this
-          crop costs nothing — see `ExerciseVideo`. Until they are uploaded this
-          is a designed placeholder holding the whole screen, as it will. */}
+          crop costs nothing — see `ExerciseVideo`. An exercise with no clip —
+          a cardio dose, which will never have one — leaves this as the stage
+          ground, and the chrome below already names the movement. */}
       <ExerciseVideo
         exercise={exercise}
         style={StyleSheet.absoluteFill}
