@@ -18,6 +18,12 @@ type ExerciseCardProps = {
  * are doses rather than movements and will never carry one. Without it the row
  * loses the play affordance and stops being pressable, and reads as finished on
  * name, props and dose alone, because that is all there ever was to say.
+ *
+ * `why` is optional on exactly the same terms and gets exactly the same
+ * treatment: the catalog's plain-language reason for the movement, drawn as
+ * ordinary text under the row when it is there and drawn as nothing at all when
+ * it is not. It is not a callout and not a badge — she is reading a list of
+ * things to do, and a reason set in a coloured box stops being a reason.
  */
 export function ExerciseCard({ exercise }: ExerciseCardProps) {
   const [expanded, setExpanded] = useState(false);
@@ -71,6 +77,15 @@ export function ExerciseCard({ exercise }: ExerciseCardProps) {
         )}
       </Pressable>
 
+      {/* Why this movement is on the list, in the catalog's own words.
+          Outside the row rather than inside its text column: in there it would
+          share its width with the dose chip and the chevron and wrap to five
+          lines on a small phone. Full width, ordinary body text, never
+          truncated — it is two sentences, and half of a reason is worse than
+          none. Absent on most rows and permanently absent on some, so the
+          whole block draws only when there is something to say. */}
+      {exercise.why && <Text style={styles.why}>{exercise.why}</Text>}
+
       {/* Mounted only while its card is open — a session of six exercises would
           otherwise hold six video surfaces at once. */}
       {hasClip && expanded && (
@@ -108,6 +123,15 @@ const styles = StyleSheet.create({
   props: {
     ...typography.presets.caption,
     color: colors.textMuted,
+  },
+  why: {
+    ...typography.presets.bodySmall,
+    color: colors.textMuted,
+    // Pulled up under the row's own bottom padding, so the reason reads as the
+    // next line of the exercise rather than as a second block below it.
+    marginTop: -spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingBottom: spacing.sm,
   },
   doseChip: {
     paddingHorizontal: spacing.xs,

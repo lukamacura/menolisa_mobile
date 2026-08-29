@@ -196,8 +196,8 @@ export function NotificationPrefsScreen() {
                   onChange={(movement) => updateReminders({ movement })}
                 />
                 <Text style={styles.footnote}>
-                  The water check lands at {formatTime(WATER_HOUR)}, and only on a day you have
-                  already started.
+                  The water check lands at {formatTime(WATER_HOUR)}. Once you have started, it
+                  names where your count is.
                 </Text>
               </>
             ) : null}

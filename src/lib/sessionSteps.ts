@@ -15,7 +15,7 @@
  * slower — but nothing on the screen asks her to keep a count in her head.
  */
 
-import type { ExerciseDose, PlanExercise, SessionPhase } from './planTypes';
+import { isWorkPhase, type ExerciseDose, type PlanExercise, type SessionPhase } from './planTypes';
 
 /** Between the two sides of a unilateral exercise. Just long enough to switch. */
 export const SWITCH_SECONDS = 10;
@@ -79,11 +79,18 @@ export type SessionExercise = {
   phase: SessionPhase;
 };
 
-/** Rest after a set, capped by the cadence and by the phase it sits in. */
+/**
+ * Rest after a set, capped by the cadence and by the phase it sits in.
+ *
+ * The cap is a bookend rule, not an everything-but-`main` rule. Power sets are
+ * hops and landings, and the rest between them is the whole point of the dose —
+ * plyometrics done tired stop being plyometrics and start being a fall risk. So
+ * the power block keeps every second the catalog prescribed.
+ */
 export function restFor(item: SessionExercise, compact: boolean): number {
   const rest = item.dose.restSeconds;
   if (compact) return Math.min(rest, SNACK_MAX_REST_SECONDS);
-  if (item.phase !== 'main') return Math.min(rest, PREP_MAX_REST_SECONDS);
+  if (!isWorkPhase(item.phase)) return Math.min(rest, PREP_MAX_REST_SECONDS);
   return rest;
 }
 
@@ -106,7 +113,10 @@ export function stepSeconds(
 
   if (step.kind === 'transition') {
     if (compact) return SNACK_TRANSITION_SECONDS;
-    return item.phase === 'main' ? TRANSITION_SECONDS : PREP_TRANSITION_SECONDS;
+    // The full card before a working set, the short one before a bookend move.
+    // A power exercise gets the full card: she has to fetch a step or clear a
+    // patch of floor before she can hop onto anything.
+    return isWorkPhase(item.phase) ? TRANSITION_SECONDS : PREP_TRANSITION_SECONDS;
   }
   if (step.kind === 'switch') return SWITCH_SECONDS;
   if (step.kind === 'rest') return restFor(item, compact);

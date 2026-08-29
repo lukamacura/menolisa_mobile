@@ -8,6 +8,7 @@ import { exerciseSeconds, type SessionExercise } from './sessionSteps';
 import {
   PLAN_WEEKS,
   SESSION_PHASES,
+  powerThisSession,
   type ExerciseDose,
   type PlanExercise,
   type PlanReady,
@@ -139,10 +140,20 @@ export type SessionBlock = {
   exercises: PlanExercise[];
 };
 
-/** Which array on the task each phase reads from. */
-function phaseExercises(task: PlanTask, phase: SessionPhase): PlanExercise[] {
+/**
+ * Which array on the task each phase reads from.
+ *
+ * `includePower` overrides the `doneThisWeek` gate for the length of a session
+ * already in progress — see `buildSessionItems`.
+ */
+function phaseExercises(
+  task: PlanTask,
+  phase: SessionPhase,
+  includePower?: boolean
+): PlanExercise[] {
   if (phase === 'warmup') return task.warmup ?? [];
   if (phase === 'cooldown') return task.cooldown ?? [];
+  if (phase === 'power') return (includePower ?? powerThisSession(task)) ? task.power ?? [] : [];
   return task.exercises ?? [];
 }
 
@@ -152,7 +163,8 @@ function phaseExercises(task: PlanTask, phase: SessionPhase): PlanExercise[] {
  * Phases with nothing in them are dropped rather than returned empty, so a
  * caller can map over this and never draw a "Warm-up" header with no warm-up
  * under it. That is the normal case today and may stay the normal case for
- * cardio and snacks forever — the plan owes a session neither bookend.
+ * cardio and snacks forever — the plan owes a session neither bookend, and owes
+ * it a power block only on the days `powerSessions` names.
  */
 export function sessionBlocks(task: PlanTask): SessionBlock[] {
   return SESSION_PHASES.map((phase) => ({ phase, exercises: phaseExercises(task, phase) })).filter(
@@ -164,17 +176,26 @@ export function sessionBlocks(task: PlanTask): SessionBlock[] {
  * Every exercise of a session, in run order, resolved and ready for the player.
  *
  * The single place a task becomes a runnable session: warm-up, then work, then
- * cool-down, each carrying the phase it came from, with anything the server
- * gave no runnable dose dropped rather than left to stall the clock.
+ * power, then cool-down, each carrying the phase it came from, with anything
+ * the server gave no runnable dose dropped rather than left to stall the clock.
  *
  * Callers must go through this rather than reading `task.exercises` and adding
- * the bookends themselves — the order is a training decision, not a rendering
- * one, and there should only ever be one copy of it.
+ * the other phases themselves — the order is a training decision, not a
+ * rendering one, and there should only ever be one copy of it.
+ *
+ * @param includePower Pins the power block on or off regardless of what
+ *   `powerThisSession()` says right now. A running session passes the answer it
+ *   opened with: logging the session moves `doneThisWeek`, and a list that
+ *   re-derives the gate would drop exercises out from under a player standing
+ *   on them. Screens that are only *describing* the next session omit it.
  */
-export function buildSessionItems(task: PlanTask | null | undefined): SessionExercise[] {
+export function buildSessionItems(
+  task: PlanTask | null | undefined,
+  includePower?: boolean
+): SessionExercise[] {
   if (!task) return [];
   return SESSION_PHASES.flatMap((phase) =>
-    phaseExercises(task, phase).flatMap((exercise) => {
+    phaseExercises(task, phase, includePower).flatMap((exercise) => {
       const dose = resolveDose(exercise);
       return dose ? [{ exercise, dose, phase }] : [];
     })

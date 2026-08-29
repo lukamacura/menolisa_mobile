@@ -15,10 +15,13 @@
  *    and props, with no player, poster, spinner or apology — see
  *    `ExerciseVideo`. The API also sends a `poster` still; the app ignores it
  *    and shows no frame behind the clip.
- * 4. A movement task's session is `warmup` + `exercises` + `cooldown`, and
- *    `exercises` stayed meaning the main work only. Both bookends are optional
- *    and absent today. Never read the three arrays yourself — build a session
- *    with `buildSessionItems()` and render a list with `sessionBlocks()`.
+ * 4. A movement task's session is `warmup` + `exercises` + `power` +
+ *    `cooldown`, and `exercises` stayed meaning the main work only — every read
+ *    that asks "how much did she train" goes through it, so nothing may be
+ *    folded in. All three of the others are optional, and `power` is further
+ *    gated on `powerSessions`. Never read the four arrays yourself — build a
+ *    session with `buildSessionItems()` and render a list with
+ *    `sessionBlocks()`. A screen that wants the whole session adds them up.
  */
 
 /** Pillars that appear as plan tasks. Nutrition is never a task — it has its own section. */
@@ -27,23 +30,41 @@ export type PlanPillar = 'movement' | 'relaxation' | 'habit';
 /**
  * Which part of a movement session an exercise belongs to.
  *
- * A session runs `warmup` → `main` → `cooldown`, in that order, always. The
- * phase is not a label on the card — it changes how the session is *run*: the
- * prep phases take a short card between exercises and a capped rest, and the
- * runner's traffic light goes quiet in them (see `stageTone` in
+ * A session runs `warmup` → `main` → `power` → `cooldown`, in that order,
+ * always. The phase is not a label on the card — it changes how the session is
+ * *run*: the prep phases take a short card between exercises and a capped rest,
+ * and the runner's traffic light goes quiet in them (see `stageTone` in
  * MovementSessionScreen). Only `main` sets decide whether the session counts.
  */
-export type SessionPhase = 'warmup' | 'main' | 'cooldown';
+export type SessionPhase = 'warmup' | 'main' | 'power' | 'cooldown';
 
 /** Run order. Anything that walks a whole session must walk it in this order. */
-export const SESSION_PHASES: readonly SessionPhase[] = ['warmup', 'main', 'cooldown'];
+export const SESSION_PHASES: readonly SessionPhase[] = ['warmup', 'main', 'power', 'cooldown'];
 
 /** What each phase is called, everywhere she can read it. */
 export const SESSION_PHASE_LABEL: Record<SessionPhase, string> = {
   warmup: 'Warm-up',
   main: 'Main work',
+  power: 'Jumping',
   cooldown: 'Cool-down',
 };
+
+/**
+ * True for the two phases that are real training, false for the two bookends.
+ *
+ * The line every phase-conditional behaviour in the session is actually drawn
+ * on. A power set is hops off a step: it is worked, it earns its full
+ * prescribed rest, it wants the twelve seconds of getting-into-position before
+ * it, and the traffic light has to mean something while she is doing it. All of
+ * that is true of the main work and none of it is true of a hip circle, so the
+ * checks read `isWorkPhase(phase)` rather than `phase === 'main'`.
+ *
+ * The one thing it does **not** decide is whether the session counts. That
+ * question is `'main'` and nothing else — see `totalSets(items, 'main')`.
+ */
+export function isWorkPhase(phase: SessionPhase): boolean {
+  return phase === 'main' || phase === 'power';
+}
 
 /** How often a task is meant to happen. Read together with `target`. */
 export type PlanCadence = 'daily' | 'weekly' | 'per_day';
@@ -114,6 +135,20 @@ export type PlanExercise = {
   name: string;
   /** Equipment, e.g. "Sturdy chair". */
   props: string;
+  /**
+   * One or two plain sentences on why this movement is on the list — e.g.
+   * "Stairs are one leg at a time, so train them one leg at a time."
+   *
+   * Catalog copy: the same for everyone, fixed, and reworded server-side
+   * whenever the wording is improved. **Never cache or hardcode it**, and never
+   * confuse it with `PlanTask.why`, which is written per plan and says why
+   * *this week's session* is what it is. Both are shown; neither substitutes
+   * for the other.
+   *
+   * Optional in exactly the way `video` is: some rows have none and some never
+   * will. Absent means draw nothing — no placeholder, no empty paragraph.
+   */
+  why?: string;
   /** Absent on an API older than 2026-08-14. Read it via `resolveDose()`. */
   dose?: ExerciseDose;
   /** Only with `?media=1` and only for ids the server has clips for. */
@@ -185,6 +220,33 @@ export type PlanTask = {
    */
   warmup?: PlanExercise[];
   cooldown?: PlanExercise[];
+  /**
+   * Movement tasks only — bone loading, run after the work and before the
+   * cool-down. Hops, drops and marching landings.
+   *
+   * Ordinary `PlanExercise`es like the rest, so this needs no second card and
+   * no second player. It is real work, though, not a bookend: full rest, full
+   * transitions, and the runner's traffic light stays on through it.
+   *
+   * Absent on purpose and often — movement snacks (their loading is mixed into
+   * `exercises`), cardio-only sessions, and every plan generated before
+   * 2026-08-29. Unlike the bookends there is **no generic default** to fall
+   * back on: a hip circle is safe for everyone and a plyometric is not, and
+   * which ones she may be given depends on her fitness level and on whether she
+   * reported joint pain. Absent means draw nothing.
+   */
+  power?: PlanExercise[];
+  /**
+   * How many of this week's `target` sessions carry the power block.
+   *
+   * The task holds *one* session she repeats `target` times, so the plan cannot
+   * say "plyo on Tuesday and Friday" — it says "on 2 of your 3" and the app
+   * picks which. `powerThisSession()` in planFormat is that decision, and it is
+   * the only place allowed to make it.
+   *
+   * Missing beside a present `power` means every session.
+   */
+  powerSessions?: number;
   /** Relaxation tasks only. Undefined when the key suffix is not a catalog id. */
   relaxation?: RelaxationDetail;
 };
@@ -254,6 +316,41 @@ export type ResistSuggestion = {
   why: string;
 };
 
+/**
+ * The guided meditation, offered beside whatever relaxation the plan asked for.
+ *
+ * It is not a task and not part of any week — it rides on the plan response, so
+ * it is available on every plan the moment the server ships it rather than only
+ * on plans written afterwards. Doing it completes the relaxation task she
+ * already has; the plan cannot tell which route she took, and does not need to.
+ *
+ * Absent when the app did not ask for media, and absent from any server that
+ * predates it. Both mean the same thing to the screen: no choice is offered and
+ * the plan's own practice stands alone.
+ */
+export type PlanMeditation = {
+  /** Stable id. Nothing is keyed off it yet — logging goes against the task. */
+  id: string;
+  /** "Guided meditation". Shown on the choice control and above the player. */
+  title: string;
+  /** One line on when to reach for it, same job as `RelaxationDetail.use`. */
+  use: string;
+  /**
+   * The catalog's stated runtime, in seconds.
+   *
+   * What the choice control prints while she is deciding whether she has time —
+   * it is known before a byte has been fetched. The player prefers the real
+   * duration off the file once it loads, and only falls back to this.
+   */
+  seconds: number;
+  /**
+   * The full URL, built server-side. **Never construct one from `id`** — the
+   * app must not know the bucket, the filename or its spelling, exactly as with
+   * `PlanExercise.video`.
+   */
+  audio: string;
+};
+
 export type PlanGenerating = {
   status: 'generating';
   /**
@@ -289,6 +386,12 @@ export type PlanReady = {
   habits: PlanHabit[];
   /** Only the ones she has not already taken up as habits. */
   resistSuggestions: ResistSuggestion[];
+  /**
+   * The alternative to whatever relaxation this week asked for. Only with
+   * `?media=1`, and absent on a server older than 2026-08-29 — read it as
+   * "offer no choice", never as an error.
+   */
+  meditation?: PlanMeditation;
 };
 
 export type PlanResponse = PlanGenerating | PlanReady;
@@ -321,6 +424,39 @@ export function planCycle(plan: PlanResponse | null | undefined): number {
 
 export function isPlanReady(plan: PlanResponse): plan is PlanReady {
   return plan.status === 'ready';
+}
+
+/**
+ * Whether *this* session carries the power block.
+ *
+ * The plan holds one session she repeats `target` times a week, so it cannot
+ * name the days the bone loading happens on — it says "on 2 of your 3" and
+ * leaves the choice here. The rule is the first `powerSessions` sessions of the
+ * week: with `target: 3` and `powerSessions: 2` her first two run
+ * warm-up → work → power → cool-down and her third drops the power block.
+ * Beginners have `target: 2` and `powerSessions: 2`, so every session carries it.
+ *
+ * Driven off `doneThisWeek` and nothing else — no new state, no new marker, and
+ * the same week boundary every other weekly count in the app already uses. Two
+ * consequences of that, both deliberate:
+ *
+ * - Past day 56 `doneThisWeek` is structurally 0 forever (see `isPlanFinished`
+ *   in planFormat), so a finished plan shows the block every session. That is
+ *   the documented safe side to fall on: more impact than prescribed is fine,
+ *   none at all is the plan losing its point.
+ * - A missing `powerSessions` beside a present `power` means every session, and
+ *   a `power` that is absent or empty means nothing to draw — never a default
+ *   block invented here, because which plyometrics are safe for her depends on
+ *   her fitness level and her joints, and neither is knowable from the task.
+ *
+ * Lives here rather than in planFormat so `scripts/verify-session.ts` can reach
+ * it: that file imports React Native transitively, and this rule is exactly the
+ * kind of quiet off-by-one the verifier exists to catch.
+ */
+export function powerThisSession(task: PlanTask): boolean {
+  if (!task.power?.length) return false;
+  if (task.powerSessions === undefined) return true;
+  return task.doneThisWeek < task.powerSessions;
 }
 
 /** The log key for one of her own habits. */

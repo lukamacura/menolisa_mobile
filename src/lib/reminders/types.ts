@@ -25,16 +25,6 @@ export type { TrainingWindow };
 /** Every reminder this app can raise locally. */
 export type ReminderId = 'plan' | 'water' | 'movement' | 'streak' | 'week_start';
 
-/**
- * Which end of the day a reminder belongs to.
- *
- * This is the whole volume policy: **at most one reminder per half-day**, so a
- * ceiling of two a day, and none at all on a day she has already finished. An
- * app that reminds a woman in perimenopause of five things is one she mutes in
- * week one, and a muted app cannot remind her of anything.
- */
-export type ReminderHalf = 'morning' | 'evening';
-
 /** One reminder's finished words. Written in `copy.ts`, never assembled elsewhere. */
 export type ReminderCopy = { title: string; body: string };
 
@@ -67,8 +57,7 @@ export type ReminderPrefs = {
 /** One reminder, resolved down to the words and the minute it fires. */
 export type Reminder = {
   id: ReminderId;
-  half: ReminderHalf;
-  /** Lower wins when two reminders land in the same half of the day. */
+  /** Lower wins when two reminders are too close together to both be sent. */
   rank: number;
   time: HourMinute;
   copy: ReminderCopy;
@@ -98,8 +87,17 @@ export type DayState = {
    * never asked — every account created before `q_training_time` existed.
    */
   trainingWindow: TrainingWindow | null;
-  /** The week's first unfinished movement task, if any is still open. */
+  /**
+   * The week's first unfinished movement task, if any is still open.
+   *
+   * The *week's*, not today's: this stays set on a day she has already trained,
+   * because movement is counted across the week and tomorrow's blind reminder
+   * needs to know the session is still owed. `trainedToday` is what suppresses
+   * it for today.
+   */
   movement: { taskKey: string; title: string; remaining: string } | null;
+  /** True once any movement task has been logged today. Suppresses today's nudge. */
+  trainedToday: boolean;
   /** Where her water count stands, when the plan carries a water row. */
   water: { count: number; target: number } | null;
   /** Consecutive active days ending yesterday. Only meaningful when not active today. */

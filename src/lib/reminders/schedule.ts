@@ -13,7 +13,7 @@
 import { Platform } from 'react-native';
 import { getNativeExpoNotifications } from '../expoNotificationsGate';
 import { logger } from '../logger';
-import { lookaheadReminder, remindersForDay } from './select';
+import { lookaheadReminders, remindersForDay } from './select';
 import type { DayState, HourMinute, Reminder, ReminderPrefs } from './types';
 
 /**
@@ -41,7 +41,8 @@ const CHANNEL_ID = 'reminders';
  * How many days ahead the gentle re-engagement nudge is scheduled.
  *
  * Days beyond today are scheduled blind, so only the always-true morning
- * reminder goes out on them (see `lookaheadReminder`). The window doubles as
+ * reminders that survive a night go out on them (see `lookaheadReminders`).
+ * The window doubles as
  * the decay: a woman who stops opening the app gets one quiet nudge a day for a
  * week and then silence, rather than a daily nudge forever from a server that
  * cannot tell she has gone. If she comes back, the next pass refills it.
@@ -148,10 +149,10 @@ export async function syncScheduledReminders(input: {
     }
 
     // The days after, blind.
-    const ahead = lookaheadReminder(state.firstName, prefs);
-    if (ahead) {
-      for (let day = 1; day < LOOKAHEAD_DAYS; day += 1) {
-        planned.push({ reminder: ahead, at: atLocalTime(now, day, ahead.time) });
+    const ahead = lookaheadReminders(state, prefs);
+    for (let day = 1; day < LOOKAHEAD_DAYS; day += 1) {
+      for (const reminder of ahead) {
+        planned.push({ reminder, at: atLocalTime(now, day, reminder.time) });
       }
     }
 

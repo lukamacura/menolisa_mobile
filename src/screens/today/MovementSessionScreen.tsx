@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert, StatusBar } from 'react-native';
 import type { RouteProp } from '@react-navigation/native';
 import { useRoute, useNavigation } from '@react-navigation/native';
@@ -14,6 +14,7 @@ import {
   buildSessionItems,
   exerciseDose,
   formatClock,
+  formatDuration,
   indexInPhase,
   isPlanFinished,
   phaseCount,
@@ -23,9 +24,16 @@ import {
   taskCadenceHint,
   taskRemainingLabel,
 } from '../../lib/planFormat';
-import { SESSION_PHASE_LABEL, type SessionPhase } from '../../lib/planTypes';
+import {
+  SESSION_PHASE_LABEL,
+  isWorkPhase,
+  powerThisSession,
+  type SessionPhase,
+} from '../../lib/planTypes';
+import { cardioExercise } from '../../lib/cardio';
 import { useClipPrewarm } from '../../lib/clipCache';
 import { prepareSessionSounds } from '../../lib/sessionSound';
+import { CardioSession } from '../../components/plan/CardioSession';
 import { ExerciseVideo } from '../../components/plan/ExerciseVideo';
 import { AnimatedPressable } from '../../components/AnimatedPressable';
 import { GratitudeSuccessPanel } from '../../components/GratitudeSuccessPanel';
@@ -52,6 +60,18 @@ import {
  * 22pt permanently to protect a jump that cannot happen while she is moving.
  */
 const CAPTION_HEIGHT = 28 * 2 + spacing.xs + 22;
+
+/**
+ * What the exercise's own reason adds to the caption, on the one step that
+ * shows it.
+ *
+ * Three lines of `bodySmall` plus the gap above them. It is only ever drawn on
+ * the transition card — the card that exists to introduce the next movement —
+ * so this height is added to the bottom scrim for that step alone rather than
+ * reserved on every step, which would darken 74pt more of the picture for the
+ * whole session to serve twelve seconds of it.
+ */
+const WHY_HEIGHT = 22 * 3 + spacing.xs;
 
 /**
  * How much of the display the bottom band actually occupies, so the scrim under
@@ -111,12 +131,24 @@ const SCRIM_BOTTOM_STOPS = [0, 0.28, 0.62] as const;
  * The gradient is transparent at its own top and hits 0.90 at
  * `SCRIM_BOTTOM_STOPS[1]`, so the solid part is the lower `1 - stop` of it:
  * divide the chrome by that and the fade lands exactly where the chrome ends.
+ *
+ * `extra` is chrome this step has that the others do not — today only the
+ * exercise's reason on the transition card. Text the scrim does not reach is
+ * white on whatever the clip is doing behind it, which is the one failure this
+ * whole gradient exists to prevent.
  */
-function scrimBottomHeight(bottomInset: number) {
+function scrimBottomHeight(bottomInset: number, extra = 0) {
   return Math.round(
-    (bottomInset + spacing.md + BOTTOM_CHROME_HEIGHT) / (1 - SCRIM_BOTTOM_STOPS[1]),
+    (bottomInset + spacing.md + BOTTOM_CHROME_HEIGHT + extra) / (1 - SCRIM_BOTTOM_STOPS[1]),
   );
 }
+
+/**
+ * How much of a cardio block has to be behind her before leaving offers to log
+ * it. Half, the same fraction the strength session counts sets against — the
+ * measure differs because a walk has one set, not the standard.
+ */
+const CARDIO_LOG_FRACTION = 0.5;
 
 type Nav = NativeStackNavigationProp<TodayStackParamList, 'MovementSession'>;
 
@@ -164,12 +196,44 @@ export function MovementSessionScreen() {
 
   const tasks = tasksForPillar(currentWeek, 'movement');
   const task = tasks.find((entry) => entry.key === route.params.taskKey) ?? tasks[0] ?? null;
-  // Warm-up, work and cool-down as one runnable list. Memoised because the
-  // player re-arms its clock whenever this array's identity changes.
-  const items = useMemo(() => buildSessionItems(task), [task]);
+
+  /**
+   * Whether this run carries the power block, decided once and then held.
+   *
+   * The gate is `doneThisWeek < powerSessions`, and logging the session moves
+   * `doneThisWeek` — so on her second of two power sessions, the moment she
+   * finishes the block the gate that put it there goes false. Re-deriving it
+   * per render would pull exercises out of the list underneath a player that is
+   * standing on them, and the index it is holding would land on a different
+   * movement or past the end.
+   *
+   * Latched on the task key rather than on the task: the plan object is
+   * replaced on every optimistic tick and every background reconcile, and this
+   * must survive all of them. It re-reads only when she opens a different day's
+   * session, which is the one time the answer is allowed to change.
+   */
+  const withPower = useRef<{ key: string; value: boolean } | null>(null);
+  if (task && withPower.current?.key !== task.key) {
+    withPower.current = { key: task.key, value: powerThisSession(task) };
+  }
+  const includePower = withPower.current?.value ?? false;
+
+  // Warm-up, work, power and cool-down as one runnable list. Memoised because
+  // the player re-arms its clock whenever this array's identity changes.
+  const items = useMemo(() => buildSessionItems(task, includePower), [task, includePower]);
 
   const [started, setStarted] = useState(false);
   const [celebrating, setCelebrating] = useState(false);
+
+  /**
+   * The single `K` row a cardio task holds, or null for a workout.
+   *
+   * A walk is not run on the video stage — see `CardioSession` for why — but it
+   * is run on the same player, logged down the same path and counted by the
+   * same weekly `target`. Everything below that branches on this branches on
+   * presentation only.
+   */
+  const cardio = cardioExercise(task);
 
   // Snacks are four ~5-minute bursts a day. They get the same player with the
   // ceremony stripped out — no long rests, no waiting on a "next up" card.
@@ -186,7 +250,19 @@ export function MovementSessionScreen() {
     setCelebrating(true);
   }, [logSession]);
 
-  const player = useSessionPlayer(items, { compact, onFinish: finish });
+  const player = useSessionPlayer(items, {
+    compact,
+    // The clock may not run behind the setup card. It used to: the player armed
+    // on mount, so the first transition drained while she was still reading how
+    // long the session was, and she landed on the stage already mid-set. On a
+    // twenty-five minute cardio block, left open, it ran the whole session out
+    // and logged one she never did.
+    armed: started,
+    // One continuous block has nothing to introduce, and twelve seconds of
+    // standing still is the wrong way to open twenty-five minutes of walking.
+    skipIntro: Boolean(cardio),
+    onFinish: finish,
+  });
 
   // Decode the countdown cues while she is still reading the intro card. Doing
   // it on first play would cost the first tick a few hundred milliseconds, and
@@ -223,13 +299,48 @@ export function MovementSessionScreen() {
   }, [logSession, navigation]);
 
   const leave = useCallback(() => {
-    // Past the last working set, only the cool-down is left. There is nothing
-    // to weigh up here: the session happened, so leaving must not be able to
-    // throw it away, and "just leave" is not offered.
+    /*
+     * A cardio block is one set, so "how many sets has she finished" is a
+     * question with only two answers and neither is useful until the very end.
+     * Twenty-four minutes of a twenty-five minute walk counted as nothing, and
+     * closing the screen threw it away without so much as asking. Time on the
+     * clock is the honest measure of a session that *is* a clock.
+     */
+    if (cardio) {
+      const total = player.duration ?? 0;
+      const elapsed = started && total > 0 ? total - (player.remaining ?? total) : 0;
+      if (elapsed < total * CARDIO_LOG_FRACTION) {
+        navigation.goBack();
+        return;
+      }
+      Alert.alert(
+        'End this session?',
+        `You've been going ${formatDuration(elapsed)}. Want it logged?`,
+        [
+          { text: 'Keep going', style: 'cancel' },
+          { text: 'Just leave', style: 'destructive', onPress: () => navigation.goBack() },
+          { text: 'Log it as done', onPress: logAndLeave },
+        ],
+        { cancelable: true }
+      );
+      return;
+    }
+
+    // Past the last working set, only the tail of the session is left. There is
+    // nothing to weigh up here: the session happened, so leaving must not be
+    // able to throw it away, and "just leave" is not offered.
     if (player.mainDone) {
       Alert.alert(
         'Finish here?',
-        'The work is done — only the cool-down is left.',
+        // Said accurately, because the two are not the same offer. Walking out
+        // of a cool-down costs her a stretch; walking out of the power block
+        // costs her the bone loading, which is the one thing in the session
+        // nothing else in the plan does. She is still allowed to — it is her
+        // morning — but she should not be told the work is done when the hops
+        // are still ahead of her.
+        player.phase === 'power'
+          ? 'The main work is done — the jumping is still to come.'
+          : 'The work is done — only the cool-down is left.',
         [
           { text: 'Keep going', style: 'cancel' },
           { text: 'Log it and finish', onPress: logAndLeave },
@@ -254,7 +365,18 @@ export function MovementSessionScreen() {
       ],
       { cancelable: true }
     );
-  }, [navigation, player.mainDone, player.setsDone, player.setsTotal, logAndLeave]);
+  }, [
+    navigation,
+    cardio,
+    started,
+    player.duration,
+    player.remaining,
+    player.mainDone,
+    player.phase,
+    player.setsDone,
+    player.setsTotal,
+    logAndLeave,
+  ]);
 
   // This screen runs without a nav header so the session can own the display, so
   // every branch has to carry its own way out — there is no back chevron and no
@@ -285,8 +407,15 @@ export function MovementSessionScreen() {
         <GratitudeSuccessPanel
           title="Session done"
           subtitle={task.why}
-          encouragement="That's muscle and bone that wasn't there this morning."
-          metaChips={[{ icon: 'barbell', label: task.title }]}
+          // A walk builds neither muscle nor bone, and telling her it did is
+          // the sort of small lie that costs an app its credibility on the one
+          // pillar she can least see working. What cardio earns is the heart.
+          encouragement={
+            cardio
+              ? "That's your heart stronger than it was half an hour ago."
+              : "That's muscle and bone that wasn't there this morning."
+          }
+          metaChips={[{ icon: cardio ? 'walk' : 'barbell', label: task.title }]}
           reduceMotion={reduceMotion}
         />
         <View style={[styles.celebrationFooter, { paddingBottom: insets.bottom + spacing.lg }]}>
@@ -304,20 +433,40 @@ export function MovementSessionScreen() {
     );
   }
 
+  // What this one session is worth against the week's ask. She is one tap from
+  // starting; this is the last place the number can still mean something.
+  const finished = plan ? isPlanFinished(plan) : false;
+  const cadence = taskCadenceHint(task);
+  const cadenceNote = cadence
+    ? `${taskRemainingLabel(task, finished)} · your plan asks for ${cadence.toLowerCase()}`
+    : null;
+
+  /*
+   * A walk gets one screen, not two. The setup card exists to answer "how long
+   * is this and what do I have to fetch" before a session she cannot easily
+   * pause — and for cardio both answers fit above the timer, so putting a
+   * doorway in front of it would be a tap she pays for nothing.
+   */
+  if (cardio) {
+    return (
+      <CardioSession
+        title={task.title}
+        exercise={cardio}
+        player={player}
+        started={started}
+        cadenceNote={cadenceNote}
+        onStart={() => setStarted(true)}
+        onLeave={leave}
+      />
+    );
+  }
+
   if (!started) {
-    // What this one session is worth against the week's ask. She is one tap from
-    // starting; this is the last place the number can still mean something.
-    const finished = plan ? isPlanFinished(plan) : false;
-    const cadence = taskCadenceHint(task);
     return (
       <SessionSetup
         title={task.title}
         items={items}
-        cadenceNote={
-          cadence
-            ? `${taskRemainingLabel(task, finished)} · your plan asks for ${cadence.toLowerCase()}`
-            : null
-        }
+        cadenceNote={cadenceNote}
         onStart={() => setStarted(true)}
         onClose={() => navigation.goBack()}
       />
@@ -378,6 +527,7 @@ function SessionSetup({
   const minutes = Math.max(1, Math.round(sessionSeconds(items) / 60));
   const main = phaseCount(items, 'main');
   const warmup = phaseCount(items, 'warmup');
+  const power = phaseCount(items, 'power');
   const cooldown = phaseCount(items, 'cooldown');
 
   return (
@@ -443,10 +593,13 @@ function SessionSetup({
         </Text>
 
         {/* Only drawn when there is something to say. A session with no
-            bookends must look exactly as it did before they existed. */}
-        {(warmup > 0 || cooldown > 0) && (
+            bookends and no power block must look exactly as it did before any
+            of them existed. In run order, so the strip reads as the shape of
+            the session rather than as three unrelated facts about it. */}
+        {(warmup > 0 || power > 0 || cooldown > 0) && (
           <View style={styles.phaseStrip}>
             {warmup > 0 && <PhasePill phase="warmup" count={warmup} />}
+            {power > 0 && <PhasePill phase="power" count={power} />}
             {cooldown > 0 && <PhasePill phase="cooldown" count={cooldown} />}
           </View>
         )}
@@ -484,10 +637,17 @@ function SessionSetup({
   );
 }
 
-/** "Warm-up · 3" — that the session has a bookend, and how long a one. */
+/** Dawn, impact, dusk — the three phases that bracket and follow the work. */
+const PHASE_ICON: Partial<Record<SessionPhase, keyof typeof Ionicons.glyphMap>> = {
+  warmup: 'sunny-outline',
+  power: 'flash-outline',
+  cooldown: 'moon-outline',
+};
+
+/** "Warm-up · 3" — that the session has a phase beyond the work, and how long a one. */
 function PhasePill({ phase, count }: { phase: SessionPhase; count: number }) {
   const tone = phaseTone(phase);
-  const icon: keyof typeof Ionicons.glyphMap = phase === 'warmup' ? 'sunny-outline' : 'moon-outline';
+  const icon = PHASE_ICON[phase] ?? 'ellipse-outline';
   return (
     <View style={[styles.phasePill, { backgroundColor: tone.surface, borderColor: tone.tint }]}>
       <Ionicons name={icon} size={13} color={tone.tint} />
@@ -510,30 +670,46 @@ function PhasePill({ phase, count }: { phase: SessionPhase; count: number }) {
 function stageCopy(step: SessionStep, current: SessionExercise, paused: boolean): {
   label: string;
   support: string | null;
+  /**
+   * The catalog's reason for this movement, on the transition card only.
+   *
+   * The card between exercises is the one moment she is standing still, being
+   * told what is coming, with nothing on a clock she is counted against — which
+   * is exactly where "why am I doing this one" can be answered. On a working
+   * set it would be two sentences of prose over a set she is halfway through,
+   * competing with the countdown for the only attention she has.
+   *
+   * Null everywhere else, and null on the transition card too when the server
+   * sent no reason for this exercise.
+   */
+  why: string | null;
 } {
   const { exercise, dose, phase } = current;
   // The catalog writes "None" for bodyweight work. It is not a thing to fetch.
   const props = exercise.props && exercise.props.toLowerCase() !== 'none' ? exercise.props : null;
 
   if (step.kind === 'transition') {
-    // The bookends announce themselves. "Next up" before the first hip circle
-    // tells her nothing she can act on; "Warm-up" tells her what the next four
-    // minutes are for, which is the whole reason they are worth doing.
+    // Every phase but the main work announces itself. "Next up" before the first
+    // hip circle tells her nothing she can act on; "Warm-up" tells her what the
+    // next four minutes are for, which is the whole reason they are worth doing.
+    // "Jumping" does the same job at the moment the session turns into hopping —
+    // she is entitled to know that is about to happen before she is mid-air.
     const label = phase === 'main' ? 'Next up' : SESSION_PHASE_LABEL[phase];
     return {
       label,
       support: [exerciseDose(exercise), props].filter(Boolean).join(' · ') || null,
+      why: exercise.why ?? null,
     };
   }
   if (step.kind === 'switch') {
-    return { label: 'Switch sides', support: 'Same move, other side.' };
+    return { label: 'Switch sides', support: 'Same move, other side.', why: null };
   }
   if (step.kind === 'rest') {
-    return { label: 'Rest', support: `Then: set ${step.set + 1} of ${dose.sets}` };
+    return { label: 'Rest', support: `Then: set ${step.set + 1} of ${dose.sets}`, why: null };
   }
   // Unreachable — the runner returns before it renders a finished session.
   if (step.kind === 'done') {
-    return { label: '', support: null };
+    return { label: '', support: null, why: null };
   }
 
   // A stopped clock has to say so. The stage goes neutral while she is paused
@@ -544,7 +720,7 @@ function stageCopy(step: SessionStep, current: SessionExercise, paused: boolean)
   // her to track a number that means nothing here.
   const label = paused
     ? 'Paused'
-    : phase !== 'main'
+    : !isWorkPhase(phase)
       ? dose.sets > 1
         ? `${SESSION_PHASE_LABEL[phase]} · ${step.set} of ${dose.sets}`
         : SESSION_PHASE_LABEL[phase]
@@ -552,9 +728,9 @@ function stageCopy(step: SessionStep, current: SessionExercise, paused: boolean)
         ? `Set ${step.set} of ${dose.sets}`
         : 'Your turn';
   if (dose.perSide) {
-    return { label, support: step.side === 0 ? 'Left side' : 'Right side' };
+    return { label, support: step.side === 0 ? 'Left side' : 'Right side', why: null };
   }
-  return { label, support: props ?? setInstruction(dose) };
+  return { label, support: props ?? setInstruction(dose), why: null };
 }
 
 /**
@@ -592,8 +768,11 @@ type StepTone = { tint: string; surface: string; onTint: string };
  * words instead — the chip reads "Paused" and the button reads "Resume".
  */
 function stageTone(step: SessionStep, phase: SessionPhase): StepTone {
-  // Outside the working part the traffic light goes off — see `phaseTone`.
-  if (phase !== 'main') return phaseTone(phase);
+  // Outside the working part the traffic light goes off — see `phaseTone`. The
+  // power block is inside it: hops are worked and rested exactly like a squat,
+  // and that is the one stretch of the session where "am I meant to be moving
+  // right now" has to be readable from the floor at a glance.
+  if (!isWorkPhase(phase)) return phaseTone(phase);
 
   if (step.kind === 'work') {
     return { tint: colors.effort, surface: colors.effortBg, onTint: colors.onEffort };
@@ -633,6 +812,12 @@ function stageTone(step: SessionStep, phase: SessionPhase): StepTone {
 function phaseTone(phase: SessionPhase): StepTone {
   if (phase === 'cooldown') {
     return { tint: colors.cooldown, surface: colors.cooldownBg, onTint: colors.onCooldown };
+  }
+  // Only reached from the setup pill, never from the running stage — inside the
+  // power block `stageTone` keeps the traffic light on. It is here so the pill
+  // that announces the block on the way in is not wearing the warm-up's clay.
+  if (phase === 'power') {
+    return { tint: colors.power, surface: colors.powerBg, onTint: colors.onPower };
   }
   return { tint: colors.warmup, surface: colors.warmupBg, onTint: colors.onWarmup };
 }
@@ -684,7 +869,7 @@ function SessionRunner({
   const timed = duration !== null;
   const resting = step.kind === 'rest' || step.kind === 'switch';
   const working = step.kind === 'work';
-  const { label, support } = stageCopy(step, current, working && paused);
+  const { label, support, why } = stageCopy(step, current, working && paused);
   const tone = stageTone(step, phase);
 
   // "3 of 5" counted inside the phase she is in, not across the whole session.
@@ -704,8 +889,10 @@ function SessionRunner({
   // exactly what she wants it to do.
   // Pausing a warm-up move is not a thing anyone reaches for; moving on is.
   // The big button follows what she would actually tap, which in the bookends
-  // is always "I'm done with this one".
-  const pauseIsPrimary = working && timed && phase === 'main';
+  // is always "I'm done with this one". In the power block it is pause again:
+  // a set of hops is the one thing in the session she is most likely to need to
+  // stop partway through.
+  const pauseIsPrimary = working && timed && isWorkPhase(phase);
   const primaryLabel = pauseIsPrimary
     ? paused
       ? 'Resume'
@@ -762,7 +949,7 @@ function SessionRunner({
       <LinearGradient
         colors={SCRIM_BOTTOM}
         locations={SCRIM_BOTTOM_STOPS}
-        style={[styles.scrimBottom, { height: scrimBottomHeight(insets.bottom) }]}
+        style={[styles.scrimBottom, { height: scrimBottomHeight(insets.bottom, why ? WHY_HEIGHT : 0) }]}
         pointerEvents="none"
       />
 
@@ -832,6 +1019,15 @@ function SessionRunner({
                 {support}
               </Text>
             )}
+            {/* Why this movement, before the set rather than after it — she is
+                reading it in the seconds she has to get into position, which is
+                the only reason it changes what she does next. Three lines: the
+                catalog writes two sentences and a cut-off one is not a reason. */}
+            {why && (
+              <Text style={styles.why} numberOfLines={3}>
+                {why}
+              </Text>
+            )}
           </View>
 
           <View style={styles.controls}>
@@ -886,7 +1082,7 @@ function SessionRunner({
               )}
               {/* In the bookends the big button is already "Done", so pause is what
                   is left over — she has answered the door mid-stretch. */}
-              {working && timed && phase !== 'main' && (
+              {working && timed && !isWorkPhase(phase) && (
                 <SecondaryButton
                   icon={paused ? 'play' : 'pause'}
                   label={paused ? 'Resume' : 'Pause'}
@@ -1320,6 +1516,18 @@ const styles = StyleSheet.create({
     color: colors.onStageMuted,
     textAlign: 'center',
     maxWidth: 300,
+  },
+  /**
+   * The same ink as the support line, and deliberately no card, no border and
+   * no accent behind it. It is part of the exercise she is about to do, not an
+   * announcement about it — anything louder would read on the stage as the app
+   * selling her the set.
+   */
+  why: {
+    ...typography.presets.bodySmall,
+    color: colors.onStageMuted,
+    textAlign: 'center',
+    maxWidth: 320,
   },
 
   // Controls

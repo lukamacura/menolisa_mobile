@@ -57,6 +57,23 @@ export function waterCopy(count: number, target: number): ReminderCopy {
 }
 
 /**
+ * The water check on a day we know nothing about yet.
+ *
+ * Days beyond today are scheduled before she has drunk anything, so the count
+ * cannot be named — a body reading "you're at 0 of 6" written at 8am and
+ * delivered at 3pm is simply wrong, and being wrong about her own numbers is
+ * the fastest way to lose the right to speak at all. So this says the true
+ * thing that needs no count, and the same-day pass replaces it with the
+ * counted version the moment she opens the app.
+ */
+export function waterLookaheadCopy(target: number): ReminderCopy {
+  return {
+    title: `${target} glasses of water today`,
+    body: 'Thirst gets quieter with age, so this is one to count rather than feel.',
+  };
+}
+
+/**
  * The evening movement nudge.
  *
  * `remaining` is `taskRemainingLabel()` — "1 more session this week" — because
@@ -67,6 +84,21 @@ export function movementCopy(title: string, remaining: string): ReminderCopy {
   return {
     title: 'Your movement is still open',
     body: `${title} — ${remaining.toLowerCase()}.`,
+  };
+}
+
+/**
+ * The movement nudge on a day we know nothing about yet.
+ *
+ * No `remaining`, for the same reason `waterLookaheadCopy` names no count: this
+ * is written the day before, and she may well train tonight — at which point
+ * "2 more sessions this week" is simply untrue by the time it arrives. The task
+ * itself is the useful half of that sentence anyway.
+ */
+export function movementLookaheadCopy(title: string): ReminderCopy {
+  return {
+    title: 'Your movement is still open',
+    body: `${title} is there whenever your window is.`,
   };
 }
 

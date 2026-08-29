@@ -112,19 +112,18 @@ function buildDayState(
 
   const movementPillar = tasksForPillar(currentWeek, 'movement');
   /**
-   * Suppressed entirely on a day she has already trained.
+   * The week's open session, and whether she has already trained today.
    *
-   * Movement is counted across the week, so a task at 1 of 3 is genuinely still
-   * open on the evening of the day she did that first session — and nudging her
-   * about it then reads as an app that did not notice she trained. It is also
-   * the one candidate that could still fire on a finished day, which is the
-   * promise Settings makes to her in as many words: never more than two a day,
-   * and none at all once you are done.
+   * Kept as two facts rather than one, because they are answers to two
+   * different questions. Movement is counted across the week, so a task at 1 of
+   * 3 is genuinely still open on the evening of the day she did that first
+   * session — nudging her about it *then* reads as an app that did not notice
+   * she trained, which is why `trainedToday` suppresses today's reminder. But it
+   * says nothing at all about tomorrow, and folding the two together is what
+   * left the blind days with no movement reminder to schedule.
    */
   const trainedToday = movementPillar.some((task) => task.doneToday > 0);
-  const movementTask = trainedToday
-    ? undefined
-    : movementPillar.find((task) => !isTaskComplete(task, finished));
+  const movementTask = movementPillar.find((task) => !isTaskComplete(task, finished));
 
   const water = plan.nutrition.groups
     .flatMap((group) => group.items)
@@ -134,6 +133,7 @@ function buildDayState(
     activeToday,
     firstName: extra.firstName,
     trainingWindow: extra.trainingWindow,
+    trainedToday,
     movement: movementTask
       ? {
           taskKey: movementTask.key,

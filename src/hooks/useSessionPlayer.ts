@@ -41,7 +41,7 @@ export type SessionPlayer = {
   /** Adds time to whatever is on the clock. No-op on an untimed step. */
   addTime: () => void;
   togglePause: () => void;
-  /** Every set the session asks for, warm-up and cool-down included. */
+  /** Every set the session asks for — warm-up, power and cool-down included. */
   setsDone: number;
   setsTotal: number;
   /**
@@ -56,20 +56,43 @@ export type SessionPlayer = {
 };
 
 /**
- * @param items Built by `buildSessionItems()` in planFormat — warm-up, work and
- *   cool-down already in run order with their doses resolved. Memoise it: the
- *   clock below re-arms on this array's identity.
+ * @param items Built by `buildSessionItems()` in planFormat — warm-up, work,
+ *   power and cool-down already in run order with their doses resolved, and the
+ *   power block already gated on `powerSessions`. Memoise it: the clock below
+ *   re-arms on this array's identity, so an array rebuilt mid-session restarts
+ *   the step she is standing on.
+ * @param options.armed Whether the clock may run at all. Default true. A screen
+ *   that shows something before the session — a setup card, a start button —
+ *   must pass `false` until she has actually started, or the session runs
+ *   underneath it: the first transition times out while she is still reading,
+ *   and a long enough read finishes and logs a session she never did.
+ * @param options.skipIntro Open on the first working set rather than on the
+ *   "next up" card in front of it. For a session that is one continuous block —
+ *   a walk, a bike ride — there is no next exercise to introduce, and twelve
+ *   seconds of standing still is the wrong way to start twenty-five minutes of
+ *   moving.
  */
 export function useSessionPlayer(
   items: SessionExercise[],
-  options: { compact?: boolean; startIndex?: number; onFinish?: () => void } = {}
+  options: {
+    compact?: boolean;
+    startIndex?: number;
+    armed?: boolean;
+    skipIntro?: boolean;
+    onFinish?: () => void;
+  } = {}
 ): SessionPlayer {
-  const { compact = false, startIndex = 0, onFinish } = options;
+  const { compact = false, startIndex = 0, armed = true, skipIntro = false, onFinish } = options;
+
+  /** The step a session opens on, given where it starts and whether it has an intro. */
+  const openingStep = useCallback(
+    (index: number): SessionStep =>
+      skipIntro ? { kind: 'work', index, set: 1, side: 0 } : { kind: 'transition', index },
+    [skipIntro]
+  );
 
   const [step, setStep] = useState<SessionStep>(() =>
-    items.length
-      ? { kind: 'transition', index: Math.min(startIndex, items.length - 1) }
-      : { kind: 'done' }
+    items.length ? openingStep(Math.min(startIndex, items.length - 1)) : { kind: 'done' }
   );
   const [paused, setPaused] = useState(false);
   const [remaining, setRemaining] = useState<number | null>(null);
@@ -88,8 +111,8 @@ export function useSessionPlayer(
   useEffect(() => {
     if (seeded.current || !items.length) return;
     seeded.current = true;
-    setStep({ kind: 'transition', index: Math.min(startIndex, items.length - 1) });
-  }, [items.length, startIndex]);
+    setStep(openingStep(Math.min(startIndex, items.length - 1)));
+  }, [items.length, startIndex, openingStep]);
 
   const advance = useCallback(() => {
     setStep((prev) => nextStep(prev, items));
@@ -138,9 +161,16 @@ export function useSessionPlayer(
       setRemaining(null);
       return;
     }
+    // Disarmed, the clock is shown but not started — the full dose sits on the
+    // face, which is what a start button has to be standing next to.
+    if (!armed) {
+      endsAt.current = null;
+      setRemaining(baseDuration);
+      return;
+    }
     endsAt.current = Date.now() + baseDuration * 1000;
     setRemaining(baseDuration);
-  }, [step, baseDuration]);
+  }, [step, baseDuration, armed]);
 
   // Fire once when the session ends, not on every render that follows it.
   useEffect(() => {
@@ -160,7 +190,7 @@ export function useSessionPlayer(
    * in one jump on resume, rather than replaying every step it missed.
    */
   useEffect(() => {
-    if (baseDuration === null || paused) return;
+    if (baseDuration === null || paused || !armed) return;
 
     let cancelled = false;
     const readClock = () => {
@@ -188,7 +218,7 @@ export function useSessionPlayer(
       clearInterval(timer);
       subscription.remove();
     };
-  }, [baseDuration, paused, advance, items]);
+  }, [baseDuration, paused, armed, advance, items]);
 
   // The last three seconds, heard and felt rather than watched — she is not
   // looking at the screen while she is holding a wall sit. Three ticks and then

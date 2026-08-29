@@ -9,26 +9,36 @@
  *
  * The rule, in full:
  *
- *   **At most one reminder in the morning half of the day, and at most one in
- *   the evening half.** Two a day, ever. Zero on a day she has finished.
+ *   **At most two reminders a day, and never two within two hours of each
+ *   other.** Zero on a day she has finished.
  *
  * That is what makes the difference between an app that helps and an app that
  * nags, and it is enforced structurally rather than by everyone remembering to
  * be restrained. Adding a sixth reminder to this file cannot raise the ceiling.
+ *
+ * This used to be "one per half-day", split at 16:00. It read well and it
+ * silently threw work away: the water check sits at 15:00, so for every woman
+ * who told the quiz she trains in the morning (08:00) or at midday (12:30) her
+ * movement reminder and her water check were in the same half — and movement
+ * outranks water. She could never receive a water reminder at all, on any day
+ * she still had a session owed, which is most days. Counting reminders and
+ * spacing them says the thing the halves were a proxy for, and says it about
+ * every pair rather than about a boundary neither of them chose.
  */
 
 import {
   movementCopy,
+  movementLookaheadCopy,
   planCopy,
   streakCopy,
   waterCopy,
+  waterLookaheadCopy,
   weekStartCopy,
 } from './copy';
 import type {
   DayState,
   HourMinute,
   Reminder,
-  ReminderHalf,
   ReminderId,
   ReminderPrefs,
   TrainingWindow,
@@ -55,20 +65,21 @@ export const TRAINING_TIMES: Record<TrainingWindow, HourMinute> = {
 /** Everybody trained in the evening before the quiz asked. Nothing changes for them. */
 const DEFAULT_TRAINING_WINDOW: TrainingWindow = 'evening';
 
+/** The ceiling. Nothing in this file can raise it; see the header. */
+const MAX_PER_DAY = 2;
+
 /**
- * Where the day splits in two.
+ * How far apart two reminders have to be to both be worth sending.
  *
- * Every reminder's half is derived from its time and nothing else, so the cap
- * cannot be dodged by mislabelling one. The movement reminder is why the
- * boundary has to exist at all: a woman who trains before work and one who
- * trains after it are asking for opposite things from the same feature, and
- * hers moves across this line.
- *
- * 16:00 rather than noon because the afternoon belongs with the morning here —
- * the water check at 15:00 is the *late* option of the first half, not the
- * opening of the second.
+ * Two hours, which is the smallest gap in the whole candidate set that still
+ * reads as two separate thoughts rather than one nagging app: a midday trainer
+ * gets her movement nudge at 12:30 and her water check at 15:00, and those are
+ * plainly about different things. Anything closer — the streak and week-start
+ * reminders both land on `prefs.evening`, and a morning trainer's 08:00 session
+ * sits half an hour from the 08:30 plan nudge — is one interruption said twice,
+ * and the lower rank wins outright.
  */
-const EVENING_FROM_HOUR = 16;
+const MIN_GAP_MINUTES = 120;
 
 /**
  * When the water check lands. Not configurable, unlike her other times.
@@ -85,10 +96,10 @@ export const STREAK_WORTH_SAVING = 3;
 const WATER_BEHIND_RATIO = 0.5;
 
 /**
- * Who wins when two reminders land in the same half of the day. Lower wins.
+ * Who wins when two reminders land too close together, or when the day is
+ * already full. Lower wins.
  *
- * One global order rather than a per-half one, so the whole policy is five lines
- * you can read at once. It runs rarest-and-most-specific first: `week_start`
+ * One global order, so the whole policy is five lines you can read at once. It runs rarest-and-most-specific first: `week_start`
  * comes round seven times in eight weeks, `streak` only when there is something
  * real to lose, and `water` last because it is the assist, not the ask.
  *
@@ -106,22 +117,30 @@ const RANK: Record<ReminderId, number> = {
 };
 
 /**
- * Every reminder today is eligible for, before the one-per-half cut.
+ * Every reminder a day is eligible for, before the cap.
  *
- * Each `if` is one product rule and reads as one. Note that `plan` and `water`
- * are mutually exclusive by construction — one asks whether she has started, the
- * other assumes she has — so the earlier half rarely has to choose at all.
+ * Each `if` is one product rule and reads as one.
+ *
+ * `blind` is a day we are scheduling in advance and therefore know nothing
+ * about — see `lookaheadReminders`. It changes two things and nothing else: the
+ * reminders that would need today's numbers use copy that names none, and the
+ * rules that can only be answered by watching her (has she started, is her
+ * streak at risk) are simply not asked.
  */
-function candidates(state: DayState, prefs: ReminderPrefs): Reminder[] {
+function candidates(
+  state: DayState,
+  prefs: ReminderPrefs,
+  blind: boolean
+): Reminder[] {
   const list: Reminder[] = [];
 
-  /** Half and rank are never chosen by hand — the time and the id decide them. */
+  /** Rank is never chosen by hand — the id decides it. */
   const at = (
     id: ReminderId,
     time: HourMinute,
     copy: Reminder['copy'],
     data: Record<string, string>
-  ): Reminder => ({ id, half: halfOf(time), rank: RANK[id], time, copy, data });
+  ): Reminder => ({ id, rank: RANK[id], time, copy, data });
 
   // She has not touched today yet. The one reminder that opens the day.
   if (!state.activeToday) {
@@ -130,20 +149,29 @@ function candidates(state: DayState, prefs: ReminderPrefs): Reminder[] {
     );
   }
 
-  // She is already going, and the water row is the one thing a nudge genuinely
-  // helps with — it is counted rather than felt, so it is the one she forgets.
-  // Withheld on a day she has not started: stacking a water ping on top of the
-  // morning nudge is two interruptions to say "you have not begun".
-  if (
-    state.activeToday &&
-    state.water &&
-    state.water.count < state.water.target * WATER_BEHIND_RATIO
-  ) {
-    list.push(
-      at('water', WATER_HOUR, waterCopy(state.water.count, state.water.target), {
-        screen: 'Nutrition',
-      })
-    );
+  // The water row is the one thing a nudge genuinely helps with — it is counted
+  // rather than felt, so it is the one she forgets. On a day we can see, it goes
+  // only to a woman who has started and is behind: stacking a counted water ping
+  // on top of the morning nudge is two interruptions to say "you have not begun".
+  // On a blind day neither of those can be known, so it goes out uncounted and
+  // the same-day pass replaces it the moment she opens the app.
+  if (state.water) {
+    if (blind) {
+      list.push(
+        at('water', WATER_HOUR, waterLookaheadCopy(state.water.target), {
+          screen: 'Nutrition',
+        })
+      );
+    } else if (
+      state.activeToday &&
+      state.water.count < state.water.target * WATER_BEHIND_RATIO
+    ) {
+      list.push(
+        at('water', WATER_HOUR, waterCopy(state.water.count, state.water.target), {
+          screen: 'Nutrition',
+        })
+      );
+    }
   }
 
   // A new plan week tomorrow. The most useful thing we can say all week, and it
@@ -171,16 +199,23 @@ function candidates(state: DayState, prefs: ReminderPrefs): Reminder[] {
 
   // The week's movement, still owed.
   //
-  // The only reminder that can land in either half, and the reason the boundary
-  // exists. It goes in the part of the day she named in the quiz, because a
-  // nudge to train that arrives four hours after her one window is worse than no
-  // nudge at all — it is a reminder she can only fail.
-  if (state.movement) {
+  // It goes in the part of the day she named in the quiz, because a nudge to
+  // train that arrives four hours after her one window is worse than no nudge at
+  // all — it is a reminder she can only fail.
+  //
+  // Suppressed on a day she has already trained, but *not* on the blind days
+  // after it: movement is counted across the week, so a session done today says
+  // nothing about tomorrow. The blind copy names the task without the count for
+  // the same reason the water one does — she may well train again tonight, and
+  // a reminder that is wrong about her own numbers is worse than none.
+  if (state.movement && (blind || !state.trainedToday)) {
     list.push(
       at(
         'movement',
         movementTime(state, prefs),
-        movementCopy(state.movement.title, state.movement.remaining),
+        blind
+          ? movementLookaheadCopy(state.movement.title)
+          : movementCopy(state.movement.title, state.movement.remaining),
         { screen: 'Movement', taskKey: state.movement.taskKey }
       )
     );
@@ -202,56 +237,83 @@ export function movementTime(state: DayState, prefs: ReminderPrefs): HourMinute 
   return TRAINING_TIMES[state.trainingWindow ?? DEFAULT_TRAINING_WINDOW];
 }
 
-function halfOf(time: HourMinute): ReminderHalf {
-  return time.hour < EVENING_FROM_HOUR ? 'morning' : 'evening';
+/**
+ * The reminders for one day: the best candidates the cap will admit.
+ *
+ * Best first, so a reminder is only ever dropped for one that matters more,
+ * then returned in the order they will fire — which is also the order they read
+ * in.
+ */
+function admitted(list: Reminder[]): Reminder[] {
+  const kept: Reminder[] = [];
+
+  for (const reminder of [...list].sort((a, b) => a.rank - b.rank)) {
+    if (kept.length >= MAX_PER_DAY) break;
+    const crowded = kept.some(
+      (held) =>
+        Math.abs(minutesOfDay(held.time) - minutesOfDay(reminder.time)) <
+        MIN_GAP_MINUTES
+    );
+    if (!crowded) kept.push(reminder);
+  }
+
+  return kept.sort((a, b) => minutesOfDay(a.time) - minutesOfDay(b.time));
 }
 
-/**
- * The reminders for one day: the best candidate from each half, and nothing else.
- *
- * Returned in the order they will fire, which is also the order they read in.
- */
+/** The reminders for today, from what we can actually see of her day. */
 export function remindersForDay(
   state: DayState,
   prefs: ReminderPrefs
 ): Reminder[] {
   if (!prefs.enabled) return [];
-
-  const best = new Map<Reminder['half'], Reminder>();
-  for (const reminder of candidates(state, prefs)) {
-    const held = best.get(reminder.half);
-    if (!held || reminder.rank < held.rank) best.set(reminder.half, reminder);
-  }
-
-  return [...best.values()].sort(
-    (a, b) => minutesOfDay(a.time) - minutesOfDay(b.time)
-  );
+  return admitted(candidates(state, prefs, false));
 }
 
 /**
- * The gentle re-engagement reminder for a day we know nothing about.
+ * The reminders for a day we know nothing about yet.
  *
  * Days beyond today are scheduled blind — she may well do her whole plan
- * tomorrow morning and never see it, and if she does, the next scheduling pass
- * cancels it before it fires. So only the one reminder that is *always* true
- * goes out on those days: her plan is, in fact, ready.
+ * tomorrow morning and never see them, and if she does, the next scheduling
+ * pass cancels them before they fire.
  *
- * This is the only channel left for a woman who has stopped opening the app, and
- * it decays on its own — see `LOOKAHEAD_DAYS`.
+ * **This used to return the morning plan nudge and nothing else, which is the
+ * bug that made water and movement look broken in production.** Everything but
+ * `plan` was written for today only, and only ever from a foreground session
+ * that happened *before* the reminder was due. A woman whose quiz answer was
+ * "morning" needed the app open before 07:59 to be reminded to train at 08:00;
+ * the water check at 15:00 needed a session, and a tick, before 14:59. In
+ * development the app is never closed and everything schedules. In her hands the
+ * plan nudge was the only one that ever arrived.
+ *
+ * So the blind day now asks the same question the real one does, with the two
+ * inputs that survive a night — the week's open movement task and the fact that
+ * her plan has a water row — and lets the cap decide, exactly as it does today.
+ * Everything that needs to be watched to be true (has she started, is her streak
+ * at risk, does a new week begin tomorrow) is left out rather than guessed.
+ *
+ * This is also the only channel left for a woman who has stopped opening the
+ * app, and it decays on its own — see `LOOKAHEAD_DAYS`.
  */
-export function lookaheadReminder(
-  firstName: string | null,
+export function lookaheadReminders(
+  state: DayState,
   prefs: ReminderPrefs
-): Reminder | null {
-  if (!prefs.enabled) return null;
-  return {
-    id: 'plan',
-    half: halfOf(prefs.morning),
-    rank: RANK.plan,
-    time: prefs.morning,
-    copy: planCopy(firstName),
-    data: { screen: 'DailyLoop' },
+): Reminder[] {
+  if (!prefs.enabled) return [];
+
+  const blind: DayState = {
+    ...state,
+    // Tomorrow has not been touched yet, by definition — which is what keeps the
+    // morning plan nudge, the one reminder that is always true, in the set.
+    activeToday: false,
+    trainedToday: false,
+    // Unknowable a day out, and both are read only through rules that would have
+    // to guess. A streak scheduled blind would name a number that is wrong by
+    // the time it fires; a week start is a fact today's pass already knows.
+    streak: 0,
+    weekStartingTomorrow: null,
   };
+
+  return admitted(candidates(blind, prefs, true));
 }
 
 function minutesOfDay(time: HourMinute): number {

@@ -23,6 +23,20 @@ export const APP_VERSION_ENDPOINT = '/api/app-version';
 /** How long to wait on the check before giving up and carrying on. */
 const VERSION_TIMEOUT_MS = 8_000;
 
+/**
+ * Where the two listings actually live. The server sends these too and its copy
+ * wins, but a shipped binary that has been told "you must update" and then has
+ * nowhere to send her is worse than no gate at all — so they are hardcoded here
+ * as well. They only change if the app is delisted and republished.
+ *
+ * Deliberately storefront-neutral: no `/de/` country prefix and no `?l=` locale,
+ * both of which pin every user to one country's store. Apple and Google each
+ * redirect the bare form to the viewer's own storefront.
+ */
+export const IOS_STORE_URL = 'https://apps.apple.com/app/menolisa/id6761130271';
+export const ANDROID_STORE_URL =
+  'https://play.google.com/store/apps/details?id=com.menolisa.app';
+
 export type AppVersionInfo = {
   /** Below this, the app blocks. */
   minimum: string;
@@ -117,11 +131,16 @@ export async function fetchAppVersionInfo(): Promise<AppVersionInfo> {
     throw new Error('app-version returned an unusable payload');
   }
 
+  const url = (value: unknown, fallback: string): string =>
+    typeof value === 'string' && /^https:\/\//.test(value.trim())
+      ? value.trim()
+      : fallback;
+
   return {
     minimum: data.minimum.trim(),
     latest: data.latest.trim(),
-    iosUrl: typeof data.ios_url === 'string' ? data.ios_url : '',
-    androidUrl: typeof data.android_url === 'string' ? data.android_url : '',
+    iosUrl: url(data.ios_url, IOS_STORE_URL),
+    androidUrl: url(data.android_url, ANDROID_STORE_URL),
   };
 }
 
@@ -136,19 +155,17 @@ export async function fetchAppVersionInfo(): Promise<AppVersionInfo> {
  */
 function storeCandidates(info: AppVersionInfo): string[] {
   if (Platform.OS === 'ios') {
-    const web = info.iosUrl;
-    if (!web) return [];
+    const web = info.iosUrl || IOS_STORE_URL;
     return [web.replace(/^https:\/\//, 'itms-apps://'), web];
   }
 
   if (Platform.OS === 'android') {
-    const web = info.androidUrl;
-    if (!web) return [];
+    const web = info.androidUrl || ANDROID_STORE_URL;
     const packageName = /[?&]id=([^&]+)/.exec(web)?.[1];
     return packageName ? [`market://details?id=${packageName}`, web] : [web];
   }
 
-  return [info.iosUrl || info.androidUrl].filter(Boolean);
+  return [info.iosUrl || IOS_STORE_URL];
 }
 
 /**

@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
 import type { RouteProp } from '@react-navigation/native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -19,7 +19,9 @@ import {
   taskRemainingLabel,
 } from '../../lib/planFormat';
 import { SESSION_PHASE_LABEL, type PlanTask } from '../../lib/planTypes';
+import { cardioExercise, cardioProtocol } from '../../lib/cardio';
 import { PlanScreenLayout } from '../../components/plan/PlanScreenLayout';
+import { CardioProtocol } from '../../components/plan/CardioProtocol';
 import { ExerciseCard } from '../../components/plan/ExerciseCard';
 import { ProgressRing } from '../../components/plan/ProgressRing';
 import { AnimatedPressable } from '../../components/AnimatedPressable';
@@ -72,8 +74,11 @@ export function MovementScreen() {
     navigation.navigate('MovementSession', { taskKey: task.key });
   }, [navigation, task]);
 
-  // The whole session, bookends included — she is being told how long this
-  // takes, and a warm-up she is asked to do is part of how long it takes.
+  // The whole session — bookends, and the power block on the days that carry
+  // it. She is being told how long this takes, and a warm-up she is asked to do
+  // is part of how long it takes. Which is also why the length here is summed
+  // rather than looked up: a power day is five to ten minutes longer than the
+  // same task was yesterday, and no table per fitness level can know that.
   const items = useMemo(() => buildSessionItems(task), [task]);
   const blocks = useMemo(() => (task ? sessionBlocks(task) : []), [task]);
   const sessionMinutes = items.length ? Math.max(1, Math.round(sessionSeconds(items) / 60)) : 0;
@@ -92,10 +97,18 @@ export function MovementScreen() {
   // The working exercises only — the same number the session's own setup screen
   // shows one tap later. It used to count the bookends too, so a session read as
   // "11 exercises" here and "4 exercises" there, and neither screen admitted the
-  // other existed. The warm-up and cool-down are named in the list below, which
-  // is where they belong: they are part of how long this takes, not part of what
-  // she is being asked to do.
+  // other existed. The warm-up, power block and cool-down are named in the list
+  // below, which is where they belong: they are part of how long this takes, not
+  // part of what she is being asked to do. `exercises` is the main work only,
+  // and every count in the app that asks "how much did she train" reads it.
   const exerciseCount = phaseCount(items, 'main');
+  const powerNote = powerBlockNote(task);
+  // A cardio task is one continuous block, so "1 exercise" is a count of
+  // something she was never asked to think of as a list. The interval day is
+  // the one that owes her more than a name and a duration — its structure is
+  // the whole difference between it and a shorter walk.
+  const cardio = cardioExercise(task);
+  const protocol = cardio ? cardioProtocol(cardio) : null;
 
   return (
     <PlanScreenLayout>
@@ -105,36 +118,12 @@ export function MovementScreen() {
               this screen was built for, and a lone tab above the title would be
               a control that cannot do anything. */}
           {tasks.length > 1 && (
-            <View style={styles.dayTabs} accessibilityRole="tablist">
-              {tasks.map((entry) => {
-                const selected = entry.key === task.key;
-                const done = isTaskComplete(entry, finished);
-                return (
-                  <Pressable
-                    key={entry.key}
-                    onPress={() => setSelectedKey(entry.key)}
-                    style={[styles.dayTab, selected && styles.dayTabSelected]}
-                    accessibilityRole="tab"
-                    accessibilityState={{ selected }}
-                    accessibilityLabel={done ? `${entry.title}, done` : entry.title}
-                  >
-                    {done && (
-                      <Ionicons
-                        name="checkmark"
-                        size={13}
-                        color={selected ? colors.primaryDark : colors.textMuted}
-                      />
-                    )}
-                    <Text
-                      numberOfLines={1}
-                      style={[styles.dayTabText, selected && styles.dayTabTextSelected]}
-                    >
-                      {entry.title}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+            <TaskTabs
+              tasks={tasks}
+              selectedKey={task.key}
+              finished={finished}
+              onSelect={setSelectedKey}
+            />
           )}
           <Text style={styles.title}>{task.title}</Text>
           <Text style={styles.why}>{task.why}</Text>
@@ -209,9 +198,9 @@ export function MovementScreen() {
       <StaggeredZoomIn delayIndex={3} reduceMotion={reduceMotion}>
         <View style={styles.sectionHead}>
           <Text style={styles.sectionTitle}>
-            {exerciseCount > 0
-              ? `One session · ${exerciseCount} ${exerciseCount === 1 ? 'exercise' : 'exercises'}`
-              : 'This session'}
+            {cardio || exerciseCount === 0
+              ? 'This session'
+              : `One session · ${exerciseCount} ${exerciseCount === 1 ? 'exercise' : 'exercises'}`}
           </Text>
           {sessionMinutes > 0 && <Text style={styles.sectionMeta}>about {sessionMinutes} min</Text>}
         </View>
@@ -228,14 +217,143 @@ export function MovementScreen() {
                 <Text style={styles.phaseCount}>{block.exercises.length}</Text>
               </View>
             )}
+            {/* The one phase that is not in every session of the week, so the
+                one phase that has to say what it is doing here. Without this
+                line it simply vanishes from the list after her second session
+                and reads as something the app lost. */}
+            {block.phase === 'power' && <Text style={styles.phaseNote}>{powerNote}</Text>}
             {block.exercises.map((exercise) => (
               <ExerciseCard key={`${block.phase}-${exercise.id}`} exercise={exercise} />
             ))}
           </View>
         ))}
+
+        {/* The interval protocol, here as well as on the timer. She decides
+            whether she has the legs for it on this screen, and "19 min" is not
+            enough to decide on. */}
+        {protocol && <CardioProtocol steps={protocol} style={styles.protocol} />}
       </StaggeredZoomIn>
     </PlanScreenLayout>
   );
+}
+
+/**
+ * The switcher across the top: every movement task the week holds.
+ *
+ * A week used to hold one or two of these and two fit across a phone at equal
+ * widths. It now holds three or four — the strength session plus one or two
+ * cardio tasks — and at a quarter of the screen each "Zone 2 cardio" and
+ * "Sprint intervals" both truncate to nothing anyone can tell apart. So past
+ * two the row scrolls and every tab is only as wide as its own title: a
+ * switcher that has to be guessed at is worse than one she has to swipe.
+ */
+function TaskTabs({
+  tasks,
+  selectedKey,
+  finished,
+  onSelect,
+}: {
+  tasks: PlanTask[];
+  selectedKey: string;
+  finished: boolean;
+  onSelect: (key: string) => void;
+}) {
+  const scrolls = tasks.length > 2;
+
+  /**
+   * Bring the selected tab into view.
+   *
+   * Not a nicety: a movement reminder names its task, and the week's last task
+   * is the interval day. Landing from that notification with the tab she was
+   * sent to sitting off the right edge — the screen below it correct, the
+   * switcher above it showing two other days — reads as the app having opened
+   * the wrong thing.
+   */
+  const scroller = useRef<ScrollView>(null);
+  const spans = useRef<Record<string, { x: number; width: number }>>({});
+  const [viewport, setViewport] = useState(0);
+  useEffect(() => {
+    if (!scrolls || !viewport) return;
+    const span = spans.current[selectedKey];
+    if (!span) return;
+    scroller.current?.scrollTo({
+      x: Math.max(0, span.x + span.width / 2 - viewport / 2),
+      animated: true,
+    });
+  }, [scrolls, selectedKey, viewport]);
+
+  const tabs = tasks.map((entry) => {
+    const selected = entry.key === selectedKey;
+    const done = isTaskComplete(entry, finished);
+    return (
+      <Pressable
+        key={entry.key}
+        onPress={() => onSelect(entry.key)}
+        onLayout={(event) => {
+          spans.current[entry.key] = event.nativeEvent.layout;
+        }}
+        style={[styles.dayTab, scrolls && styles.dayTabAuto, selected && styles.dayTabSelected]}
+        accessibilityRole="tab"
+        accessibilityState={{ selected }}
+        accessibilityLabel={done ? `${entry.title}, done` : entry.title}
+      >
+        {done && (
+          <Ionicons
+            name="checkmark"
+            size={13}
+            color={selected ? colors.primaryDark : colors.textMuted}
+          />
+        )}
+        <Text numberOfLines={1} style={[styles.dayTabText, selected && styles.dayTabTextSelected]}>
+          {entry.title}
+        </Text>
+      </Pressable>
+    );
+  });
+
+  if (!scrolls) {
+    return (
+      <View style={styles.dayTabs} accessibilityRole="tablist">
+        {tabs}
+      </View>
+    );
+  }
+
+  return (
+    <ScrollView
+      ref={scroller}
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      onLayout={(event) => setViewport(event.nativeEvent.layout.width)}
+      style={styles.dayTabsScroller}
+      contentContainerStyle={styles.dayTabsRow}
+      accessibilityRole="tablist"
+    >
+      {tabs}
+    </ScrollView>
+  );
+}
+
+/**
+ * The line under the power block's header — why it is here, and whether it is
+ * in every session of the week or only some of them.
+ *
+ * It leads with what the block is *for* rather than with the schedule. "On 2 of
+ * your 3 sessions" answers a question she has not asked yet; "keeps bone strong"
+ * is the reason the block exists, and it is the only part of the session whose
+ * benefit is invisible — she can feel a squat working and cannot feel anything
+ * at all happening to her hip.
+ *
+ * The schedule half is added only when there is a schedule to explain. A task
+ * whose every session carries the block — every beginner plan — would be told
+ * "in 2 of your 2 sessions", which is a sentence that raises a question rather
+ * than answering one.
+ */
+function powerBlockNote(task: PlanTask): string {
+  const why = 'Impact work — the part that keeps bone strong.';
+  const sessions = task.powerSessions;
+  if (sessions === undefined || sessions >= task.target) return why;
+  return `${why} In ${sessions} of your ${task.target} sessions this week.`;
 }
 
 /**
@@ -265,6 +383,15 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     marginBottom: spacing.sm,
   },
+  // The scroller keeps the row's margin; the content inside it keeps the gap.
+  dayTabsScroller: {
+    marginBottom: spacing.sm,
+  },
+  dayTabsRow: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    paddingRight: spacing.xs,
+  },
   dayTab: {
     flex: 1,
     flexDirection: 'row',
@@ -277,6 +404,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.background,
+  },
+  // Inside the scroller a tab is as wide as its own title, never a share of a
+  // row it no longer fills. `flexBasis: 'auto'` is the whole trick and it is not
+  // optional: `flex: 1` above expands to a basis of 0, and unsetting only the
+  // grow leaves a tab that is zero points wide with its label invisible inside
+  // it. `flex: 0` does not help — it keeps the zero basis.
+  dayTabAuto: {
+    flexGrow: 0,
+    flexShrink: 0,
+    flexBasis: 'auto',
+    paddingHorizontal: spacing.md,
   },
   dayTabSelected: {
     borderColor: colors.primary,
@@ -386,6 +524,14 @@ const styles = StyleSheet.create({
   phaseCount: {
     ...typography.presets.caption,
     color: colors.textMuted,
+  },
+  protocol: {
+    marginTop: spacing.sm,
+  },
+  phaseNote: {
+    ...typography.presets.caption,
+    color: colors.textMuted,
+    marginBottom: spacing.xs,
   },
   buttonWrap: {
     marginTop: 0,

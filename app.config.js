@@ -56,6 +56,15 @@ module.exports = {
         // TestFlight holds a build hostage until someone answers it by hand. 1.2.0
         // (build 22) shipped with the wrong name and needed that manual answer.
         ITSAppUsesNonExemptEncryption: false,
+        // Without this the guided meditation stops the moment the screen locks
+        // — which, on an eleven-minute recording she lies down for, is about a
+        // minute in. `setAudioProfile('meditation')` asks for background
+        // playback and iOS silently ignores the request unless the capability is
+        // declared here, so the flag and this key only work as a pair.
+        //
+        // Adding it means the next store build needs a native rebuild (`npx
+        // expo prebuild` / a fresh EAS build); it cannot ship over the air.
+        UIBackgroundModes: ['audio'],
       },
     },
     android: {

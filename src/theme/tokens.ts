@@ -117,6 +117,26 @@ export const colors = {
   onCooldown: '#FFFFFF',
 
   /**
+   * The power block — the one place in the app with a colour of its own that
+   * is neither a bookend nor an interval.
+   *
+   * It needs one because the block sits in an awkward place: it runs *after*
+   * the main work, so the traffic light is still on (hops are worked, rested
+   * and counted like any other set — see `isWorkPhase`), but it is a different
+   * kind of work and she should be able to tell she has crossed into it. The
+   * interval swatches keep doing their job inside it; this is what the setup
+   * pill and the block header on the movement screen wear.
+   *
+   * A deep teal, from the `blue` family: the one hue on these screens that is
+   * neither a warning, a rest, nor a bookend. Darkened to #0E6F60 so white text
+   * clears 4.5:1 on it — `blue` at #3ABFA3 is 2.1:1 and could not carry a chip
+   * border against the pale surface beside it.
+   */
+  power: '#0E6F60',
+  powerBg: '#E4F5F1',
+  onPower: '#FFFFFF',
+
+  /**
    * The guided session's stage — the one dark screen in a light app.
    *
    * The runner is full-bleed: the clip is the screen, and everything else
