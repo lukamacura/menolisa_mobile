@@ -1,17 +1,27 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Platform } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 import { colors, typography } from '../theme/tokens';
+import { haptics } from '../lib/haptics';
+import { useReduceMotion } from '../components/StaggeredZoomIn';
 import { PlanProvider } from '../context/PlanContext';
 import { RewardsProvider } from '../context/RewardsContext';
 import { NotificationPermissionProvider } from '../context/NotificationPermissionContext';
 import { NotificationsProvider, useNotifications } from '../context/NotificationsContext';
+import { useOnboardingTour } from '../hooks/useOnboardingTour';
 import { DailyReminders } from '../components/DailyReminders';
 import { RewardCelebrations } from '../components/rewards/RewardCelebrations';
 import { CompletionReward } from '../components/rewards/CompletionReward';
+import { OnboardingScreen } from '../screens/onboarding/OnboardingScreen';
 import { RewardsScreen } from '../screens/rewards/RewardsScreen';
 import { ProgressScreen } from '../screens/today/ProgressScreen';
 import { PlanRecapScreen } from '../screens/today/PlanRecapScreen';
@@ -195,10 +205,78 @@ export function MainTabs() {
         RewardCelebrations is the rarer badge/level modal that does interrupt. */}
     <CompletionReward />
     <RewardCelebrations />
+    {/* Last of all, so the welcome tour covers the tab bar it is there to
+        explain. Renders nothing once she has been through it. */}
+    <WelcomeTour />
     </NotificationsProvider>
     </NotificationPermissionProvider>
     </RewardsProvider>
     </PlanProvider>
+  );
+}
+
+/**
+ * The one-time welcome tour, mounted beside the tabs rather than routed to.
+ *
+ * `useOnboardingTour` holds it back until the medical disclaimer is out of the
+ * way and the "seen" marker has actually been read, so this either renders the
+ * whole screen or nothing — it never flashes.
+ *
+ * It is the middle of a three-step queue: disclaimer, tour, push pre-prompt.
+ * The two things that can interrupt her from underneath here — the push ask in
+ * `NotificationPermissionContext` and the once-only plan screens the daily loop
+ * navigates to — both wait on `settled` from the same hook.
+ */
+function WelcomeTour() {
+  const { pending, markSeen } = useOnboardingTour();
+  if (!pending) return null;
+  return <OnboardingScreen onDone={markSeen} />;
+}
+
+/**
+ * A tab icon that answers the tap.
+ *
+ * The bar was doing all its work with colour alone — coral for the tab she is
+ * on, translucent white for the rest. That is a real distinction on a bright
+ * screen indoors and close to invisible on a phone held at arm's length in
+ * daylight, which is exactly where this app gets used. The lift is a second,
+ * non-colour channel saying the same thing, and it costs nothing to read.
+ *
+ * Small numbers on purpose: four points of rise and twelve percent of scale.
+ * The bar is the one piece of furniture on every screen, and furniture that
+ * bounces gets old faster than anything else in an app.
+ */
+function TabIcon({
+  name,
+  color,
+  size,
+  focused,
+}: {
+  name: React.ComponentProps<typeof Ionicons>['name'];
+  color: string;
+  size: number;
+  focused: boolean;
+}) {
+  const reduceMotion = useReduceMotion();
+  const active = useSharedValue(focused ? 1 : 0);
+
+  useEffect(() => {
+    const next = focused ? 1 : 0;
+    active.value = reduceMotion
+      ? next
+      : focused
+        ? withSpring(1, { damping: 13, stiffness: 260, mass: 0.5 })
+        : withTiming(0, { duration: 160 });
+  }, [focused, reduceMotion]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: 1 + active.value * 0.12 }, { translateY: active.value * -4 }],
+  }));
+
+  return (
+    <Animated.View style={animatedStyle}>
+      <Ionicons name={name} size={size} color={color} />
+    </Animated.View>
   );
 }
 
@@ -212,6 +290,11 @@ function AppTabs() {
 
   return (
     <Tab.Navigator
+      // A tab switch is the most-repeated navigation in the app and the only one
+      // that never moves the screen much — the cross-fade below is deliberately
+      // quiet. The tick under the thumb is what confirms the tap landed, which
+      // matters most for the mistaps: she feels the wrong tab before she reads it.
+      screenListeners={{ tabPress: () => haptics.select() }}
       screenOptions={{
         headerShown: false,
         // A tab is a place, not a page load. The cross-fade makes switching read
@@ -248,8 +331,8 @@ function AppTabs() {
         component={TodayStackScreen}
         options={{
           title: 'Today',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="sunny" size={size} color={color} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <TabIcon name="sunny" size={size} color={color} focused={focused} />
           ),
         }}
       />
@@ -258,8 +341,8 @@ function AppTabs() {
         component={ChatStackScreen}
         options={{
           title: 'Chat',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="chatbubbles" size={size} color={color} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <TabIcon name="chatbubbles" size={size} color={color} focused={focused} />
           ),
         }}
       />
@@ -282,8 +365,8 @@ function AppTabs() {
             fontFamily: typography.display.semibold,
             fontSize: 11,
           },
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="notifications" size={size} color={color} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <TabIcon name="notifications" size={size} color={color} focused={focused} />
           ),
         }}
       />
@@ -292,8 +375,8 @@ function AppTabs() {
         component={SettingsStackScreen}
         options={{
           title: 'Settings',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="settings" size={size} color={color} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <TabIcon name="settings" size={size} color={color} focused={focused} />
           ),
         }}
       />

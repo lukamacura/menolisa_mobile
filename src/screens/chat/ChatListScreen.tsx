@@ -178,7 +178,7 @@ export function ChatListScreen() {
       <StaggeredZoomIn delayIndex={0} reduceMotion={reduceMotion}>
         <View style={styles.header}>
           <Text style={styles.title}>Chat with Lisa</Text>
-          <TouchableOpacity activeOpacity={1} style={styles.newChatBtn} onPress={startNewChat}>
+          <TouchableOpacity activeOpacity={0.75} style={styles.newChatBtn} onPress={startNewChat}>
             <Ionicons name="add" size={24} color={colors.textInverse} />
             <Text style={styles.newChatBtnText}>New chat</Text>
           </TouchableOpacity>
@@ -219,7 +219,7 @@ export function ChatListScreen() {
         }
         renderItem={({ item }) => (
           <TouchableOpacity
-            activeOpacity={1}
+            activeOpacity={0.75}
             style={styles.row}
             onPress={() => navigation.navigate('ChatThread', { sessionId: item.session_id })}
             onLongPress={() => onLongPressSession(item)}

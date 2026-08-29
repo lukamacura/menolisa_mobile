@@ -13,6 +13,7 @@ import { usePlan, type PlanCompletion } from '../../context/PlanContext';
 import { useRewards } from '../../context/RewardsContext';
 import { motion } from '../../theme/motion';
 import { playRewardCue, prepareRewardSounds } from '../../lib/rewardSound';
+import { haptics } from '../../lib/haptics';
 import { useReduceMotion } from '../StaggeredZoomIn';
 import { ConfettiBurst } from './ConfettiBurst';
 
@@ -69,6 +70,10 @@ export function CompletionReward() {
     setShown(completion);
     // The light cue, not the badge one: this fires on every ticked row.
     playRewardCue('completion');
+    // Paired with the sound, not instead of it. A phone on silent is the normal
+    // case, not the exception, and a celebration nobody can hear or feel is a
+    // rectangle that appears for no reason.
+    haptics.celebrate();
     // Cleared immediately: the context's job is to announce the event once, and
     // holding it would make a second completion of the same row a no-op.
     clearCompletion();

@@ -1,7 +1,14 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import Animated, {
+  interpolateColor,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { colors, spacing, radii, typography, minTouchTarget } from '../../theme/tokens';
+import { useReduceMotion } from '../StaggeredZoomIn';
 import { nutritionIcon } from '../../lib/planIconMapping';
 import type { NutritionItem } from '../../lib/planTypes';
 import type { TickValue } from '../../context/PlanContext';
@@ -29,9 +36,19 @@ function cadenceHint(item: NutritionItem): string | null {
   return null;
 }
 
+/**
+ * How long the row takes to go green.
+ *
+ * Slower than the box she tapped (180ms) on purpose: the tick is the event, the
+ * row turning is the consequence, and letting the consequence trail the cause
+ * by a beat is what makes the two read as connected rather than simultaneous.
+ */
+const DONE_FADE_MS = 260;
+
 function NutritionRowComponent({ item, onChange, supplements }: NutritionRowProps) {
   const [whyOpen, setWhyOpen] = useState(false);
   const hint = cadenceHint(item);
+  const reduceMotion = useReduceMotion();
 
   const taskKey = item.key;
   const handleChange = useCallback(
@@ -39,16 +56,42 @@ function NutritionRowComponent({ item, onChange, supplements }: NutritionRowProp
     [onChange, taskKey]
   );
 
+  // The whole row washes green when the day's target is met. Animated because
+  // the snap version read as a re-render — she taps a box on the right and an
+  // unrelated rectangle changes colour.
+  const done = useSharedValue(item.doneToday ? 1 : 0);
+  useEffect(() => {
+    const next = item.doneToday ? 1 : 0;
+    done.value = reduceMotion ? next : withTiming(next, { duration: DONE_FADE_MS });
+  }, [item.doneToday, reduceMotion]);
+
+  const wrapStyle = useAnimatedStyle(() => ({
+    backgroundColor: interpolateColor(done.value, [0, 1], [colors.card, colors.successBg]),
+    borderColor: interpolateColor(
+      done.value,
+      [0, 1],
+      [colors.border, 'rgba(34, 160, 107, 0.35)']
+    ),
+  }));
+
+  const iconWellStyle = useAnimatedStyle(() => ({
+    backgroundColor: interpolateColor(
+      done.value,
+      [0, 1],
+      [colors.surfaceElevated, 'rgba(34, 160, 107, 0.14)']
+    ),
+  }));
+
   return (
-    <View style={[styles.wrap, item.doneToday && styles.wrapDone]}>
+    <Animated.View style={[styles.wrap, wrapStyle]}>
       <View style={styles.row}>
-        <View style={[styles.iconWell, item.doneToday && styles.iconWellDone]}>
+        <Animated.View style={[styles.iconWell, iconWellStyle]}>
           <Ionicons
             name={nutritionIcon(item.id)}
             size={18}
             color={item.doneToday ? colors.success : colors.textMuted}
           />
-        </View>
+        </Animated.View>
 
         <Pressable
           style={styles.text}
@@ -94,7 +137,7 @@ function NutritionRowComponent({ item, onChange, supplements }: NutritionRowProp
         cadenceLabel={hint ?? undefined}
         onClose={() => setWhyOpen(false)}
       />
-    </View>
+    </Animated.View>
   );
 }
 
@@ -115,10 +158,6 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
     overflow: 'hidden',
   },
-  wrapDone: {
-    borderColor: 'rgba(34, 160, 107, 0.35)',
-    backgroundColor: colors.successBg,
-  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -134,9 +173,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.surfaceElevated,
-  },
-  iconWellDone: {
-    backgroundColor: 'rgba(34, 160, 107, 0.14)',
   },
   text: {
     flex: 1,

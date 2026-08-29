@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, minTouchTarget, radii, shadows, spacing, typography } from '../../theme/tokens';
 import { badgeVisual, tierLabel, tierName } from '../../lib/rewardVisuals';
 import { playRewardCue, prepareRewardSounds } from '../../lib/rewardSound';
+import { haptics } from '../../lib/haptics';
 import type { Celebration } from '../../context/RewardsContext';
 import { BadgeMedal } from './BadgeMedal';
 import { ConfettiBurst } from './ConfettiBurst';
@@ -44,6 +45,9 @@ export function CelebrationModal({ celebration, onDismiss }: CelebrationModalPro
   useEffect(() => {
     if (!cueKey || !cueKind) return;
     playRewardCue(cueKind);
+    // A badge or a level is the rarest good news the app has. It should land
+    // even when the phone is face-down on a table with the sound off.
+    haptics.celebrate();
   }, [cueKey, cueKind]);
 
   if (!celebration) return null;

@@ -115,13 +115,6 @@ export const API_CONFIG = {
 };
 
 /**
- * Helper to get full API URL (for backend API calls; may be local in dev).
- */
-export const getApiUrl = (endpoint: string): string => {
-  return `${API_CONFIG.baseURL}${endpoint}`;
-};
-
-/**
  * URL for opening a web app page in the browser. Always uses menolisa.com so links
  * (dashboard, terms, privacy, forgot-password) open the real site (www.menolisa.com) even when testing on same WiFi.
  */

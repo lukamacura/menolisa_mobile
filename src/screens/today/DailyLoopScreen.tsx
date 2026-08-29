@@ -19,6 +19,7 @@ import type { TodayStackParamList } from '../../navigation/types';
 import { usePlan, tasksForPillar } from '../../context/PlanContext';
 import { useRewards } from '../../context/RewardsContext';
 import { useTrialStatus } from '../../hooks/useTrialStatus';
+import { useOnboardingTour } from '../../hooks/useOnboardingTour';
 import { usePlanCycleRecap } from '../../hooks/usePlanCycleRecap';
 import { usePlanRenewalPrompt } from '../../hooks/usePlanRenewalPrompt';
 import { useUpdateNudge } from '../../hooks/useAppUpdate';
@@ -61,6 +62,10 @@ export function DailyLoopScreen() {
   const trialStatus = useTrialStatus();
   const { pendingCycle } = usePlanCycleRecap();
   const { pendingRenewal } = usePlanRenewalPrompt();
+  // The welcome tour is an overlay mounted by `MainTabs`, so this screen is
+  // focused and running its effects underneath it. Both once-only screens below
+  // wait for it — see the effect.
+  const { settled: tourSettled } = useOnboardingTour();
   // The soft half of the update prompt. The hard half is a gate in
   // AppNavigator and never reaches this screen.
   const updateNudge = useUpdateNudge();
@@ -96,6 +101,13 @@ export function DailyLoopScreen() {
    */
   useFocusEffect(
     useCallback(() => {
+      // Never out from under the welcome tour. This screen is already focused
+      // while the tour covers it, so without the gate a woman on the launch
+      // that first ships the tour — she has no "seen" marker either, whatever
+      // week she is on — reads four cards about what the app is for and is
+      // dropped straight onto a renewal screen she never saw arrive. The tour
+      // finishing re-runs this effect, so nothing is lost, only ordered.
+      if (!tourSettled) return;
       // The recap wins when both are owed. It is about the eight weeks she has
       // just finished, so it has to come before the screen asking her to commit
       // to eight more — and dismissing it lands her back here, where the
@@ -105,7 +117,7 @@ export function DailyLoopScreen() {
         return;
       }
       if (pendingRenewal) navigation.navigate('PlanContinue');
-    }, [pendingCycle, pendingRenewal, navigation])
+    }, [tourSettled, pendingCycle, pendingRenewal, navigation])
   );
 
   const onRefresh = useCallback(() => {
@@ -350,15 +362,6 @@ export function DailyLoopScreen() {
             </StaggeredZoomIn>
           </View>
 
-          <StaggeredZoomIn delayIndex={segments.length + 4} reduceMotion={reduceMotion}>
-            <View style={styles.disclaimerCard}>
-              <Ionicons name="information-circle-outline" size={20} color={colors.textMuted} />
-              <Text style={styles.disclaimerText}>
-                MenoLisa is for tracking and information only. It is not medical advice. Always
-                consult a healthcare provider for medical decisions.
-              </Text>
-            </View>
-          </StaggeredZoomIn>
         </ScrollView>
       </ContentTransition>
     </SafeAreaView>
@@ -530,24 +533,6 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 1,
     backgroundColor: colors.border,
-  },
-  disclaimerCard: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.sm,
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.xl,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
-    borderRadius: radii.md,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  disclaimerText: {
-    flex: 1,
-    ...typography.presets.caption,
-    color: colors.textMuted,
   },
   blankState: {
     flex: 1,

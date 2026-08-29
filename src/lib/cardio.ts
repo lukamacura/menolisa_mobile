@@ -23,8 +23,6 @@
 
 import type { PlanExercise, PlanTask } from './planTypes';
 
-/** Zone 2 — minutes at a pace where she could talk but not sing, on anything. */
-export const ZONE2_ID = 'K01';
 /** The one hard day: a fixed protocol, and the only one in the catalog. */
 export const INTERVALS_ID = 'K02';
 
@@ -56,11 +54,6 @@ export function cardioExercise(task: PlanTask | null | undefined): PlanExercise 
   if (task.warmup?.length || task.cooldown?.length || task.power?.length) return null;
   const exercise = task.exercises[0];
   return isCardioExercise(exercise) ? exercise : null;
-}
-
-/** True when the task is a walk or a bike ride rather than a workout. */
-export function isCardioTask(task: PlanTask | null | undefined): boolean {
-  return cardioExercise(task) !== null;
 }
 
 /** One line of a protocol: what she is doing, and for how long. */

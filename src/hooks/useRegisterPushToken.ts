@@ -19,12 +19,23 @@ export function useRegisterPushToken(userId: string | undefined): {
   const lastTokenRef = useRef<string | null>(null);
   const [permissionStatus, setPermissionStatus] = useState<NotificationPermissionStatus>('undetermined');
 
+  /**
+   * Read the device token and bind it to the account, once per distinct token.
+   *
+   * The ref is only stamped **after** the PUT succeeds, and that ordering is the
+   * whole point of it. Stamping first turned one failed request into permanent
+   * silence: the guard below then matched on every later attempt — the return
+   * from system settings, the next foreground, the push-token listener — so a
+   * single offline moment during sign-in meant the server never learned the
+   * token, and nothing it sends (the weekly summary, and every alert about her
+   * card) could reach the phone until the app was killed and relaunched.
+   */
   const fetchAndRegisterToken = useCallback(async () => {
     const token = await getDevicePushToken();
     if (!token) return;
     if (lastTokenRef.current === token) return;
-    lastTokenRef.current = token;
     await registerPushToken(token);
+    lastTokenRef.current = token;
   }, []);
 
   /**
@@ -62,6 +73,12 @@ export function useRegisterPushToken(userId: string | undefined): {
   }, [userId, fetchAndRegisterToken]);
 
   useEffect(() => {
+    // A different account (or none) on this phone means the binding this ref
+    // stands for no longer exists — sign-out deletes it server-side. Without
+    // this the guard in `fetchAndRegisterToken` would recognise the token and
+    // skip the PUT, leaving the new session with no push route at all.
+    lastTokenRef.current = null;
+
     if (!userId) {
       setPermissionStatus('undetermined');
       return;
@@ -90,11 +107,16 @@ export function useRegisterPushToken(userId: string | undefined): {
 
     run();
 
+    // A rotated token. Same rule as above — only remember it once the server has
+    // it, or a failure here strands the account on the token it replaced.
     subscription = Notifications.addPushTokenListener((e: { data: string }) => {
       const t = e.data;
       if (typeof t === 'string' && t !== lastTokenRef.current) {
-        lastTokenRef.current = t;
-        registerPushToken(t).catch(() => {});
+        registerPushToken(t)
+          .then(() => {
+            lastTokenRef.current = t;
+          })
+          .catch(() => {});
       }
     });
 

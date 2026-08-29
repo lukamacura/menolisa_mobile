@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, Pressable, StyleSheet, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radii, typography, minTouchTarget } from '../../theme/tokens';
+import { haptics } from '../../lib/haptics';
 import type { PlanHabit } from '../../lib/planTypes';
 import type { TickValue } from '../../context/PlanContext';
 import { StreakChip } from './StreakChip';
@@ -17,6 +18,10 @@ export function HabitRow({ habit, onChange, onRemove }: HabitRowProps) {
   const resist = habit.kind === 'resist';
 
   const confirmRemove = () => {
+    // Long-press to delete is an invisible gesture. The buzz is what tells her
+    // she triggered something before the dialog explains what — and, on the
+    // half-presses that don't fire, its absence is the answer too.
+    haptics.warn();
     Alert.alert(
       `Remove "${habit.title}"?`,
       // The server deletes every log for this habit alongside it, so a long

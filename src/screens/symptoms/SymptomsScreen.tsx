@@ -30,6 +30,13 @@ import {
 } from '../../lib/symptomTime';
 import { getSymptomIllustration } from '../../lib/symptomIllustration';
 import { useSymptomsToday } from '../../hooks/useSymptomsToday';
+import { haptics } from '../../lib/haptics';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+  Easing,
+} from 'react-native-reanimated';
 
 import type { TodayStackParamList } from '../../navigation/types';
 
@@ -83,6 +90,41 @@ export function SymptomsScreen() {
   const [timeSelection, setTimeSelection] = useState<TimeSelection>('now');
   const [customTime, setCustomTime] = useState('');
   const [modalStep, setModalStep] = useState(1);
+  /**
+   * Which way the last step change went, so the incoming panel slides in from
+   * the side she came from. A wizard whose steps always fly in from the right
+   * makes "Back" feel like another "Next" — the animation contradicts the
+   * button, and she stops trusting either.
+   */
+  const stepDirection = useRef<1 | -1>(1);
+
+  /**
+   * The step panel's slide-and-settle, run by hand.
+   *
+   * `stepProgress` goes 0 → 1 on every step change: 0 is offset to the side she
+   * came from and transparent, 1 is in place and solid. Snapping it to 0 with
+   * no animation and then timing it back is what makes the panel appear to
+   * arrive rather than cross-fade with itself.
+   */
+  const stepProgress = useSharedValue(1);
+  useEffect(() => {
+    if (reduceMotion) {
+      stepProgress.value = 1;
+      return;
+    }
+    stepProgress.value = 0;
+    stepProgress.value = withTiming(1, {
+      duration: 260,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [modalStep, reduceMotion]);
+
+  const stepStyle = useAnimatedStyle(() => ({
+    opacity: stepProgress.value,
+    transform: [
+      { translateX: (1 - stepProgress.value) * 28 * stepDirection.current },
+    ],
+  }));
   const [customTrigger, setCustomTrigger] = useState('');
   const [submitting, setSubmitting] = useState(false);
   // Same count the hub shows, from the same hook — this screen used to keep its
@@ -152,6 +194,10 @@ export function SymptomsScreen() {
     setTimeSelection('now');
     setCustomTime('');
     setCustomTrigger('');
+    // A fresh log always opens travelling forward. Without this the first panel
+    // would slide in from whichever direction she last used "Back" in, which
+    // reads as the form reopening onto a step she has already left.
+    stepDirection.current = 1;
     setModalStep(1);
     setModalVisible(true);
     setShowLogSuccess(false);
@@ -295,10 +341,14 @@ export function SymptomsScreen() {
         totalToday: todayCount != null ? todayCount + 1 : null,
       });
       setSubmitting(false);
+      // Logging a bad day is the least rewarding thing she does in this app and
+      // the most valuable thing she can give it. The buzz is the receipt.
+      haptics.complete();
       setShowLogSuccess(true);
     } catch (e) {
       // Her description is still in the form behind this alert, so the copy
       // says the log was not saved — not that it was lost.
+      haptics.error();
       Alert.alert(
         'Could not save',
         errorMessage(e, 'We could not save that log. Your entry is still here — try again.')
@@ -505,7 +555,7 @@ export function SymptomsScreen() {
               <Text style={styles.modalTitle}>
                 Rate your {selectedSymptom?.name}
               </Text>
-              <TouchableOpacity activeOpacity={1} onPress={closeModal} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+              <TouchableOpacity activeOpacity={0.75} onPress={closeModal} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
                 <Ionicons name="close" size={28} color={colors.text} />
               </TouchableOpacity>
             </View>
@@ -537,6 +587,18 @@ export function SymptomsScreen() {
               contentContainerStyle={styles.modalBodyContent}
               keyboardShouldPersistTaps="handled"
             >
+              {/* The steps slide the way she is travelling: forward from the
+                  right, Back from the left. Without this the four steps swapped
+                  in place and the wizard read as one form that kept rewriting
+                  itself.
+
+                  Driven by an explicit shared value rather than Reanimated's
+                  `entering=` layout animation on purpose. Layout animations are
+                  unreliable inside a React Native `Modal` on Android, and the
+                  failure mode is the panel never becoming visible — which would
+                  make the whole symptom log unusable rather than merely
+                  unanimated. This runs the same either way. */}
+              <Animated.View style={stepStyle}>
               {modalStep === 1 && (
                 <>
                   <Text style={styles.label}>How bad is it?</Text>
@@ -544,12 +606,12 @@ export function SymptomsScreen() {
                     {SEVERITY_OPTIONS.map((opt) => (
                       <TouchableOpacity
                         key={opt.value}
-                        activeOpacity={1}
+                        activeOpacity={0.75}
                         style={[
                           styles.severityBtn,
                           severity === opt.value && styles.severityBtnActive,
                         ]}
-                        onPress={() => setSeverity(opt.value)}
+                        onPress={() => { haptics.select(); setSeverity(opt.value); }}
                       >
                         <Text style={styles.severityEmoji}>{opt.emoji}</Text>
                         <Text
@@ -581,12 +643,12 @@ export function SymptomsScreen() {
                     {symptomTriggers.map((trigger) => (
                       <TouchableOpacity
                         key={trigger}
-                        activeOpacity={1}
+                        activeOpacity={0.75}
                         style={[
                           styles.triggerChip,
                           selectedTriggers.includes(trigger) && styles.triggerChipActive,
                         ]}
-                        onPress={() => toggleTrigger(trigger)}
+                        onPress={() => { haptics.select(); toggleTrigger(trigger); }}
                       >
                         <Text
                           style={[
@@ -609,7 +671,7 @@ export function SymptomsScreen() {
                       onSubmitEditing={addCustomTrigger}
                     />
                     <TouchableOpacity
-                      activeOpacity={1}
+                      activeOpacity={0.75}
                       style={styles.addTriggerBtn}
                       onPress={addCustomTrigger}
                     >
@@ -622,24 +684,24 @@ export function SymptomsScreen() {
                 <>
                   <Text style={styles.label}>When did this happen?</Text>
                   <TouchableOpacity
-                    activeOpacity={1}
+                    activeOpacity={0.75}
                     style={[
                       styles.timingOption,
                       timeSelection === 'now' && styles.timingOptionActive,
                     ]}
-                    onPress={() => { setTimeSelection('now'); setCustomTime(''); }}
+                    onPress={() => { haptics.select(); setTimeSelection('now'); setCustomTime(''); }}
                   >
                     <Text style={[styles.timingOptionText, timeSelection === 'now' && styles.timingOptionTextActive]}>
                       Just now{timeSelection === 'now' ? ' ✓' : ''}
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    activeOpacity={1}
+                    activeOpacity={0.75}
                     style={[
                       styles.timingOption,
                       timeSelection === 'earlier-today' && styles.timingOptionActive,
                     ]}
-                    onPress={() => setTimeSelection('earlier-today')}
+                    onPress={() => { haptics.select(); setTimeSelection('earlier-today'); }}
                   >
                     <Text style={[styles.timingOptionText, timeSelection === 'earlier-today' && styles.timingOptionTextActive]}>
                       Earlier today{timeSelection === 'earlier-today' ? ' ✓' : ''}
@@ -658,12 +720,12 @@ export function SymptomsScreen() {
                     />
                   )}
                   <TouchableOpacity
-                    activeOpacity={1}
+                    activeOpacity={0.75}
                     style={[
                       styles.timingOption,
                       timeSelection === 'yesterday' && styles.timingOptionActive,
                     ]}
-                    onPress={() => setTimeSelection('yesterday')}
+                    onPress={() => { haptics.select(); setTimeSelection('yesterday'); }}
                   >
                     <Text style={[styles.timingOptionText, timeSelection === 'yesterday' && styles.timingOptionTextActive]}>
                       Yesterday{timeSelection === 'yesterday' ? ' ✓' : ''}
@@ -698,12 +760,18 @@ export function SymptomsScreen() {
                   />
                 </>
               )}
+              </Animated.View>
             </ScrollView>
             <View style={[styles.modalFooter, { paddingBottom: Math.max(spacing.xl, insets.bottom) }]}>
               <TouchableOpacity
-                activeOpacity={1}
+                activeOpacity={0.75}
                 style={styles.footerBtnSecondary}
-                onPress={() => (modalStep === 1 ? closeModal() : setModalStep((s) => s - 1))}
+                onPress={() => {
+                  haptics.press();
+                  if (modalStep === 1) return closeModal();
+                  stepDirection.current = -1;
+                  setModalStep((s) => s - 1);
+                }}
               >
                 <Ionicons name="chevron-back" size={20} color={colors.textMuted} />
                 <Text style={styles.footerBtnSecondaryText}>
@@ -712,9 +780,13 @@ export function SymptomsScreen() {
               </TouchableOpacity>
               {modalStep < totalSteps ? (
                 <TouchableOpacity
-                  activeOpacity={1}
+                  activeOpacity={0.75}
                   style={[styles.footerBtnPrimary, !canLeaveStep && styles.submitBtnDisabled]}
-                  onPress={() => setModalStep((s) => s + 1)}
+                  onPress={() => {
+                    haptics.press();
+                    stepDirection.current = 1;
+                    setModalStep((s) => s + 1);
+                  }}
                   disabled={!canLeaveStep}
                 >
                   <Text style={styles.footerBtnPrimaryText}>Next</Text>
@@ -722,7 +794,7 @@ export function SymptomsScreen() {
                 </TouchableOpacity>
               ) : (
                 <TouchableOpacity
-                  activeOpacity={1}
+                  activeOpacity={0.75}
                   style={[
                     styles.submitBtn,
                     styles.submitBtnFlex,
@@ -761,7 +833,7 @@ export function SymptomsScreen() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Add your own</Text>
               <TouchableOpacity
-                activeOpacity={1}
+                activeOpacity={0.75}
                 onPress={closeAddModal}
                 disabled={addSubmitting}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}

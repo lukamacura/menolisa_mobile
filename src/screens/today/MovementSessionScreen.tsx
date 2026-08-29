@@ -38,6 +38,7 @@ import { ExerciseVideo } from '../../components/plan/ExerciseVideo';
 import { AnimatedPressable } from '../../components/AnimatedPressable';
 import { GratitudeSuccessPanel } from '../../components/GratitudeSuccessPanel';
 import { useReduceMotion } from '../../components/StaggeredZoomIn';
+import { useAndroidBack } from '../../hooks/useAndroidBack';
 import {
   useSessionPlayer,
   REST_BUMP_SECONDS,
@@ -377,6 +378,22 @@ export function MovementSessionScreen() {
     player.setsTotal,
     logAndLeave,
   ]);
+
+  /**
+   * Android's back button, which this screen's contract forgot about.
+   *
+   * `gestureEnabled: false` stops the swipe and the header is hidden, but the
+   * hardware button pops the screen by itself — so on Android, backing out of a
+   * session she was most of the way through discarded it without ever offering
+   * to log it, which is the exact loss `leave` exists to prevent. Routed
+   * through the same handler as the close button so both exits ask the same
+   * question. The two branches below have nothing to weigh up and just leave.
+   */
+  const onAndroidBack = useCallback(() => {
+    if (celebrating || !task || !items.length) navigation.goBack();
+    else leave();
+  }, [celebrating, task, items.length, navigation, leave]);
+  useAndroidBack(onAndroidBack);
 
   // This screen runs without a nav header so the session can own the display, so
   // every branch has to carry its own way out — there is no back chevron and no

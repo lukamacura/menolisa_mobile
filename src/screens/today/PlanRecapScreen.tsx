@@ -8,6 +8,7 @@ import type { TodayStackParamList } from '../../navigation/types';
 import { usePlan } from '../../context/PlanContext';
 import { usePlanHistory } from '../../hooks/usePlanHistory';
 import { usePlanCycleRecap } from '../../hooks/usePlanCycleRecap';
+import { useAndroidBack } from '../../hooks/useAndroidBack';
 import { toPercent } from '../../lib/planHistoryTypes';
 import { formatLongDate } from '../../lib/planHistoryFormat';
 import { PillarRing } from '../../components/progress/PillarRing';
@@ -52,6 +53,10 @@ export function PlanRecapScreen() {
     markSeen();
     navigation.goBack();
   }, [markSeen, navigation]);
+
+  // Android's back button pops this screen on its own, past the button that
+  // marks it seen — and the daily loop under it would push it straight back.
+  useAndroidBack(onContinue);
 
   const overall = history?.overall;
   const score = overall ? toPercent(overall.score) : 0;

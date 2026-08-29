@@ -8,8 +8,10 @@ import type { TodayStackParamList } from '../../navigation/types';
 import { useTrialStatus } from '../../hooks/useTrialStatus';
 import { usePlanHistory } from '../../hooks/usePlanHistory';
 import { usePlanRenewalPrompt } from '../../hooks/usePlanRenewalPrompt';
+import { useAndroidBack } from '../../hooks/useAndroidBack';
 import { toPercent } from '../../lib/planHistoryTypes';
 import { formatLongDate } from '../../lib/planHistoryFormat';
+import { localDateString } from '../../lib/planApi';
 import { openAccountBillingEntry } from '../../lib/api';
 import { logger } from '../../lib/logger';
 import { PillarRing } from '../../components/progress/PillarRing';
@@ -55,6 +57,10 @@ export function PlanContinueScreen() {
     markSeen();
     navigation.goBack();
   }, [markSeen, navigation]);
+
+  // Same as PlanRecap: without this, Android's back button leaves the screen
+  // unmarked and the daily loop re-opens it on the very next frame.
+  useAndroidBack(onContinue);
 
   const onOpenAccount = useCallback(() => {
     // Deliberately does NOT mark the screen seen. She is stepping out to look
@@ -141,7 +147,7 @@ export function PlanContinueScreen() {
         {renewsOn ? (
           <View style={styles.billing}>
             <Text style={styles.billingText}>
-              Your plan renews on {formatLongDate(renewsOn.toISOString().slice(0, 10))} and
+              Your plan renews on {formatLongDate(localDateString(renewsOn))} and
               carries straight on.
             </Text>
             <Text style={styles.billingLink} onPress={onOpenAccount} accessibilityRole="link">

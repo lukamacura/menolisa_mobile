@@ -200,6 +200,9 @@ export function ProgressScreen() {
               return (
                 <AnimatedPressable
                   key={entry.cycle}
+                  // Its own handler already ticks, and stays silent when she
+                  // taps the plan she is already reading.
+                  haptic={false}
                   style={[styles.chip, active && styles.chipActive]}
                   containerStyle={styles.chipContainer}
                   onPress={() => onSelectCycle(entry, active)}

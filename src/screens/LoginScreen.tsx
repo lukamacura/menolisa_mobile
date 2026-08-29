@@ -301,7 +301,7 @@ export function LoginScreen() {
               )}
 
               <TouchableOpacity
-                activeOpacity={1}
+                activeOpacity={0.75}
                 style={[
                   styles.submitButton,
                   ((mode === 'email' && (!emailValid || loading)) ||

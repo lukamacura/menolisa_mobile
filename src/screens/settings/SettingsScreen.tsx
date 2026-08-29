@@ -225,7 +225,7 @@ export function SettingsScreen() {
           </StaggeredZoomIn>
           <StaggeredZoomIn delayIndex={1} reduceMotion={reduceMotion}>
             <TouchableOpacity
-              activeOpacity={1}
+              activeOpacity={0.75}
               style={[styles.row, styles.manageAccountRow]}
               onPress={handleOpenAccountWeb}
             >
@@ -247,7 +247,7 @@ export function SettingsScreen() {
               be the next thing she sees — not buried under the legal rows. */}
           <StaggeredZoomIn delayIndex={2} reduceMotion={reduceMotion}>
             <TouchableOpacity
-              activeOpacity={1}
+              activeOpacity={0.75}
               style={[styles.row, styles.supportRow]}
               onPress={handleContactSupport}
               accessibilityRole="button"
@@ -264,7 +264,7 @@ export function SettingsScreen() {
           </StaggeredZoomIn>
           <StaggeredZoomIn delayIndex={3} reduceMotion={reduceMotion}>
             <TouchableOpacity
-              activeOpacity={1}
+              activeOpacity={0.75}
               style={[styles.row, styles.blueRow]}
               onPress={() => navigation.navigate('NotificationPrefs')}
             >
@@ -275,7 +275,7 @@ export function SettingsScreen() {
           </StaggeredZoomIn>
           <StaggeredZoomIn delayIndex={4} reduceMotion={reduceMotion}>
             <TouchableOpacity
-              activeOpacity={1}
+              activeOpacity={0.75}
               style={[styles.row, styles.goldRow]}
               onPress={openPrivacyPolicy}
             >
@@ -286,7 +286,7 @@ export function SettingsScreen() {
           </StaggeredZoomIn>
           <StaggeredZoomIn delayIndex={5} reduceMotion={reduceMotion}>
             <TouchableOpacity
-              activeOpacity={1}
+              activeOpacity={0.75}
               style={[styles.row, styles.goldRow]}
               onPress={openTermsOfUse}
             >
@@ -297,7 +297,7 @@ export function SettingsScreen() {
           </StaggeredZoomIn>
           <StaggeredZoomIn delayIndex={6} reduceMotion={reduceMotion}>
             <TouchableOpacity
-              activeOpacity={1}
+              activeOpacity={0.75}
               style={[styles.row, styles.logoutRow]}
               onPress={handleLogout}
             >
@@ -307,7 +307,7 @@ export function SettingsScreen() {
           </StaggeredZoomIn>
           <StaggeredZoomIn delayIndex={7} reduceMotion={reduceMotion}>
             <TouchableOpacity
-              activeOpacity={1}
+              activeOpacity={0.75}
               style={[styles.row, styles.deleteAccountRow]}
               onPress={handleDeleteAccount}
               disabled={actionLoading === 'delete'}
@@ -326,11 +326,6 @@ export function SettingsScreen() {
           </StaggeredZoomIn>
         </View>
 
-        <StaggeredZoomIn delayIndex={8} reduceMotion={reduceMotion}>
-          <Text style={styles.disclaimer}>
-            MenoLisa is for informational purposes only and is not a substitute for professional medical advice, diagnosis, or treatment. Always consult a qualified healthcare provider.
-          </Text>
-        </StaggeredZoomIn>
       </ScrollView>
     </SafeAreaView>
   );
@@ -468,14 +463,5 @@ const styles = StyleSheet.create({
     fontFamily: typography.family.regular,
     color: colors.textMuted,
     marginTop: 2,
-  },
-  disclaimer: {
-    fontSize: 12,
-    fontFamily: typography.family.regular,
-    color: colors.textMuted,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.lg,
-    lineHeight: 18,
   },
 });

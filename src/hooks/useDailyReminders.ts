@@ -67,13 +67,37 @@ export function useDailyReminders(): void {
   useEffect(() => {
     if (timer.current) clearTimeout(timer.current);
 
-    // Nothing to schedule for, or nowhere to schedule to. Clearing rather than
-    // returning early matters on sign-out: reminders written for one account
-    // must not go on firing at whoever holds the phone next.
-    if (!user || !prefs || permission !== 'granted' || !dayState || !prefs.enabled) {
+    /**
+     * She has affirmatively told us to send nothing — clear what is queued.
+     *
+     * Clearing rather than returning early matters on sign-out: reminders
+     * written for one account must not go on firing at whoever holds the phone
+     * next. `permission === 'denied'` is the same kind of answer, given to the
+     * OS instead of to us.
+     */
+    if (!user || (prefs && !prefs.enabled) || permission === 'denied') {
       cancelScheduledReminders();
       return;
     }
+
+    /**
+     * We simply do not know yet — and "do not know" must never be read as "send
+     * nothing".
+     *
+     * All three of these are null or `undetermined` on **every** cold start:
+     * `prefs` until AsyncStorage answers, `permission` until the OS answers, and
+     * `dayState` until `GET /api/plan` answers. `dayState` also goes back to null
+     * at every midnight rollover, and stays null for the whole session whenever
+     * that fetch fails — offline, on a plane, or on a server hiccup.
+     *
+     * Cancelling here is what made the app go quiet in her hands. Opening it for
+     * five seconds with no signal wiped the entire seven-day lookahead and
+     * scheduled nothing back, so she got no reminder at all until some later
+     * launch happened to load a plan. Leaving the existing schedule standing is
+     * strictly better: it was written blind from the same inputs anyway, it is
+     * still true, and the next successful pass rewrites it from scratch.
+     */
+    if (!prefs || permission !== 'granted' || !dayState) return;
 
     timer.current = setTimeout(() => {
       syncScheduledReminders({ state: dayState, prefs });

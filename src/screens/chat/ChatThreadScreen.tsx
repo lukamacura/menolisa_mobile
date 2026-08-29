@@ -823,8 +823,14 @@ export function ChatThreadScreen() {
               accessibilityRole="link"
             >
               OpenAI
-            </Text>{' '}
-            and are for informational purposes only - not medical advice. Sources:{' '}
+            </Text>
+            {/* No "not medical advice" clause here. That is said once, in the
+                "Before you begin" gate, along with the fact that Lisa is an AI
+                that can be wrong — repeating it above every message is how a
+                safety line turns into wallpaper. What stays is attribution and
+                the sources, which is a different job: who generated this, and
+                what it was built on. */}
+            {'. Sources: '}
             <Text
               style={styles.chatDisclaimerLink}
               onPress={() => Linking.openURL('https://www.nhs.uk/conditions/menopause/')}

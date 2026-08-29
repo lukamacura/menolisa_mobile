@@ -511,7 +511,7 @@ export function SymptomLogsScreen() {
                     {SEVERITY_OPTIONS.map((opt) => (
                       <TouchableOpacity
                         key={opt.value}
-                        activeOpacity={1}
+                        activeOpacity={0.75}
                         style={[styles.severityBtn, editSeverity === opt.value && styles.severityBtnActive]}
                         onPress={() => setEditSeverity(opt.value)}
                       >
@@ -530,7 +530,7 @@ export function SymptomLogsScreen() {
                     {editSymptomTriggers.map((trigger) => (
                       <TouchableOpacity
                         key={trigger}
-                        activeOpacity={1}
+                        activeOpacity={0.75}
                         style={[styles.triggerChip, editTriggers.includes(trigger) && styles.triggerChipActive]}
                         onPress={() => toggleEditTrigger(trigger)}
                       >
@@ -549,7 +549,7 @@ export function SymptomLogsScreen() {
                       placeholderTextColor={colors.textMuted}
                       onSubmitEditing={addEditCustomTrigger}
                     />
-                    <TouchableOpacity activeOpacity={1} style={styles.addTriggerBtn} onPress={addEditCustomTrigger}>
+                    <TouchableOpacity activeOpacity={0.75} style={styles.addTriggerBtn} onPress={addEditCustomTrigger}>
                       <Text style={styles.addTriggerBtnText}>+ Add</Text>
                     </TouchableOpacity>
                   </View>
@@ -560,7 +560,7 @@ export function SymptomLogsScreen() {
                   <Text style={styles.label}>When did this happen?</Text>
                   {editOriginalLoggedAt && (
                     <TouchableOpacity
-                      activeOpacity={1}
+                      activeOpacity={0.75}
                       style={[styles.timingOption, editTimeSelection === 'keep' && styles.timingOptionActive]}
                       onPress={() => setEditTimeSelection('keep')}
                     >
@@ -576,14 +576,14 @@ export function SymptomLogsScreen() {
                     </TouchableOpacity>
                   )}
                   <TouchableOpacity
-                    activeOpacity={1}
+                    activeOpacity={0.75}
                     style={[styles.timingOption, editTimeSelection === 'now' && styles.timingOptionActive]}
                     onPress={() => { setEditTimeSelection('now'); setEditCustomTime(''); }}
                   >
                     <Text style={[styles.timingOptionText, editTimeSelection === 'now' && styles.timingOptionTextActive]}>Just now{editTimeSelection === 'now' ? ' ✓' : ''}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    activeOpacity={1}
+                    activeOpacity={0.75}
                     style={[styles.timingOption, editTimeSelection === 'earlier-today' && styles.timingOptionActive]}
                     onPress={() => setEditTimeSelection('earlier-today')}
                   >
@@ -602,7 +602,7 @@ export function SymptomLogsScreen() {
                     />
                   )}
                   <TouchableOpacity
-                    activeOpacity={1}
+                    activeOpacity={0.75}
                     style={[styles.timingOption, editTimeSelection === 'yesterday' && styles.timingOptionActive]}
                     onPress={() => setEditTimeSelection('yesterday')}
                   >
@@ -640,7 +640,7 @@ export function SymptomLogsScreen() {
             </ScrollView>
             <View style={[styles.modalFooter, { paddingBottom: Math.max(spacing.xl, insets.bottom) }]}>
               <TouchableOpacity
-                activeOpacity={1}
+                activeOpacity={0.75}
                 style={styles.footerBtnSecondary}
                 onPress={() => (editStep === 1 ? closeEditModal() : setEditStep((s) => s - 1))}
               >
@@ -649,7 +649,7 @@ export function SymptomLogsScreen() {
               </TouchableOpacity>
               {editStep < editTotalSteps ? (
                 <TouchableOpacity
-                  activeOpacity={1}
+                  activeOpacity={0.75}
                   style={[styles.footerBtnPrimary, !canLeaveEditStep && styles.submitBtnDisabled]}
                   onPress={() => setEditStep((s) => s + 1)}
                   disabled={!canLeaveEditStep}
@@ -659,7 +659,7 @@ export function SymptomLogsScreen() {
                 </TouchableOpacity>
               ) : (
                 <TouchableOpacity
-                  activeOpacity={1}
+                  activeOpacity={0.75}
                   style={[
                     styles.submitBtn,
                     styles.submitBtnFlex,

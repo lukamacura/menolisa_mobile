@@ -36,7 +36,21 @@ function LoadingScreen() {
   );
 }
 
-const DISCLAIMER_KEY = '@menolisa:consent_v2_accepted';
+/**
+ * Bump the version whenever the modal gains something she has not agreed to.
+ *
+ * A new key means everyone sees the gate once more, which is the point: consent
+ * already given cannot cover text that did not exist when she gave it. The old
+ * key is deliberately left behind in AsyncStorage — it is a few bytes, and
+ * clearing it would destroy the record that she accepted the earlier version.
+ *
+ * `v3` (2026-08-29) added the exercise-safety section — when to check with a
+ * doctor before starting, and the stop signals — and said plainly that the plan
+ * is built from her quiz answers rather than a medical assessment. `v2` carried
+ * the medical and AI/data sections only, so nobody still on `v2` has been shown
+ * any of that.
+ */
+const DISCLAIMER_KEY = '@menolisa:consent_v3_accepted';
 
 export function AppNavigator() {
   const { user, loading, accountStatus, reconcileAccountStatus } = useAuth();
