@@ -270,7 +270,13 @@ export type NutritionItem = {
   title: string;
   /** Group header, e.g. "Every meal". Also render from the response. */
   group: string;
-  /** True when this week's plan pushes on this row. */
+  /**
+   * True when this week's plan pushes on this row. Still sent by the API and
+   * still true; nothing renders it since 2026-08-30, when the "This week" chip
+   * came off the row — beside a streak chip and a cadence hint it read as a
+   * third status about the row rather than as emphasis, and she had no way to
+   * tell what it was claiming.
+   */
   focus: boolean;
   /** Why this row is on her list — written for her at plan generation. Always present. */
   why: string;

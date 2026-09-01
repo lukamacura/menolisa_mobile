@@ -108,11 +108,6 @@ function NutritionRowComponent({ item, onChange, supplements }: NutritionRowProp
 
           <View style={styles.metaRow}>
             {hint && <Text style={styles.hint}>{hint}</Text>}
-            {item.focus && (
-              <View style={styles.focusChip}>
-                <Text style={styles.focusText}>This week</Text>
-              </View>
-            )}
             <StreakChip streak={item.streak} bestStreak={item.bestStreak} />
           </View>
         </Pressable>
@@ -198,16 +193,5 @@ const styles = StyleSheet.create({
   hint: {
     ...typography.presets.caption,
     color: colors.textMuted,
-  },
-  focusChip: {
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: radii.pill,
-    backgroundColor: 'rgba(139, 124, 246, 0.16)',
-  },
-  focusText: {
-    ...typography.presets.caption,
-    fontFamily: typography.family.semibold,
-    color: colors.lavender,
   },
 });

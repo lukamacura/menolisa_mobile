@@ -18,7 +18,7 @@ const NUTRITION_ICONS: Record<string, IconName> = {
   healthy_fats: 'water',
   high_fiber: 'leaf',
   low_gi_fruit: 'nutrition',
-  post_meal_walk: 'walk',
+  post_meal_squats: 'fitness',
   fast_12h: 'hourglass',
   gap_5h: 'timer',
   no_snacking: 'ban',

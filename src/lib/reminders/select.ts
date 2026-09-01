@@ -117,6 +117,26 @@ const RANK: Record<ReminderId, number> = {
 };
 
 /**
+ * The two blind-day reminders that take it in turns.
+ *
+ * On a day we can see, the rank order above is the whole answer and water
+ * earning last place is correct — it is the assist, not the ask. On a **blind**
+ * day it silently became "never". The morning plan nudge is always true there
+ * (`lookaheadReminders` sets `activeToday: false` by definition), so it takes
+ * one of the two slots every single day; movement outranks water and takes the
+ * other on every day the week still owes a session, which is most of them. The
+ * cap then breaks before water is ever looked at. A woman who stopped opening
+ * the app got the plan nudge seven days running and nothing else — the exact
+ * shape of the bug the blind day was rewritten to fix, one rank lower down.
+ *
+ * So the second slot alternates rather than being won outright. The cap stays
+ * at two and no day gets noisier; across the lookahead window she hears about
+ * both. Rotation rather than a raised ceiling, because the ceiling is the whole
+ * point of this file.
+ */
+const ROTATING: ReminderId[] = ['movement', 'water'];
+
+/**
  * Every reminder a day is eligible for, before the cap.
  *
  * Each `if` is one product rule and reads as one.
@@ -293,10 +313,17 @@ export function remindersForDay(
  *
  * This is also the only channel left for a woman who has stopped opening the
  * app, and it decays on its own — see `LOOKAHEAD_DAYS`.
+ *
+ * `day` exists because the cap and the rank order together are not enough here:
+ * the plan nudge is always true on a blind day and movement almost always is,
+ * so water lost every slot it was ever eligible for. The second slot rotates
+ * across the window instead — see `ROTATING`.
  */
 export function lookaheadReminders(
   state: DayState,
-  prefs: ReminderPrefs
+  prefs: ReminderPrefs,
+  /** How many days out this one is. Only the rotation reads it — see `ROTATING`. */
+  day: number
 ): Reminder[] {
   if (!prefs.enabled) return [];
 
@@ -313,7 +340,31 @@ export function lookaheadReminders(
     weekStartingTomorrow: null,
   };
 
-  return admitted(candidates(blind, prefs, true));
+  return admitted(rotate(candidates(blind, prefs, true), day));
+}
+
+/**
+ * Give the day's turn to one of the rotating pair, by dealing their own ranks
+ * back out in a different order.
+ *
+ * Dealing the pair's existing ranks rather than nudging them means the set of
+ * ranks in play is always exactly the set `RANK` declares, so nothing here can
+ * step on `plan`, `streak` or `week_start` however the pair is ordered. A
+ * reminder the day does not carry is simply not in `list`, and the deal is
+ * then a no-op for it.
+ */
+function rotate(list: Reminder[], day: number): Reminder[] {
+  const size = ROTATING.length;
+  const turn = ((day % size) + size) % size;
+  /** Whoever has the turn, then the rest behind it, in their usual order. */
+  const order = [...ROTATING.slice(turn), ...ROTATING.slice(0, turn)];
+  const ranks = ROTATING.map((id) => RANK[id]).sort((a, b) => a - b);
+  const dealt = new Map(order.map((id, index) => [id, ranks[index]]));
+
+  return list.map((reminder) => {
+    const rank = dealt.get(reminder.id);
+    return rank === undefined ? reminder : { ...reminder, rank };
+  });
 }
 
 function minutesOfDay(time: HourMinute): number {

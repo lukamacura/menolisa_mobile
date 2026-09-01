@@ -20,7 +20,7 @@ module.exports = {
   expo: {
     name: 'MenoLisa',
     slug: 'womenreset-mobile',
-    version: '1.3.1',
+    version: '1.3.2',
     orientation: 'default',
     icon: './assets/logo.png',
     userInterfaceStyle: 'light',

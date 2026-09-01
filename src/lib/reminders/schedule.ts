@@ -148,10 +148,11 @@ export async function syncScheduledReminders(input: {
       if (at.getTime() > now.getTime() + MIN_LEAD_MS) planned.push({ reminder, at });
     }
 
-    // The days after, blind.
-    const ahead = lookaheadReminders(state, prefs);
+    // The days after, blind. Asked per day rather than once and repeated: the
+    // second slot rotates across the window so water is not shut out of every
+    // day by a movement task that is open all week (see `ROTATING`).
     for (let day = 1; day < LOOKAHEAD_DAYS; day += 1) {
-      for (const reminder of ahead) {
+      for (const reminder of lookaheadReminders(state, prefs, day)) {
         planned.push({ reminder, at: atLocalTime(now, day, reminder.time) });
       }
     }
